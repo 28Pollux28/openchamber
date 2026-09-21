@@ -173,7 +173,9 @@ describe('source-control repository identity', () => {
       directory: repository, repositoryId: context.repositoryId, bindingRevision: 1,
       provider: 'github', instance: 'github.com', accountId: 'github.com#7', primaryRemote: 'origin',
     };
-    await expect(service.validateReadContext(readContext)).rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_STALE' });
+    // The provider was never confirmed against the current remotes, so reads
+    // are refused until the binding is saved against them.
+    await expect(service.validateReadContext(readContext)).rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_NEEDS_ATTENTION' });
     expect((await service.get(repository)).binding.state).toBe('needs-attention');
     expect(record.binding.configRevision).toBe(oldRevision);
     expect(record.revision).toBe(1);

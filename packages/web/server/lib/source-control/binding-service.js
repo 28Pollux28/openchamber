@@ -371,9 +371,9 @@ export function createBindingService({
     if (current.revision !== bindingRevision || current.binding.revision !== bindingRevision) {
       throw staleBindingError('Source control repository binding changed', current);
     }
-    if (current.binding.configRevision !== context.configRevision) {
-      throw staleBindingError('Source control repository remotes changed', current);
-    }
+    // A remote added or removed beside the bound one changes the public config
+    // revision but not what the provider answers for; the provider's own
+    // readiness below says when its endpoint moved.
     const boundProvider = current.binding.providers.find((candidate) => candidate.provider === provider
       && normalizeProviderInstance(candidate.provider, candidate.instance) === instance
       && candidate.accountId === accountId
