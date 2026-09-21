@@ -450,6 +450,26 @@ export function createNetworkOperations({
     pathImpl,
   });
 
+  const mergedTransportRevision = async (plan, controls, deadline) => {
+    let authority;
+    try {
+      authority = await awaitPhase(() => validateGitTransportContext({
+        directory: plan.directory,
+        repositoryId: plan.target.repositoryId,
+        bindingRevision: plan.target.bindingRevision,
+        configRevision: plan.target.configRevision,
+        remote: plan.target.remote.name,
+        endpointKind: plan.endpointKind,
+      }), controls, deadline);
+    } catch (error) {
+      if (error?.cancelled || error?.timedOut) throw error;
+      throw operationError(authorityCode(error), 'Git network operation authority changed', error?.status ?? 409);
+    }
+    // Only the part HEAD decides may move; everything else must still match
+    // the plan, which `revalidate` checks against the refreshed revision.
+    return authority.transportRevision;
+  };
+
   const revalidate = async (plan, controls, deadline) => {
     if (plan.contributorAuthority) {
       const record = await awaitPhase(() => contributorProvenance.read(plan.directory), controls, deadline);
@@ -1631,6 +1651,12 @@ export function createNetworkOperations({
       )).toLowerCase();
       if (!SHA_PATTERN.test(pushSha)) throw operationError('STALE_CONFIG', 'Git push source ref is invalid', 409);
       pushPlan = { ...pushPlan, sourceSha: pushSha };
+      // The pull just moved HEAD, and the transport revision hashes what HEAD
+      // says about submodules, LFS and attributes. A change the merge brought
+      // in is this operation's own doing, not a configuration change under
+      // it, so the push authority is read once more from the merged tree and
+      // the rest of the revalidation holds it to that.
+      pushPlan = { ...pushPlan, transportRevision: await mergedTransportRevision(pushPlan, controls, deadline) };
       await revalidate(pushPlan, controls, deadline);
       lfsUploaded = await prepareLfsPublication(pushPlan, controls, deadline);
       await revalidate(pushPlan, controls, deadline);

@@ -2538,6 +2538,35 @@ process.exit(safe ? 0 : 1);
     expect(setupValue.calls.at(-1).args.slice(-3)).toEqual(['update-ref', '-d', 'refs/openchamber/network/git_operation_one']);
   });
 
+  it('pushes after a pull that changed what HEAD says about transport, and still refuses a remote that moved', async () => {
+    // The merge lands a new .gitattributes: the transport revision moves once
+    // the pull step has run, and only then.
+    const syncWith = (afterMerge) => {
+      let merged = false;
+      const setupValue = setup({
+        spawnResults: [{ code: 0 }, { code: 0 }, { code: 0 }],
+        spawnResponder: ({ args }) => { if (args.includes('merge')) merged = true; return undefined; },
+      });
+      setupValue.validateGitTransportContext.mockImplementation(async ({ endpointKind }) => ({
+        ...setupValue.authority, ...(merged ? afterMerge(setupValue.authority, endpointKind) : {}),
+      }));
+      return setupValue;
+    };
+    const changed = syncWith(() => ({ transportRevision: 'transport_after_merge' }));
+    const plan = await changed.service.plan(syncRequest());
+    expect(await changed.service.execute(plan.operationId)).toMatchObject({ state: 'succeeded', stepResults: [
+      { step: 'fetch', status: 'succeeded' }, { step: 'pull', status: 'succeeded' }, { step: 'push', status: 'succeeded' },
+    ] });
+
+    const moved = syncWith((_authority, endpointKind) => (endpointKind === 'push'
+      ? { transportRevision: 'transport_after_merge', endpoint: 'https://example.com/elsewhere/repository.git' }
+      : { transportRevision: 'transport_after_merge' }));
+    const movedPlan = await moved.service.plan(syncRequest());
+    const movedResult = await moved.service.execute(movedPlan.operationId);
+    expect(movedResult.state).toBe('conflicted');
+    expect(movedResult.stepResults.find((step) => step.step === 'push')).toMatchObject({ status: 'conflicted', error: { code: 'REMOTE_CHANGED' } });
+  });
+
   it('syncs by fetching and pushing only the two exact targets', async () => {
     const setupValue = setup({ spawnResults: [{ code: 0 }, { code: 0 }, { code: 0 }] });
     const fetchEndpoint = 'https://example.com/upstream/repository.git';
