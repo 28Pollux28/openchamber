@@ -52,7 +52,7 @@ let endpoint;
 try {
   endpoint = JSON.parse(fs.readFileSync(endpointFile, 'utf8'));
   const url = new URL(endpoint.url);
-  if (endpoint.version !== 1 || url.protocol !== 'http:' || typeof endpoint.secret !== 'string' || !endpoint.secret) throw new Error('invalid');
+  if (endpoint.version !== 1 || url.protocol !== 'http:' || !String(endpoint.secret ?? '')) throw new Error('invalid');
 } catch {
   delegate(query);
   await new Promise(() => {});

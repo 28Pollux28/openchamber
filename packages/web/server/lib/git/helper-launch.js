@@ -12,7 +12,8 @@
 
 const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
-const runsAsElectron = (versions = process.versions) => typeof versions?.electron === 'string' && versions.electron.length > 0;
+// `process.versions.electron` is set only when Electron is the host.
+const runsAsElectron = (versions = process.versions) => Boolean(versions?.electron);
 
 /** `[ELECTRON_RUN_AS_NODE=1 ]'<executable>' '<script>' '<arg>'...` */
 export const helperShellCommand = (scriptPath, args = [], { execPath = process.execPath, versions = process.versions } = {}) => {
