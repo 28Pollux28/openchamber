@@ -34,28 +34,35 @@ it('creates mode 0600 with unique identity and releases after success or operati
   expect(new Set(nonces).size).toBe(3);
 });
 
-it.each(['', '{malformed', '{"pid":999999999,"at":1}'])('preserves malformed and old locks without stealing', async (content) => {
+it.each(['', '{malformed', '{"pid":999999999,"at":1}'])('waits on a fresh lock it cannot attribute, and reclaims it once it is old', async (content) => {
   const lockPath = await setup();
   await fs.writeFile(lockPath, content, { mode: 0o600 });
-  await fs.utimes(lockPath, new Date(0), new Date(0));
   await expect(withSourceControlFileLock(lockPath, () => { throw new Error('must not run'); }, { waitMs: 25 }))
-    .rejects.toMatchObject({ code: 'SOURCE_CONTROL_LOCK_BUSY', status: 503, message: expect.stringContaining('stop all writers') });
+    .rejects.toMatchObject({ code: 'SOURCE_CONTROL_LOCK_BUSY', status: 503 });
   expect(await fs.readFile(lockPath, 'utf8')).toBe(content);
+  // Older than any writer could still be inside it: nobody is coming back for it.
+  await fs.utimes(lockPath, new Date(0), new Date(0));
+  await expect(withSourceControlFileLock(lockPath, () => 1, { waitMs: 25 })).resolves.toBe(1);
+  await expect(fs.stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
-it('preserves a crashed process lock until deliberate cleanup with all writers stopped', async () => {
+it('waits on a lock held by a live process on this machine', async () => {
+  const lockPath = await setup();
+  await fs.writeFile(lockPath, JSON.stringify({ pid: process.pid, host: os.hostname(), at: Date.now() }), { mode: 0o600 });
+  await fs.utimes(lockPath, new Date(0), new Date(0));
+  await expect(withSourceControlFileLock(lockPath, () => 1, { waitMs: 25 })).rejects.toMatchObject({ code: 'SOURCE_CONTROL_LOCK_BUSY' });
+});
+
+it('reclaims the lock of a process that died holding it', async () => {
   const lockPath = await setup();
   const owner = await storageProcess('lock', lockPath);
   children.push(owner);
   owner.call('hold-lock');
   await expect.poll(() => owner.events.some((event) => event.event === 'locked')).toBe(true);
-  const nonce = await fs.readFile(lockPath, 'utf8');
+  expect(JSON.parse(await fs.readFile(lockPath, 'utf8'))).toMatchObject({ host: os.hostname(), pid: expect.any(Number) });
   await owner.stop();
-  await expect(withSourceControlFileLock(lockPath, () => 1, { waitMs: 25 }))
-    .rejects.toMatchObject({ code: 'SOURCE_CONTROL_LOCK_BUSY' });
-  expect(await fs.readFile(lockPath, 'utf8')).toBe(nonce);
-  await fs.unlink(lockPath);
-  await expect(withSourceControlFileLock(lockPath, () => 1)).resolves.toBe(1);
+  await expect(withSourceControlFileLock(lockPath, () => 1, { waitMs: 25 })).resolves.toBe(1);
+  await expect(fs.stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
 it('never releases a replacement identity', async () => {

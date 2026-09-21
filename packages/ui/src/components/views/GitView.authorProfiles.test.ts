@@ -46,7 +46,8 @@ const plain: GitIdentityProfile = { id: 'plain', name: 'Author', userName: 'Plai
 const incomplete: GitIdentityProfile = { id: 'legacy', name: 'Legacy', userName: 'Legacy Author', userEmail: 'legacy@example.com' };
 // The callback also asks whether the identity's account is still connected;
 // an instance that has not been read answers null, which keeps it offered.
-const helpers = { selectableIdentities, isCompleteIdentity, identityAccountConnected, activeIdentityFor, connectedAccountIds: () => null };
+// `boundAccountId` is undefined until the binding is read; the author alone decides then.
+const helpers = { selectableIdentities, isCompleteIdentity, identityAccountConnected, activeIdentityFor, connectedAccountIds: () => null, boundAccountId: undefined };
 const profiles = [work, signed, plain];
 
 // The clone screen no longer chooses an author on its own: it proposes one

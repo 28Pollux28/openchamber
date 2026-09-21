@@ -1580,11 +1580,17 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
     [profiles, globalIdentity, connectedAccountIds],
   );
 
+  // Which account the repository is bound to, so two identities that share an
+  // author (the machine's own and an account with the same email) resolve to
+  // the one that was actually chosen. Unknown while the binding is unread.
+  const boundAccountId = binding.read
+    ? binding.read.binding?.providers.find((provider) => provider.readiness === 'ready')?.accountId ?? null
+    : undefined;
   const activeIdentityProfile = React.useMemo(
     () => activeIdentityFor(profiles, globalIdentity, currentIdentity, (author) => ({
       id: 'local-config', name: author.userName, ...author, color: 'info', icon: 'user',
-    })),
-    [currentIdentity, profiles, globalIdentity],
+    }), boundAccountId),
+    [boundAccountId, currentIdentity, profiles, globalIdentity],
   );
 
   const stagedCount = stagedChangeEntries.length;

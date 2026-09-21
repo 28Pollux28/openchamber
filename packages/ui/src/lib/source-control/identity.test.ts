@@ -111,7 +111,26 @@ describe('source-control binding read contexts', () => {
     }]);
     // A host the binding already answers for keeps its bound account, even when it needs attention.
     expect(getBoundSourceControlReadContexts(bindingRead('needs-attention'), '/repo', active)).toEqual([]);
-    expect(getBoundSourceControlReadContexts(bindingRead('bound'), '/repo', active)).toEqual([expect.objectContaining({ accountId: 'github.com#7' })]);
+    expect(getBoundSourceControlReadContexts(bindingRead('bound'), '/repo', active).map((context) => context.accountId)).toEqual(['github.com#7']);
+  });
+});
+
+describe('activeIdentityFor', () => {
+  const author = { userName: 'Ada', userEmail: 'ada@example.com' };
+  const system = { id: 'global', name: 'System', ...author };
+  const github = { id: 'gh', name: 'ada', ...author, account: { accountId: 'github.com#1' } };
+  const other = { id: 'other', name: 'other', userName: 'Ada', userEmail: 'other@example.com', account: { accountId: 'github.com#2' } };
+  const fromAuthor = (value: { userName: string; userEmail: string }) => ({ id: 'local', name: value.userName, ...value });
+
+  test('lets the binding decide between identities that share an author', () => {
+    // Bound to the account: the account identity, even though System signs the same.
+    expect(activeIdentityFor([github, other], system, author, fromAuthor, 'github.com#1')).toBe(github);
+    // Bound to no account: the machine's own identity when the author is its own.
+    expect(activeIdentityFor([github, other], system, author, fromAuthor, null)).toBe(system);
+    // Binding unknown: the stored identity, as before.
+    expect(activeIdentityFor([github, other], system, author, fromAuthor)).toBe(github);
+    // An author no identity carries is shown as itself whatever the binding says.
+    expect(activeIdentityFor([other], system, { userName: 'Bob', userEmail: 'bob@example.com' }, fromAuthor, null)?.id).toBe('local');
   });
 });
 

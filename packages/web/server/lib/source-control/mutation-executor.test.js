@@ -153,7 +153,7 @@ describe('source-control mutation executor', () => {
     expect(pair.flatMap((child) => child.events).filter((event) => event.event === 'reconcile')).toHaveLength(0);
   });
 
-  it.each(['succeeded', 'outcome-unknown'])('blocks a crashed owner until stopped-writer cleanup, then reconciles %s without another perform', async (outcome) => {
+  it.each(['succeeded', 'outcome-unknown'])('reclaims a crashed owner\'s lock and reconciles %s without another perform', async (outcome) => {
     const { mutationPath } = await persistedExecutors();
     const owner = await storageProcess('executor', mutationPath);
     children.push(owner);
@@ -161,16 +161,9 @@ describe('source-control mutation executor', () => {
     await expect.poll(() => owner.events.some((event) => event.event === 'perform')).toBe(true);
     await owner.stop();
     const lockName = (await fs.readdir(path.dirname(mutationPath))).find((name) => name.includes('.execution-'));
-    const lockPath = path.join(path.dirname(mutationPath), lockName);
-    const nonce = await fs.readFile(lockPath, 'utf8');
-    const blocked = await storageProcess('executor', mutationPath);
-    children.push(blocked);
-    expect(await blocked.call('execute', [mutation()]).result).toMatchObject({ ok: false, error: { code: 'SOURCE_CONTROL_LOCK_BUSY' } });
-    expect(await fs.readFile(lockPath, 'utf8')).toBe(nonce);
-    expect(blocked.events.filter((event) => ['perform', 'reconcile'].includes(event.event))).toEqual([]);
-    await blocked.stop();
-    // Manual recovery only after every writer has stopped. Keep both JSON stores.
-    await fs.unlink(lockPath);
+    expect(lockName).toBeTruthy();
+    // The owner is gone, so its lock is nobody's: the next executor takes it
+    // and reconciles the running record instead of performing again.
     const recovered = await storageProcess('executor', mutationPath);
     children.push(recovered);
     const result = await recovered.call('execute', [mutation()], { outcome }).result;

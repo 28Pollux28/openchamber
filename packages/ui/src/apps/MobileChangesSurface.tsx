@@ -164,12 +164,6 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
         && identityAccountConnected(identity, connectedAccountIds)),
     [gitIdentityProfiles, globalGitIdentity, connectedAccountIds],
   );
-  const activeIdentityProfile = React.useMemo(
-    () => activeIdentityFor(gitIdentityProfiles, globalGitIdentity, currentIdentity, (author) => ({
-      id: 'local-config', name: author.userName, ...author, color: 'info', icon: 'user',
-    })),
-    [currentIdentity, gitIdentityProfiles, globalGitIdentity],
-  );
 
   /**
    * Switching identity here writes the same three answers the add and clone
@@ -267,6 +261,15 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
   const commitComparison = useCommitComparison(currentDirectory || null, currentBranch, visible && mode === 'commit' && isGitRepo === true);
   const selectedCommitHash = commitComparison.selectedCommit?.hash ?? null;
   const binding = useRepositoryBinding(currentDirectory || null, sourceControl);
+  const boundAccountId = binding.read
+    ? binding.read.binding?.providers.find((provider) => provider.readiness === 'ready')?.accountId ?? null
+    : undefined;
+  const activeIdentityProfile = React.useMemo(
+    () => activeIdentityFor(gitIdentityProfiles, globalGitIdentity, currentIdentity, (author) => ({
+      id: 'local-config', name: author.userName, ...author, color: 'info', icon: 'user',
+    }), boundAccountId),
+    [boundAccountId, currentIdentity, gitIdentityProfiles, globalGitIdentity],
+  );
   // The same answer the desktop chip gives: a binding that stopped matching
   // its repository, most often a remote added after the identity was applied.
   const identityAttention = React.useMemo(() => {

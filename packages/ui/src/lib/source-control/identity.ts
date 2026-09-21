@@ -278,18 +278,34 @@ export const selectableIdentities = <T extends { id: string }>(
  * what having no override means — and is why every surface has to answer this
  * the same way.
  */
-export const activeIdentityFor = <T extends { id: string; name: string; userName: string; userEmail: string }>(
+export const activeIdentityFor = <T extends { id: string; name: string; userName: string; userEmail: string; account?: { accountId: string } | null }>(
   profiles: T[],
   systemIdentity: T | null | undefined,
   author: { userName?: string | null; userEmail?: string | null } | null | undefined,
   fromAuthor: (author: { userName: string; userEmail: string }) => T,
+  /**
+   * The account the repository is bound to, when it is bound to one. Two
+   * identities can share an author — the machine's own and an account with
+   * the same email — and the author alone cannot tell them apart; the
+   * binding can. Null means the repository answers to no account, which is
+   * the System identity when the author is the machine's.
+   */
+  boundAccountId?: string | null,
 ): T | null => {
   const userName = author?.userName ?? '';
   const userEmail = author?.userEmail ?? '';
   if (!userName || !userEmail) return systemIdentity ?? null;
-  const stored = profiles.find((profile) => profile.userName === userName && profile.userEmail === userEmail);
+  const signedAs = (profile: T) => profile.userName === userName && profile.userEmail === userEmail;
+  const systemSignedAs = Boolean(systemIdentity && signedAs(systemIdentity));
+  if (boundAccountId) {
+    const bound = profiles.find((profile) => profile.account?.accountId === boundAccountId && signedAs(profile));
+    if (bound) return bound;
+  } else if (boundAccountId === null && systemIdentity && systemSignedAs) {
+    return systemIdentity;
+  }
+  const stored = profiles.find(signedAs);
   if (stored) return stored;
-  if (systemIdentity && systemIdentity.userName === userName && systemIdentity.userEmail === userEmail) return systemIdentity;
+  if (systemIdentity && systemSignedAs) return systemIdentity;
   return fromAuthor({ userName, userEmail });
 };
 

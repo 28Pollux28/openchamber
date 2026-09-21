@@ -55,7 +55,7 @@ describe('GitHub account routes', () => {
     const response = await request(makeApp()).get('/api/source-control/github/auth/accounts').expect(503);
 
     expect(response.body).toMatchObject({ code: 'SOURCE_CONTROL_LOCK_BUSY' });
-    expect(response.body.error).toContain('stale-lock recovery');
+    expect(response.body.error).toContain('Retry in a moment');
   });
 
   it('reports invalid auth storage without replacing it with an empty inventory', async () => {

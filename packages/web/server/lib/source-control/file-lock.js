@@ -1,13 +1,25 @@
 import fs from 'node:fs/promises';
 import fsSync from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { performance } from 'node:perf_hooks';
 import { setTimeout as delay } from 'node:timers/promises';
 
+/**
+ * A lock nobody holds is reclaimed rather than waited on forever.
+ *
+ * The lock file names the process that took it. A waiter that finds the file
+ * asks whether that process still exists on this machine; a crashed or killed
+ * owner leaves a file that nobody will ever remove, and every store read would
+ * otherwise fail with "busy" until someone deleted it by hand. A lock from
+ * another machine, or one written before locks carried an owner, is reclaimed
+ * only once it is old enough that no live writer could still be inside it.
+ */
+const STALE_LOCK_MS = 5 * 60_000;
+
 const lockError = (lockPath, busy, cause) => Object.assign(new Error(
-  `Source control lock ${path.basename(lockPath)} ${busy ? 'is busy' : 'failed'}. `
-  + 'Retry later. Locks are never automatically removed. For stale-lock recovery, stop all writers sharing the data root before operator cleanup of this lock file.',
+  `Source control lock ${path.basename(lockPath)} ${busy ? 'is busy' : 'failed'}. Retry in a moment.`,
   { cause },
 ), { code: busy ? 'SOURCE_CONTROL_LOCK_BUSY' : 'SOURCE_CONTROL_LOCK_FAILED', status: busy ? 503 : 500 });
 
@@ -15,11 +27,32 @@ const validateWait = (waitMs) => {
   if (!Number.isSafeInteger(waitMs) || waitMs < 0) throw new TypeError('Invalid source control lock wait');
 };
 
-// Like an index lock: only exclusive creation grants ownership. Age and PID never do.
+const ownerRecord = () => `${JSON.stringify({ pid: process.pid, host: os.hostname(), at: Date.now(), nonce: randomUUID() })}\n`;
+
+const processAlive = (pid) => {
+  try { process.kill(pid, 0); return true; }
+  catch (error) { return error?.code === 'EPERM'; }
+};
+
+/** Whether a lock file's content and age say its owner is gone. */
+const isAbandoned = (content, mtimeMs, now = Date.now()) => {
+  let owner = null;
+  try { owner = JSON.parse(String(content)); } catch { owner = null; }
+  if (owner && Number.isSafeInteger(owner.pid) && owner.pid > 0 && owner.host === os.hostname()) {
+    return !processAlive(owner.pid);
+  }
+  return now - mtimeMs > STALE_LOCK_MS;
+};
+
+const releaseError = (lockPath, error) => lockError(lockPath, false, error);
+
+// Like an index lock: only exclusive creation grants ownership. Age and PID
+// decide only when an existing file may be removed to try again.
 export async function withSourceControlFileLock(lockPath, operation, { fsImpl = fs, waitMs = 2_000 } = {}) {
   validateWait(waitMs);
   const deadline = performance.now() + waitMs;
   let handle;
+  let reclaimed = false;
   try {
     await fsImpl.mkdir(path.dirname(lockPath), { recursive: true });
     while (!handle) {
@@ -27,6 +60,18 @@ export async function withSourceControlFileLock(lockPath, operation, { fsImpl = 
         handle = await fsImpl.open(lockPath, 'wx', 0o600);
       } catch (error) {
         if (error?.code !== 'EEXIST') throw lockError(lockPath, false, error);
+        if (!reclaimed) {
+          let abandoned = false;
+          try {
+            const [content, stats] = await Promise.all([fsImpl.readFile(lockPath, 'utf8'), fsImpl.lstat(lockPath)]);
+            abandoned = stats.isFile() && isAbandoned(content, stats.mtimeMs);
+          } catch { abandoned = false; }
+          if (abandoned) {
+            reclaimed = true;
+            try { await fsImpl.unlink(lockPath); } catch {}
+            continue;
+          }
+        }
         const remaining = deadline - performance.now();
         if (remaining <= 0) throw lockError(lockPath, true, error);
         await delay(Math.min(20, remaining));
@@ -39,7 +84,7 @@ export async function withSourceControlFileLock(lockPath, operation, { fsImpl = 
 
   try {
     try {
-      await handle.writeFile(`${randomUUID()}\n`, 'utf8');
+      await handle.writeFile(ownerRecord(), 'utf8');
     } catch (error) {
       throw lockError(lockPath, false, error);
     }
@@ -47,16 +92,15 @@ export async function withSourceControlFileLock(lockPath, operation, { fsImpl = 
   } finally {
     try {
       // Keep the handle open through unlink so its inode cannot be reused.
-      // Operator removal while writers are active is outside this contract.
       const owned = await handle.stat({ bigint: true });
       const current = await fsImpl.lstat(lockPath, { bigint: true });
-      if (owned.dev !== current.dev || owned.ino !== current.ino) throw lockError(lockPath, false);
+      if (owned.dev !== current.dev || owned.ino !== current.ino) throw releaseError(lockPath);
       await fsImpl.unlink(lockPath);
     } catch (error) {
-      throw lockError(lockPath, false, error);
+      throw releaseError(lockPath, error);
     } finally {
       try { await handle.close(); }
-      catch (error) { throw lockError(lockPath, false, error); }
+      catch (error) { throw releaseError(lockPath, error); }
     }
   }
 }
@@ -65,11 +109,12 @@ const sleepSync = (milliseconds) => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
 };
 
-// Synchronous storage callers retain the same index-lock ownership contract.
+// Synchronous storage callers retain the same ownership contract.
 export function withSourceControlFileLockSync(lockPath, operation, { fsImpl = fsSync, waitMs = 2_000 } = {}) {
   validateWait(waitMs);
   const deadline = performance.now() + waitMs;
   let handle;
+  let reclaimed = false;
   try {
     fsImpl.mkdirSync(path.dirname(lockPath), { recursive: true });
     while (handle === undefined) {
@@ -77,6 +122,18 @@ export function withSourceControlFileLockSync(lockPath, operation, { fsImpl = fs
         handle = fsImpl.openSync(lockPath, 'wx', 0o600);
       } catch (error) {
         if (error?.code !== 'EEXIST') throw lockError(lockPath, false, error);
+        if (!reclaimed) {
+          let abandoned = false;
+          try {
+            const stats = fsImpl.lstatSync(lockPath);
+            abandoned = stats.isFile() && isAbandoned(fsImpl.readFileSync(lockPath, 'utf8'), stats.mtimeMs);
+          } catch { abandoned = false; }
+          if (abandoned) {
+            reclaimed = true;
+            try { fsImpl.unlinkSync(lockPath); } catch {}
+            continue;
+          }
+        }
         const remaining = deadline - performance.now();
         if (remaining <= 0) throw lockError(lockPath, true, error);
         sleepSync(Math.min(20, remaining));
@@ -89,7 +146,7 @@ export function withSourceControlFileLockSync(lockPath, operation, { fsImpl = fs
 
   try {
     try {
-      fsImpl.writeFileSync(handle, `${randomUUID()}\n`, 'utf8');
+      fsImpl.writeFileSync(handle, ownerRecord(), 'utf8');
     } catch (error) {
       throw lockError(lockPath, false, error);
     }
@@ -98,13 +155,13 @@ export function withSourceControlFileLockSync(lockPath, operation, { fsImpl = fs
     try {
       const owned = fsImpl.fstatSync(handle, { bigint: true });
       const current = fsImpl.lstatSync(lockPath, { bigint: true });
-      if (owned.dev !== current.dev || owned.ino !== current.ino) throw lockError(lockPath, false);
+      if (owned.dev !== current.dev || owned.ino !== current.ino) throw releaseError(lockPath);
       fsImpl.unlinkSync(lockPath);
     } catch (error) {
-      throw lockError(lockPath, false, error);
+      throw releaseError(lockPath, error);
     } finally {
       try { fsImpl.closeSync(handle); }
-      catch (error) { throw lockError(lockPath, false, error); }
+      catch (error) { throw releaseError(lockPath, error); }
     }
   }
 }

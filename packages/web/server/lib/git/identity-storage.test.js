@@ -152,18 +152,18 @@ describe('git identity storage', () => {
     expect((await fs.readdir(path.dirname(filePath))).filter((name) => name.endsWith('.tmp'))).toEqual([]);
   });
 
-  it('retains a crashed owner lock and never treats contention as empty', async () => {
+  it('reclaims a crashed owner\'s lock rather than reading an empty store, and waits on a live one', async () => {
     const { filePath } = await setup();
     const owner = await gitStorageProcess('identity', filePath);
     children.push(owner);
     owner.call('hold-lock');
     await expect.poll(() => owner.events.some((event) => event.event === 'locked')).toBe(true);
-    const nonce = await fs.readFile(`${filePath}.lock`, 'utf8');
-    await owner.stop();
-    const store = createGitIdentityStore({ filePath, lockWaitMs: 20 });
-    expect(() => store.getProfiles()).toThrow(expect.objectContaining({
+    // Contention with a live writer is busy, never empty.
+    expect(() => createGitIdentityStore({ filePath, lockWaitMs: 20 }).getProfiles()).toThrow(expect.objectContaining({
       code: 'SOURCE_CONTROL_LOCK_BUSY', status: 503,
     }));
-    expect(await fs.readFile(`${filePath}.lock`, 'utf8')).toBe(nonce);
+    await owner.stop();
+    expect(createGitIdentityStore({ filePath, lockWaitMs: 20 }).getProfiles()).toEqual([]);
+    await expect(fs.stat(`${filePath}.lock`)).rejects.toMatchObject({ code: 'ENOENT' });
   });
 });
