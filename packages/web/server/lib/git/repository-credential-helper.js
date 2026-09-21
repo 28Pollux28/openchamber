@@ -30,7 +30,9 @@ const delegate = (query) => {
   child.once('error', () => process.exit(0));
   child.stdout.pipe(process.stdout);
   child.stdin.end(query);
-  child.once('close', (code) => process.exit(Number.isInteger(code) ? code : 0));
+  // Whatever the person's chain answered, or did not, is Git's to act on;
+  // a helper that fails only makes Git print a warning beside its own.
+  child.once('close', () => process.exit(0));
 };
 
 const readQuery = async () => {
