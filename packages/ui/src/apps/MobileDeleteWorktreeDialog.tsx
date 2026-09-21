@@ -9,7 +9,7 @@ import { cn } from '@/lib/utils';
 import { getWorktreeStatus } from '@/lib/worktrees/worktreeStatus';
 import { removeProjectWorktree, type ProjectRef, getWorktreeDisplayName } from '@/lib/worktrees/worktreeManager';
 import { removeWorktreeThenArchiveSessions } from '@/lib/worktrees/worktreeRemovalFlow';
-import { GitOperationResultError } from '@/lib/boundGitNetworkOperation';
+import { BoundGitNetworkOperationError, GitOperationResultError } from '@/lib/boundGitNetworkOperation';
 import { PendingGitOperationError } from '@/lib/source-control/git-operation-recovery';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
@@ -150,14 +150,14 @@ export const MobileDeleteWorktreeDialog: React.FC<MobileDeleteWorktreeDialogProp
         });
         onDeleted?.();
       } catch (error) {
-        if (error instanceof GitOperationResultError || error instanceof PendingGitOperationError) {
-          toast.dismiss(toastId);
-          return;
-        }
-        toast.error(t('sessions.sidebar.sessionDialogs.worktree.errorRemoveTitle', { name }), {
-          id: toastId,
-          description: error instanceof Error ? error.message : t('sessions.sidebar.dialogs.deleteResult.tryAgain'),
-        });
+        // The remote branch could not be deleted, so the worktree was kept: say
+        // that, with the reason when there is one, instead of a bare code.
+        const description = error instanceof GitOperationResultError
+          ? error.message || t('sessions.sidebar.dialogs.deleteResult.tryAgain')
+          : error instanceof PendingGitOperationError || (error instanceof BoundGitNetworkOperationError && !error.message.includes(' '))
+            ? t('gitView.publish.remoteNotGranted')
+            : error instanceof Error ? error.message : t('sessions.sidebar.dialogs.deleteResult.tryAgain');
+        toast.error(t('sessions.sidebar.sessionDialogs.worktree.errorRemoveTitle', { name }), { id: toastId, description });
       }
     })();
   }, [archiveSessions, deleteRemoteBranch, hasBranch, onDeleted, removeWorktree, t]);

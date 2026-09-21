@@ -267,6 +267,15 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
   const commitComparison = useCommitComparison(currentDirectory || null, currentBranch, visible && mode === 'commit' && isGitRepo === true);
   const selectedCommitHash = commitComparison.selectedCommit?.hash ?? null;
   const binding = useRepositoryBinding(currentDirectory || null, sourceControl);
+  // The same answer the desktop chip gives: a binding that stopped matching
+  // its repository, most often a remote added after the identity was applied.
+  const identityAttention = React.useMemo(() => {
+    const read = binding.read;
+    if (!read?.binding || binding.status !== 'ready' || read.binding.state === 'bound') return null;
+    return read.binding.configRevision !== read.repository.configRevision
+      ? t('gitView.identity.configChanged')
+      : t('gitView.context.needsAttention');
+  }, [binding.read, binding.status, t]);
   const prComparison = usePullRequestComparison(currentDirectory || null, currentBranch, binding.contexts[0] ?? null, visible && mode === 'pr' && isGitRepo === true);
   const selectedPr = prComparison.selectedSource;
   const comparisonSource = React.useMemo<GitComparisonSource | null>(() => {
@@ -756,6 +765,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
   const networkDialogs = (
     <>
       {publishChooser.context ? <PublishDialog context={publishChooser.context} onSelect={publishChooser.settle} /> : null}
+      {publishChooser.confirmDialog}
       <ContributorDestinationDialog candidates={contributorDestination.candidates} onSelect={contributorDestination.settle} />
     </>
   );
@@ -964,6 +974,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
           <IdentityDropdown
             activeProfile={activeIdentityProfile}
             identities={availableIdentities}
+            attention={identityAttention}
             // On a phone the branch, the identity and the sync action cannot all
             // carry text: a name truncated to "system i…" tells nobody anything,
             // so below the small breakpoint the identity keeps its icon and the

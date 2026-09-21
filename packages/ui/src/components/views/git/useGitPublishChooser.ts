@@ -10,6 +10,7 @@ import {
 import { getRuntimeKey, subscribeRuntimeEndpointWillChange } from '@/lib/runtime-switch';
 import type { ContributorDestinationCandidate } from './contributorDestination';
 import { effectiveRepositoryBinding } from '@/lib/source-control/types';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 const obviousPublishTargets = (context: GitPublishContext): GitPublishTargets | null => {
   const remotes = effectiveRepositoryBinding(context.bindingRead).remotes
@@ -36,6 +37,7 @@ export function useGitPublishChooser({ directory, branch, chooseContributor }: {
 }) {
   const { git, sourceControl, runtime } = useRuntimeAPIs();
   const { t } = useI18n();
+  const confirmation = useConfirmDialog();
   const [context, setContext] = React.useState<GitPublishContext | null>(null);
   const pending = React.useRef<((targets: GitPublishTargets | null) => void) | null>(null);
   const confirmed = React.useRef<GitPublishSelection | null>(null);
@@ -75,7 +77,11 @@ export function useGitPublishChooser({ directory, branch, chooseContributor }: {
       const status = await git.getGitStatus(directory);
       assertCurrent();
       if (!status.current || status.current === 'HEAD') throw new BoundGitNetworkOperationError('branch-required');
-      if (options.beforeCommit && !window.confirm(t('gitView.publish.contributorCommitFirst'))) {
+      if (options.beforeCommit && !await confirmation.confirm({
+        title: t('gitView.publish.contributorCommitFirstTitle'),
+        message: t('gitView.publish.contributorCommitFirst'),
+        action: t('gitView.publish.contributorCommitFirstAction'),
+      })) {
         throw new BoundGitNetworkOperationError('publish-cancelled');
       }
       return async () => {
@@ -149,8 +155,12 @@ export function useGitPublishChooser({ directory, branch, chooseContributor }: {
   };
 
   const errorMessage = (error: BoundGitNetworkOperationError) => {
-    // No usable transport grant: point at the configuration instead of a bare "failed".
-    if (error.code === 'binding-required' || error.code === 'binding-needs-attention') return t('gitView.publish.noGrants');
+    // Nothing to transfer with: say what is missing instead of a bare "failed".
+    if (error.code === 'binding-required') return t('gitView.publish.noGrants');
+    if (error.code === 'binding-needs-attention') return t('gitView.publish.needsAttention');
+    if (error.code === 'binding-remote-missing') return t('gitView.publish.remoteNotGranted');
+    if (error.code === 'tracking-required') return t('gitView.publish.trackingRequired');
+    if (error.code === 'tracking-remote-mismatch') return t('gitView.publish.trackingRemoteMismatch');
     if (error.code === 'anonymous-read-only') return t('settings.sourceControl.transport.anonymous');
     if (error.code === 'branch-required') return t('gitView.publish.detached');
     if (error.code === 'publish-selection-stale') return t('gitView.publish.stale');
@@ -158,5 +168,5 @@ export function useGitPublishChooser({ directory, branch, chooseContributor }: {
     return null;
   };
 
-  return { context, settle, prepare, errorMessage };
+  return { context, settle, prepare, errorMessage, confirmDialog: confirmation.dialog };
 }

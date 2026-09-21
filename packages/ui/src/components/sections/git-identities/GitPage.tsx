@@ -299,11 +299,6 @@ const IdentityRow: React.FC<IdentityRowProps> = ({
                 {t('settings.gitIdentities.page.badge.default')}
               </span>
             )}
-            {isReadOnly && (
-              <span className="typography-micro text-muted-foreground bg-muted px-1 rounded flex-shrink-0 leading-none pb-px border border-border/50">
-                {t('settings.agents.sidebar.badge.system')}
-              </span>
-            )}
           </div>
           <div className="typography-micro text-muted-foreground/60 truncate leading-tight">
             {!isReadOnly && noteKey

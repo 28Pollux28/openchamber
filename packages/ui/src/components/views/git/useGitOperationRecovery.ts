@@ -126,7 +126,14 @@ export function useGitOperationRecovery(
       commitCreated: () => update({ localCommit: true }),
       finish: () => {
         const latest = currentEntries.current.get(key);
-        if (latest) { action = latest; update({ executing: false }); }
+        if (!latest) return;
+        action = latest;
+        // A transfer that finished as it should has nothing left to say; the
+        // card stays only for what still needs the person: a failure, an
+        // outcome nobody knows, or a commit whose publication did not happen.
+        const reads = action.reads.filter((read) => read.availability !== 'available' || read.operation.state !== 'succeeded');
+        const settled = reads.length === 0 && !action.pending?.length && !action.problem;
+        update({ executing: false, reads, ...(settled ? { localCommit: false } : {}) });
       },
     };
   };

@@ -11,7 +11,7 @@ test('every locale supplies repository context copy', async () => {
 test('every locale supplies checkout hydration repair copy', async () => {
   const keys = [
     'title', 'description', 'parentRemote', 'retry', 'endpoint', 'chooseEndpoint',
-    'identity', 'authorizationNeeded', 'systemConfirmation', 'lfsMissing', 'kind.submodule', 'kind.lfs',
+    'identity', 'authorizationNeeded', 'lfsMissing', 'kind.submodule', 'kind.lfs',
     'status.succeeded', 'status.failed', 'status.cancelled', 'status.authorization-required',
     'status.invalid', 'status.client-missing', 'status.not-needed',
   ] as const;

@@ -77,6 +77,7 @@ import type {
 } from '@/lib/api/types';
 import type { CreateWorktreeArgs, ProjectRef } from '@/lib/worktrees/worktreeManager';
 import { useI18n } from '@/lib/i18n';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type Mode = 'new-branch' | 'existing-branch';
 
@@ -177,6 +178,7 @@ export function NewWorktreeDialog({
   onWorktreeCreated,
 }: NewWorktreeDialogProps) {
   const { t } = useI18n();
+  const trustConfirmation = useConfirmDialog();
   const { git, sourceControl, linear } = useRuntimeAPIs();
   const isMobile = useUIStore((state) => state.isMobile);
   const githubAuthEntry = useSourceControlAuthEntry(GITHUB_SOURCE_CONTROL_IDENTITY);
@@ -1008,9 +1010,11 @@ export function NewWorktreeDialog({
         await waitForWorktreeBootstrap(metadata.path);
         const trust = await git.inspectCheckoutTrust(metadata.path);
         if (trust.actions.length > 0) {
-          const run = window.confirm(t('session.newWorktree.trust.confirmation', {
-            actions: trust.actions.map((action) => action.label).join('\n'),
-          }));
+          const run = await trustConfirmation.confirm({
+            title: t('session.newWorktree.trust.title'),
+            message: t('session.newWorktree.trust.confirmation', { actions: trust.actions.map((action) => action.label).join('\n') }),
+            action: t('session.newWorktree.trust.run'),
+          });
           await git.decideCheckoutTrust(metadata.path, trust.digest, run ? 'run' : 'skip');
         }
       }
@@ -2426,6 +2430,7 @@ export function NewWorktreeDialog({
         onAttach={handleGuestSelect}
         onSessionStarted={() => onOpenChange(false)}
       />
+      {trustConfirmation.dialog}
     </>
   );
 }

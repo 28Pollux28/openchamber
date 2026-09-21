@@ -1184,6 +1184,12 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
       await refreshLog();
     } catch (err) {
       if (err instanceof GitOperationResultError || err instanceof PendingGitOperationError) {
+        // The card under the header carries the details; the toast says that
+        // the action did not happen, which is what a person looking elsewhere
+        // needs to hear.
+        if (err instanceof GitOperationResultError && err.read.availability === 'available') {
+          toast.error(t('gitView.toast.syncActionFailed', { action: actionLabel }), { description: err.message || undefined });
+        }
         if (recovery.isCurrent()) await Promise.allSettled([refreshStatusAndBranches(false), refreshLog()]);
         return;
       }
@@ -1296,6 +1302,9 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
     } catch (err) {
       if (options.pushAfter && commitOutcome === 'local') toast.warning(t('gitView.publish.commitKept'));
       if (err instanceof GitOperationResultError || err instanceof PendingGitOperationError) {
+        if (err instanceof GitOperationResultError && err.read.availability === 'available') {
+          toast.error(t('gitView.toast.pushFailed'), { description: err.message || undefined });
+        }
         await Promise.allSettled([refreshStatusAndBranches(false), refreshLog()]);
         return;
       }
@@ -2713,6 +2722,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
       </Dialog>
 
       {publishChooser.context ? <PublishDialog context={publishChooser.context} onSelect={publishChooser.settle} /> : null}
+      {publishChooser.confirmDialog}
       <ContributorDestinationDialog
         candidates={contributorDestination.candidates}
         onSelect={contributorDestination.settle}
