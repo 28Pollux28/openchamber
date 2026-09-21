@@ -134,12 +134,14 @@ export const createFeatureRoutesRuntime = (dependencies) => {
         code: 'RUNTIME_UNSUPPORTED',
       });
     }
+    // An unbound repository hydrates through the machine's own Git for every
+    // remote, the same way it pushes; its authority is the unbound revision.
     const bindingRead = await walkthroughBindingService.get(parentDirectory);
-    const repositoryAuthority = bindingRead?.binding ? {
+    const repositoryAuthority = {
       repositoryId: bindingRead.repository.repositoryId,
       bindingRevision: bindingRead.revision,
       configRevision: bindingRead.repository.configRevision,
-    } : null;
+    };
     return networkOperations.hydrateBoundCheckout({
       directory,
       parentRemoteName,

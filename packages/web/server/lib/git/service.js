@@ -906,6 +906,30 @@ const resolveRemoteBranchRef = async (primaryWorktree, value) => {
   return parsed;
 };
 
+/**
+ * The remote a checkout made from a local ref hydrates from.
+ *
+ * Submodules and Git LFS are fetched from the same place the checkout came
+ * from. A remote-tracking start ref names that place; a local branch does not,
+ * so its upstream remote stands in, and failing that the repository's only
+ * remote. Null when nothing names one.
+ */
+const resolveCheckoutRemoteName = async (primaryWorktree, startRef) => {
+  const raw = String(startRef || '').trim();
+  const branch = raw && raw !== 'HEAD'
+    ? raw.replace(/^refs\/heads\//, '')
+    : (await runGitCommand(primaryWorktree, ['symbolic-ref', '--short', '-q', 'HEAD'])).stdout.trim();
+  if (branch) {
+    const upstream = await runGitCommand(primaryWorktree, ['config', '--get', `branch.${branch}.remote`]);
+    const name = upstream.success ? upstream.stdout.trim() : '';
+    if (name) return name;
+  }
+  const remotes = await runGitCommand(primaryWorktree, ['remote']);
+  const names = remotes.success ? remotes.stdout.split('\n').map((line) => line.trim()).filter(Boolean) : [];
+  if (names.length === 1) return names[0];
+  return names.includes('origin') ? 'origin' : '';
+};
+
 const normalizeUpstreamTarget = (remote, branch) => {
   const remoteName = String(remote || '').trim();
   const branchName = String(branch || '').trim();
@@ -4825,6 +4849,9 @@ async function attachGitWorktreeToCandidateWithoutRemoteRollback(context, candid
 
   if (mode === 'existing' && ensureRemoteName && ensureRemoteUrl) {
     await ensureRemoteWithUrlUnlocked(context.primaryWorktree, ensureRemoteName, ensureRemoteUrl);
+  }
+  if (!checkoutRemoteName) {
+    checkoutRemoteName = await resolveCheckoutRemoteName(context.primaryWorktree, mode === 'existing' ? localBranch : startRef);
   }
 
   await runGitCommandOrThrow(context.primaryWorktree, worktreeAddArgs, 'Failed to create git worktree');

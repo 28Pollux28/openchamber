@@ -39,6 +39,16 @@ describe('git identity storage', () => {
     expect(store.getProfiles()).toEqual([shipped]);
   });
 
+  it('reads a store an earlier release left group-writable and makes it private', async () => {
+    const { store, filePath } = await setup();
+    const earlier = profile('earlier');
+    await fs.mkdir(path.dirname(filePath), { recursive: true });
+    await fs.writeFile(filePath, JSON.stringify({ profiles: [earlier] }), { mode: 0o664 });
+    await fs.chmod(filePath, 0o664);
+    expect(store.getProfiles()).toEqual([earlier]);
+    expect((await fs.stat(filePath)).mode & 0o777).toBe(0o600);
+  });
+
   it('stores an identity as an account, a transport and a signature', async () => {
     const { store } = await setup();
     const created = store.createProfile({ ...profile('work'), account, transport: 'account' });

@@ -155,6 +155,35 @@ const parseAuxiliary = (value) => {
   return bindings;
 };
 
+/**
+ * The grant a submodule or LFS endpoint inherits when none names it.
+ *
+ * A checkout's submodules and LFS objects are fetched the way the checkout
+ * itself is: an unbound repository uses the machine's own Git for them, and
+ * a bound one answers with the parent remote's own grant when the endpoint
+ * lives on the same host, which is where a project's submodules nearly always
+ * are. A different host is a different trust decision and is left to an
+ * explicit grant.
+ */
+const inheritedAuxiliaryGrant = (binding, parentRemote, rawEndpoint) => {
+  if (!binding) return { mode: 'system', readiness: 'ready' };
+  const parent = parentRemote ? binding.remotes.find((entry) => entry.name === parentRemote) : null;
+  if (!parent || parent.readiness !== 'ready') return null;
+  if (parent.mode === 'system') return { mode: 'system', readiness: 'ready' };
+  let endpointHost;
+  let parentHost;
+  try {
+    endpointHost = normalizeGitRemoteEndpoint(rawEndpoint).host;
+    parentHost = normalizeGitRemoteEndpoint(parent.fetch.displayUrl).host;
+  } catch {
+    return null;
+  }
+  if (!endpointHost || endpointHost !== parentHost) return null;
+  return parent.mode === 'managed'
+    ? { mode: 'managed', readiness: 'ready', credentialId: parent.credentialId }
+    : { mode: parent.mode, readiness: 'ready' };
+};
+
 /** The grant an unconfigured repository holds for one of its remotes. */
 const implicitSystemRemote = (remote) => Object.freeze({
   name: remote.name, mode: 'system', readiness: 'ready',
@@ -444,7 +473,7 @@ export function createBindingService({
   };
   const validateGitAuxiliaryContext = async (input) => {
     const requiredKeys = ['directory', 'repositoryId', 'bindingRevision', 'configRevision', 'kind', 'rawEndpoint'];
-    if (!isPlainObject(input) || !hasExactKeys(input, requiredKeys)
+    if (!isPlainObject(input) || !hasExactKeys(input, requiredKeys, ['parentRemote'])
       || !['submodule', 'lfs'].includes(input.kind)) {
       throw transportContextError('Git auxiliary transport context is invalid');
     }
@@ -452,7 +481,7 @@ export function createBindingService({
     const repositoryId = requiredString(input.repositoryId, 'repositoryId', transportContextError);
     const configRevision = requiredString(input.configRevision, 'configRevision', transportContextError);
     const rawEndpoint = requiredString(input.rawEndpoint, 'rawEndpoint', transportContextError);
-    if (!Number.isInteger(input.bindingRevision) || input.bindingRevision < 1) {
+    if (!Number.isInteger(input.bindingRevision) || input.bindingRevision < 0) {
       throw transportContextError('bindingRevision is required');
     }
     const context = await resolveWith(directory, resolveTransportRepository);
@@ -461,14 +490,15 @@ export function createBindingService({
     if (context.repositoryId !== repositoryId || context.configRevision !== configRevision) {
       throw conflict('Git auxiliary repository authority changed');
     }
-    if (!current.binding || current.revision !== input.bindingRevision
-      || current.binding.revision !== input.bindingRevision) {
+    if (current.revision !== input.bindingRevision
+      || (current.binding && current.binding.revision !== input.bindingRevision)) {
       throw conflict('Git auxiliary binding changed');
     }
     const fingerprint = fingerprintRemoteUrl(rawEndpoint);
     const displayUrl = redactRemoteUrl(rawEndpoint);
-    const grant = current.binding.auxiliary.find((entry) => entry.kind === input.kind
+    const explicit = current.binding?.auxiliary.find((entry) => entry.kind === input.kind
       && entry.endpoint.fingerprint === fingerprint && entry.endpoint.displayUrl === displayUrl);
+    const grant = explicit ?? inheritedAuxiliaryGrant(current.binding, input.parentRemote, rawEndpoint);
     if (!grant || grant.readiness !== 'ready') throw readContextError('GIT_AUXILIARY_AUTHORIZATION_REQUIRED', 'Git auxiliary endpoint authorization is required', 409);
     const authority = {
       directory, repositoryId, bindingRevision: input.bindingRevision, configRevision,

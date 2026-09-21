@@ -158,8 +158,11 @@ export function createGitIdentityStore({
     try {
       const stats = fsImpl.fstatSync(handle);
       if (!stats.isFile()) throw invalidStore();
+      // A file this version wrote is private. One an earlier release wrote
+      // carries whatever the umask gave it at the time (0664 on a Linux with
+      // user-private groups), so it is read and made private, not refused.
       const extraMode = process.platform !== 'win32' ? stats.mode & 0o077 : 0;
-      if (extraMode !== 0 && (!allowShippedMode || (stats.mode & 0o022) !== 0)) throw invalidStore();
+      if (extraMode !== 0 && !allowShippedMode) throw invalidStore();
       let state;
       try { state = parseState(JSON.parse(fsImpl.readFileSync(handle, 'utf8'))); }
       catch (error) {

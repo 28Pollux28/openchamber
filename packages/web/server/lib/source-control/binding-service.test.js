@@ -895,6 +895,39 @@ describe('source-control binding service', () => {
     })).rejects.toMatchObject({ code: 'GIT_AUXILIARY_AUTHORIZATION_REQUIRED', status: 409 });
   });
 
+  it('lets a submodule inherit the parent remote\'s grant on the same host, and nothing on another', async () => {
+    const service = (binding, revision = 3) => createBindingService({
+      store: { read: vi.fn(async () => ({ revision, binding })), compareAndSwap: vi.fn() },
+      resolveRepository: async () => repository,
+      resolveTransportRepository: async () => transportRepository,
+    });
+    const input = (rawEndpoint, bindingRevision = 3) => ({
+      directory: '/repository', repositoryId: 'repo_one', bindingRevision,
+      configRevision: 'config_one', kind: 'submodule', rawEndpoint, parentRemote: 'origin',
+    });
+    const remotes = (mode, extra = {}) => [{
+      name: 'origin', mode, readiness: 'ready', ...extra,
+      fetch: { displayUrl: 'https://github.com/owner/repo.git', fingerprint: 'fetch' },
+      push: { displayUrl: 'git@github.com:owner/repo.git', fingerprint: 'push' },
+    }];
+    const base = { repositoryId: 'repo_one', revision: 3, state: 'bound', configRevision: 'config_one', providers: [], auxiliary: [] };
+
+    // A managed parent answers for a submodule on its own host with its own credential.
+    await expect(service({ ...base, remotes: remotes('managed', { credentialId: 'parent-credential' }) })
+      .validateGitAuxiliaryContext(input('https://github.com/owner/child.git')))
+      .resolves.toMatchObject({ transportMode: 'managed', credentialId: 'parent-credential' });
+    await expect(service({ ...base, remotes: remotes('managed', { credentialId: 'parent-credential' }) })
+      .validateGitAuxiliaryContext(input('https://gitlab.com/owner/child.git')))
+      .rejects.toMatchObject({ code: 'GIT_AUXILIARY_AUTHORIZATION_REQUIRED' });
+    // A System parent hands every submodule to the machine's own Git.
+    await expect(service({ ...base, remotes: remotes('system') })
+      .validateGitAuxiliaryContext(input('https://gitlab.com/owner/child.git')))
+      .resolves.toMatchObject({ transportMode: 'system' });
+    // So does an unbound repository.
+    await expect(service(null, 0).validateGitAuxiliaryContext(input('https://gitlab.com/owner/child.git', 0)))
+      .resolves.toMatchObject({ transportMode: 'system' });
+  });
+
   it.each([
     ['unknown input key', { extra: true }],
     ['invalid endpoint kind', { endpointKind: 'receive' }],

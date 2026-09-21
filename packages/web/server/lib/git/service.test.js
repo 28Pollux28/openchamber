@@ -1234,6 +1234,32 @@ describe('createWorktree', () => {
     expect(hydrateCheckout).toHaveBeenCalledWith({ directory: created.path, parentRemoteName: '' });
   });
 
+  it('hydrates a checkout made from a local branch through the branch\'s own remote', async () => {
+    if (!canRunGit()) return;
+    const repo = createTempDir();
+    runGit(repo, ['init', '-b', 'main']);
+    runGit(repo, ['config', 'user.email', 'test@example.com']);
+    runGit(repo, ['config', 'user.name', 'Test User']);
+    fs.writeFileSync(path.join(repo, 'README.md'), '# Test\n');
+    runGit(repo, ['add', 'README.md']);
+    runGit(repo, ['commit', '-m', 'Initial commit']);
+    runGit(repo, ['remote', 'add', 'upstream', 'https://example.com/team/repo.git']);
+    runGit(repo, ['remote', 'add', 'origin', 'https://example.com/me/repo.git']);
+    runGit(repo, ['config', 'branch.main.remote', 'upstream']);
+    const hydrateCheckout = vi.fn(async () => ({ status: 'not-needed', submodules: [], lfs: [] }));
+    const bootstrapStore = createWorktreeBootstrapStore({ filePath: path.join(createTempDir(), 'bootstrap.json') });
+    const created = await createWorktree(repo, {
+      mode: 'new', branchName: 'feature/from-local', worktreeName: 'from-local', startRef: 'main',
+      returnAfterDirectoryCreated: true,
+    }, { hydrateCheckout, bootstrapStore });
+    await expect.poll(
+      async () => (await getWorktreeBootstrapStatus(created.path, { bootstrapStore })).status,
+      { timeout: 5_000 },
+    ).not.toBe('pending');
+    // The branch's upstream, not the first remote in the list.
+    expect(hydrateCheckout).toHaveBeenCalledWith({ directory: created.path, parentRemoteName: 'upstream' });
+  });
+
   const installPostCheckoutHook = (repo, script, executable = true) => {
     const hookPath = path.join(repo, '.git', 'hooks', 'post-checkout');
     fs.writeFileSync(hookPath, script);

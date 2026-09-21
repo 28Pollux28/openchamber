@@ -1363,7 +1363,8 @@ process.exit(safe ? 0 : 1);
     const result = await setupValue.service.execute(plan.operationId);
 
     expect(result.state).toBe('succeeded');
-    expect(setupValue.calls).toHaveLength(2);
+    expect(setupValue.calls).toHaveLength(3);
+    expect(setupValue.calls.at(-1).args.slice(-3)).toEqual(['update-ref', 'refs/remotes/publish/published', SHA]);
     const call = setupValue.calls.find((entry) => entry.args.includes('push'));
     expect(call.args).toEqual([
       '-c', 'core.askPass=', '-c', 'credential.helper=', '-c', 'http.followRedirects=false', '-c', 'core.hooksPath=/dev/null',
@@ -1402,13 +1403,14 @@ process.exit(safe ? 0 : 1);
     expect(result.completedSteps).toEqual(['validated', 'authenticated', 'transferred', 'updated-local-repository']);
     expect(setupValue.calls.filter((call) => !call.args.includes('rev-list')).map((call) => call.args.slice(-3))).toEqual([
       ['--', ENDPOINT, `${SHA}:refs/heads/published`],
+      ['update-ref', 'refs/remotes/publish/published', SHA],
       ['config', 'branch.feature.remote', 'publish'],
       ['config', 'branch.feature.merge', 'refs/heads/published'],
     ]);
   });
 
   it('reports partial when upstream configuration fails after a successful push', async () => {
-    const setupValue = setup({ spawnResults: [{ code: 0 }, { code: 1 }] });
+    const setupValue = setup({ spawnResults: [{ code: 0 }, { code: 0 }, { code: 1 }] });
     const plan = await setupValue.service.plan(request('push', { configureUpstream: true }));
 
     const result = await setupValue.service.execute(plan.operationId);
@@ -1419,7 +1421,7 @@ process.exit(safe ? 0 : 1);
       code: 'TRANSPORT_FAILED',
       message: 'Push succeeded, but local upstream configuration failed',
     });
-    expect(setupValue.calls).toHaveLength(3);
+    expect(setupValue.calls).toHaveLength(4);
   });
 
   it('deletes one exact remote branch through the push transport', async () => {
@@ -1432,10 +1434,11 @@ process.exit(safe ? 0 : 1);
     const result = await setupValue.service.execute(plan.operationId);
 
     expect(result.state).toBe('succeeded');
-    expect(setupValue.calls).toHaveLength(1);
+    expect(setupValue.calls).toHaveLength(2);
     expect(setupValue.calls[0].args.slice(-4)).toEqual([
       'push', '--', ENDPOINT, ':refs/heads/published',
     ]);
+    expect(setupValue.calls[1].args.slice(-3)).toEqual(['update-ref', '-d', 'refs/remotes/publish/published']);
   });
 
   it('resets each discovered CA and client certificate setting by its exact key', async () => {
@@ -2115,7 +2118,7 @@ process.exit(safe ? 0 : 1);
       expect(merge.options.env.GIT_ASKPASS).toBeUndefined();
       expect(merge.options.env.SSH_AUTH_SOCK).toBeUndefined();
       expect(merge.args).toEqual(expect.arrayContaining([`filter.custom.${filter}=`, 'filter.custom.clean=', 'filter.custom.required=false', 'submodule.recurse=false']));
-      expect(calls.at(-1).args.at(-1)).toBe(`${await git('rev-parse', 'HEAD')}:refs/heads/published`);
+      expect(calls.find((call) => call.args.includes('push')).args.at(-1)).toBe(`${await git('rev-parse', 'HEAD')}:refs/heads/published`);
       expect(requests).toEqual([]);
       await expect(fs.stat(marker)).rejects.toMatchObject({ code: 'ENOENT' });
       console.info(JSON.stringify({ scenario: 'managed-sync-local-boundary', filter, commands: calls.length,
@@ -2570,7 +2573,8 @@ process.exit(safe ? 0 : 1);
       'fetch', '--no-tags', '--no-recurse-submodules', '--', fetchEndpoint, 'refs/heads/main:refs/remotes/upstream/main',
     ]);
     expect(setupValue.calls.find((call) => call.args.includes('merge')).args.slice(-4)).toEqual(['merge', '--no-edit', '--no-verify', SHA]);
-    expect(setupValue.calls.at(-1).args.slice(-4)).toEqual(['push', '--', pushEndpoint, `${SHA}:refs/heads/published`]);
+    expect(setupValue.calls.at(-2).args.slice(-4)).toEqual(['push', '--', pushEndpoint, `${SHA}:refs/heads/published`]);
+    expect(setupValue.calls.at(-1).args.slice(-3)).toEqual(['update-ref', 'refs/remotes/origin/published', SHA]);
   });
 
   it('returns truthful partial steps when sync push fails', async () => {

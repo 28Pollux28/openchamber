@@ -655,6 +655,26 @@ export function createNetworkOperations({
     };
   };
 
+  /**
+   * What the transfer just established about a remote branch, recorded where
+   * Git keeps it. Push and pull address the endpoint URL rather than the
+   * remote by name, so Git itself never touches `refs/remotes/<remote>/...`;
+   * without this the panel would keep reporting commits as unpushed after a
+   * successful push, and as unpulled after a pull. A branch that was deleted
+   * on the remote loses its tracking ref the same way.
+   */
+  const recordRemoteTrackingRef = async (plan, controls, context, deadline, sha, remoteRef = plan.target.destinationRef) => {
+    if (!remoteRef.startsWith('refs/heads/')) return;
+    const trackingRef = `refs/remotes/${plan.target.remote.name}/${remoteRef.slice('refs/heads/'.length)}`;
+    try {
+      await commandResult(plan, controls, sha ? ['update-ref', trackingRef, sha] : ['update-ref', '-d', trackingRef], context, deadline);
+    } catch (error) {
+      // The transfer itself is done; a bookkeeping ref that could not be
+      // written costs one stale badge until the next fetch, not the result.
+      if (error?.cancelled || error?.timedOut || error?.code === 'CANCELLED' || error?.code === 'TIMEOUT') throw error;
+    }
+  };
+
   const commandResult = async (plan, controls, args, context, deadline, options = {}) => {
     const localRefCleanup = options.localRefCleanup === true
       && args.length === 3
@@ -778,6 +798,7 @@ export function createNetworkOperations({
       directory: hydrationPlan.directory,
       kind,
       rawEndpoint,
+      ...(hydrationPlan.parentRemoteName ? { parentRemote: hydrationPlan.parentRemoteName } : {}),
     }), controls, deadline);
   };
   const sameAuxiliaryAuthority = (left, right) => (left.endpoint ?? left.rawEndpoint) === (right.endpoint ?? right.rawEndpoint)
@@ -1415,6 +1436,8 @@ export function createNetworkOperations({
           ], context, deadline, { transfer: true });
           pushTransferred = true;
           await controls.markStepCompleted('transferred');
+          await recordRemoteTrackingRef(plan, controls, context, deadline,
+            plan.target.operation === 'delete-remote-branch' ? null : plan.sourceSha);
           if (plan.target.configureUpstream) {
             const localBranch = plan.target.sourceRef.slice('refs/heads/'.length);
             const remoteBranch = plan.target.destinationRef.slice('refs/heads/'.length);
@@ -1456,6 +1479,7 @@ export function createNetworkOperations({
               () => resolveRefImpl(plan.directory, temporaryRef, { controls, deadline }), controls, deadline,
             )).trim();
             if (!SHA_PATTERN.test(fetchedSha)) throw operationError('STALE_CONFIG', 'Fetched ref is invalid', 409);
+            await recordRemoteTrackingRef(plan, controls, context, deadline, fetchedSha, plan.target.sourceRef);
             mergeStarted = true;
             await controls.markIntegrationStarted();
             await commandResult(plan, controls, ['merge', '--no-edit', '--no-verify', fetchedSha], integrationContext, deadline);
@@ -1610,6 +1634,7 @@ export function createNetworkOperations({
       await commandResult(pushPlan, controls, [
         'push', ...lease, '--', pushPlan.rawEndpoint, `${pushSha}:${pushPlan.target.destinationRef}`,
       ], context, deadline, { transfer: true, transferRole: 'push' });
+      await recordRemoteTrackingRef(pushPlan, controls, context, deadline, pushSha);
       if (await safeRevoke(context, plan.operationId)) {
         throw operationError('UNKNOWN', 'Git push credential cleanup failed', 500);
       }
