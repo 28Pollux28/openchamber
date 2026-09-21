@@ -259,7 +259,7 @@ const remoteTargetSchema = z.object({
 }).strict();
 const existingTargetFields = {
   repositoryId: identityStringSchema,
-  bindingRevision: z.number().int().safe().positive(),
+  bindingRevision: z.number().int().safe().nonnegative(),
   configRevision: identityStringSchema,
   remote: remoteTargetSchema,
   sourceRef: refSchema,
@@ -278,7 +278,7 @@ const targetSchema = z.discriminatedUnion('operation', [
       operation: z.literal('fetch'),
       fetchScope: z.literal('remote'),
       repositoryId: identityStringSchema,
-      bindingRevision: z.number().int().safe().positive(),
+      bindingRevision: z.number().int().safe().nonnegative(),
       configRevision: identityStringSchema,
       remote: remoteTargetSchema,
       force: z.boolean(),

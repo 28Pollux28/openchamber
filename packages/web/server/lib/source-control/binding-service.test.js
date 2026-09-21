@@ -1152,15 +1152,38 @@ describe('source-control binding service', () => {
     });
   });
 
-  it('rejects a missing binding', async () => {
+  it('reads an unbound repository with the account the client is signed in to, on the remote\'s own host only', async () => {
     const service = createBindingService({
       store: { read: vi.fn(async () => ({ revision: 0, binding: null })), compareAndSwap: vi.fn() },
       resolveRepository: async () => repository,
     });
+    const context = {
+      directory: '/repository', repositoryId: 'repo_one', provider: 'github', instance: 'github.com',
+      accountId: 'github.com#1', bindingRevision: 0, primaryRemote: 'origin',
+    };
+    await expect(service.validateReadContext(context)).resolves.toMatchObject({ accountId: 'github.com#1', primaryRemote: 'origin' });
+    // The unbound revision is the tombstone revision; a later binding invalidates it.
+    await expect(service.validateReadContext({ ...context, bindingRevision: 1 })).rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_STALE' });
+    // A GitLab account cannot read a repository whose remote is on github.com.
+    await expect(service.validateReadContext({ ...context, provider: 'gitlab', instance: 'https://gitlab.com' }))
+      .rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_CONTEXT_MISMATCH' });
+    await expect(service.validateReadContext({ ...context, primaryRemote: 'nowhere' }))
+      .rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_CONTEXT_MISMATCH' });
+  });
+
+  it('keeps a bound host to its bound account', async () => {
+    const binding = {
+      repositoryId: 'repo_one', revision: 3, state: 'bound', configRevision: 'config_one', remotes: [], auxiliary: [],
+      providers: [{ provider: 'github', instance: 'github.com', accountId: 'github.com#1', primaryRemote: 'origin', readiness: 'ready', endpoint: null }],
+    };
+    const service = createBindingService({
+      store: { read: vi.fn(async () => ({ revision: 3, binding })), compareAndSwap: vi.fn() },
+      resolveRepository: async () => repository,
+    });
     await expect(service.validateReadContext({
       directory: '/repository', repositoryId: 'repo_one', provider: 'github', instance: 'github.com',
-      accountId: 'github.com#1', bindingRevision: 1, primaryRemote: 'origin',
-    })).rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_MISSING' });
+      accountId: 'github.com#other', bindingRevision: 3, primaryRemote: 'origin',
+    })).rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_CONTEXT_MISMATCH' });
   });
 
   it('rejects client-provided endpoint fields before persistence', async () => {

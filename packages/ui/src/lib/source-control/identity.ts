@@ -27,13 +27,22 @@ export type SourceControlTarget = {
   remote: GitRemote;
 };
 
+/**
+ * The accounts a repository's change requests and issues are read with.
+ *
+ * A bound provider answers first. A repository nobody bound, or bound to an
+ * identity that names no account, still has remotes on hosts the person is
+ * signed in to; those are read with the current account of that host, the
+ * way they were before bindings existed. `activeAccountFor` says which account
+ * that is, and null when none is connected there.
+ */
 export const getBoundSourceControlReadContexts = (
   result: SourceControlBindingRead,
   directory: string,
+  activeAccountFor: (identity: SourceControlIdentity) => string | null = () => null,
+  knownIdentities: SourceControlIdentity[] = [],
 ): SourceControlReadContext[] => {
-  if (result.status === 'missing') return [];
-
-  return result.binding.providers.filter((provider) => provider.readiness === 'ready'
+  const contexts: SourceControlReadContext[] = (result.binding?.providers ?? []).filter((provider) => provider.readiness === 'ready'
     && provider.endpoint?.fingerprint === result.repository.remotes.find((remote) => remote.name === provider.primaryRemote)?.fetch.fingerprint
   ).map((provider) => ({
     directory,
@@ -44,7 +53,28 @@ export const getBoundSourceControlReadContexts = (
     bindingRevision: result.revision,
     primaryRemote: provider.primaryRemote,
   }));
+  const boundInstances = new Set((result.binding?.providers ?? []).map((provider) => getSourceControlAuthKeyOf(provider)));
+  const remotes = [...result.repository.remotes].sort((a, b) => (a.name === 'origin' ? -1 : b.name === 'origin' ? 1 : 0));
+  for (const remote of remotes) {
+    const identity = resolveSourceControlIdentity({ name: remote.name, fetchUrl: remote.fetch.displayUrl, pushUrl: remote.push.displayUrl }, knownIdentities);
+    if (!identity || boundInstances.has(getSourceControlAuthKeyOf(identity))) continue;
+    const accountId = activeAccountFor(identity);
+    if (!accountId) continue;
+    boundInstances.add(getSourceControlAuthKeyOf(identity));
+    contexts.push({
+      directory,
+      repositoryId: result.repository.repositoryId,
+      provider: identity.provider,
+      instance: identity.instance,
+      accountId,
+      bindingRevision: result.revision,
+      primaryRemote: remote.name,
+    });
+  }
+  return contexts;
 };
+
+const getSourceControlAuthKeyOf = (identity: SourceControlIdentity): string => `${identity.provider}:${getIdentityAuthority(identity)}`;
 
 export const sourceControlReadContextParts = (context: SourceControlReadContext) => [
   context.provider,

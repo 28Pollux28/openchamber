@@ -2,8 +2,9 @@ import { useCallback, useEffect, useMemo, useSyncExternalStore } from 'react';
 import type { SourceControlAPI, SourceControlBindingRead, SourceControlReadContext } from '@/lib/api/types';
 import { getRuntimeKey, subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import { getBoundSourceControlReadContexts } from './identity';
+import { getSourceControlAuthKey, useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
 
-type BindingAPI = Pick<SourceControlAPI, 'repositoryBinding'>;
+type BindingAPI = Pick<SourceControlAPI, 'repositoryBinding'> & Partial<Pick<SourceControlAPI, 'authStatus'>>;
 type BindingScope = { runtimeKey: string; directory: string; generation: number };
 type BindingMutationScope = BindingScope & { expectedRepositoryId: string; expectedRevision: number; release: () => void };
 type BindingState = (
@@ -96,8 +97,44 @@ export class RepositoryBindingOwner {
     let entries = this.repositories.get(key);
     if (!entries) { entries = new Set(); this.repositories.set(key, entries); }
     entries.add(entry);
-    this.publish(entry, { status: 'ready', read, error: null,
-      contexts: getBoundSourceControlReadContexts(read, entry.scope.directory) });
+    this.publish(entry, { status: 'ready', read, error: null, contexts: this.contextsFor(entry, read) });
+  }
+
+  /**
+   * The accounts this repository is read with: its bound providers, then the
+   * current account of any host its remotes point at. The auth store owns
+   * which account that is; a repository whose host it has not read yet is
+   * asked for, and every ready entry is republished when its answer changes.
+   */
+  private contextsFor(entry: Entry, read: SourceControlBindingRead): SourceControlReadContext[] {
+    const auth = useSourceControlAuthStore.getState();
+    return getBoundSourceControlReadContexts(read, entry.scope.directory, (identity) => {
+      const state = auth.entries[getSourceControlAuthKey(identity)];
+      if (!state?.hasChecked) {
+        if (this.authApi) void auth.refreshStatus(this.authApi, identity);
+        return null;
+      }
+      return state.status?.status === 'connected' ? state.status.accounts.find((account) => account.current)?.id ?? null : null;
+    }, auth.identities);
+  }
+
+  private authApi: Pick<SourceControlAPI, 'authStatus'> | null = null;
+  private authUnsubscribe: (() => void) | null = null;
+
+  /** Lets contexts follow the connected accounts; called once per runtime API set. */
+  attachAuth(api: Pick<SourceControlAPI, 'authStatus'>) {
+    if (this.authApi === api) return;
+    this.authApi = api;
+    this.authUnsubscribe?.();
+    this.authUnsubscribe = useSourceControlAuthStore.subscribe(() => {
+      for (const entry of this.entries.values()) {
+        if (entry.state.status !== 'ready') continue;
+        const contexts = this.contextsFor(entry, entry.state.read);
+        if (JSON.stringify(contexts) !== JSON.stringify(entry.state.contexts)) {
+          this.publish(entry, { ...entry.state, contexts });
+        }
+      }
+    });
   }
 
   private scheduleTrim() {
@@ -208,6 +245,7 @@ const generationSnapshot = () => repositoryBindingOwner.generation;
 
 export const useRepositoryBinding = (directory: string | null | undefined, api: BindingAPI, enabled = true) => {
   const runtimeKey = useSyncExternalStore(subscribeRuntimeEndpointChanged, getRuntimeKey, getRuntimeKey);
+  useEffect(() => { if ('authStatus' in api && api.authStatus) repositoryBindingOwner.attachAuth(api as Pick<SourceControlAPI, 'authStatus'>); }, [api]);
   const generation = useSyncExternalStore(repositoryBindingOwner.subscribeReset, generationSnapshot, generationSnapshot);
   const scope = useMemo(() => ({ runtimeKey, generation, directory: enabled ? directory ?? '' : '' }), [directory, enabled, generation, runtimeKey]);
   const subscribe = useCallback((listener: () => void) => repositoryBindingOwner.subscribe(scope, listener), [scope]);

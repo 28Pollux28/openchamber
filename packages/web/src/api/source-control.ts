@@ -396,7 +396,7 @@ function mutationBody(
 ): MutationBody {
   const target = payload.target;
   if (!isNonEmptyString(payload.directory) || !isNonEmptyString(payload.repositoryId)
-    || !isNonEmptyString(payload.accountId) || !isPositiveSafeInteger(payload.bindingRevision)
+    || !isNonEmptyString(payload.accountId) || !isNonNegativeSafeInteger(payload.bindingRevision)
     || !isNonEmptyString(payload.primaryRemote) || !isNonEmptyString(payload.idempotencyKey)
     || !target || !isNonEmptyString(target.project?.owner) || !isNonEmptyString(target.project?.name)
     || (operation === 'create' && ('number' in target || 'headSha' in target))
@@ -480,7 +480,7 @@ const parseMutationReceipt = <TResult>(
       'repositoryId', 'bindingRevision', 'primaryRemote', 'project',
       ...(['number', 'head', 'base', 'headSha'] as const).filter((key) => target[key] !== undefined),
     ])
-    || !isNonEmptyString(target.repositoryId) || !isPositiveSafeInteger(target.bindingRevision)
+    || !isNonEmptyString(target.repositoryId) || !isNonNegativeSafeInteger(target.bindingRevision)
     || !isNonEmptyString(target.primaryRemote) || !project || !hasExactKeys(project, ['id', 'owner', 'name'])
     || !isNonEmptyString(project.id) || !isNonEmptyString(project.owner) || !isNonEmptyString(project.name)
     || (target.number !== undefined && !isPositiveSafeInteger(target.number))
@@ -1056,6 +1056,8 @@ const isBooleanValue = (value: BoundaryScalar): value is boolean => Object.proto
 const isNumberValue = (value: BoundaryScalar): value is number => Object.prototype.toString.call(value) === '[object Number]';
 const isNonEmptyString = (value: BoundaryScalar): value is string => isStringValue(value) && value.trim().length > 0;
 const isPositiveSafeInteger = (value: BoundaryScalar): value is number => isNumberValue(value) && Number.isSafeInteger(value) && value >= 1;
+// A binding revision of 0 is the unbound repository, read with the account the client is signed in to.
+const isNonNegativeSafeInteger = (value: BoundaryScalar): value is number => isNumberValue(value) && Number.isSafeInteger(value) && value >= 0;
 const isValidId = (value: string | number | undefined): boolean => isNonEmptyString(value) || Number.isFinite(value);
 const isHttpUrl = (value: BoundaryScalar): value is string => {
   if (!isNonEmptyString(value)) return false;

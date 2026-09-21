@@ -122,6 +122,8 @@ OpenCode restart for it. The same rule serves the add and clone screens
 (`DirectoryExplorerDialog`), the Git panel (`IdentityDropdown` in `GitHeader`),
 and the mobile Changes surface.
 
+`getBoundSourceControlReadContexts` names the accounts a repository's change requests and issues are read with: its bound providers first, then the current account of any host its remotes point at (`useSourceControlAuthStore`), so an unbound repository on github.com keeps its PR chip and list. The binding owner asks the auth store for a host it has not read yet and republishes contexts when the accounts change.
+
 `activeIdentityFor` decides which identity a repository is acting as, for the
 panel and the mobile Changes surface alike: the repository's own author picks
 it, a repository that names none is on the System identity, and an author no

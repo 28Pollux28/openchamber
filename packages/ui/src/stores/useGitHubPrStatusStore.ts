@@ -704,7 +704,7 @@ const persistedPrStatusEntrySchema = z.object({
     instance: z.string(),
     accountId: z.string(),
     repositoryId: z.string(),
-    bindingRevision: z.number().int().positive(),
+    bindingRevision: z.number().int().nonnegative(),
     directory: z.string(),
     branch: z.string(),
     remoteName: z.string().nullable(),

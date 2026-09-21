@@ -217,6 +217,17 @@ const normalizeProviderInstance = (provider, instance, makeError = bindingInputE
   }
 };
 
+/** The host a remote address or a provider instance points at, lowercased; null when it names none. */
+const hostOf = (value) => {
+  const text = String(value ?? '').trim();
+  if (!text) return null;
+  try { return new URL(text.includes('://') ? text : `https://${text}`).hostname.toLowerCase() || null; }
+  catch {
+    const scp = text.match(/^(?:[^@/:\s]+@)?([^/:\s]+):/);
+    return scp ? scp[1].toLowerCase() : null;
+  }
+};
+
 const readContextError = (code, message, status) => {
   const error = new Error(message);
   error.code = code;
@@ -360,26 +371,37 @@ export function createBindingService({
     const accountId = requiredString(input.accountId, 'accountId', makeRequiredFieldError);
     const primaryRemote = requiredString(input.primaryRemote, 'primaryRemote', makeRequiredFieldError);
     const bindingRevision = input.bindingRevision;
-    if (!Number.isInteger(bindingRevision) || bindingRevision < 1) throw makeContextError('bindingRevision is required');
+    if (!Number.isInteger(bindingRevision) || bindingRevision < 0) throw makeContextError('bindingRevision is required');
 
     const context = await resolve(directory);
     if (context.repositoryId !== repositoryId) {
       throw readContextError('SOURCE_CONTROL_BINDING_REPOSITORY_MISMATCH', 'Source control repository binding does not match this directory', 409);
     }
     const current = await readCurrent(context);
-    if (!current.binding) throw readContextError('SOURCE_CONTROL_BINDING_MISSING', 'Source control repository is not bound', 409);
-    if (current.revision !== bindingRevision || current.binding.revision !== bindingRevision) {
+    if (current.revision !== bindingRevision || (current.binding && current.binding.revision !== bindingRevision)) {
       throw staleBindingError('Source control repository binding changed', current);
     }
     // A remote added or removed beside the bound one changes the public config
     // revision but not what the provider answers for; the provider's own
     // readiness below says when its endpoint moved.
-    const boundProvider = current.binding.providers.find((candidate) => candidate.provider === provider
+    const providers = current.binding?.providers ?? [];
+    const boundProvider = providers.find((candidate) => candidate.provider === provider
       && normalizeProviderInstance(candidate.provider, candidate.instance) === instance
       && candidate.accountId === accountId
       && candidate.primaryRemote === primaryRemote);
     if (!boundProvider) {
-      throw readContextError('SOURCE_CONTROL_BINDING_CONTEXT_MISMATCH', 'Source control repository binding context does not match', 409);
+      // A repository nobody bound to this host, or bound to an identity that
+      // names no account, is read with the account the client is signed in
+      // to, as it was before bindings existed. The remote must really be on
+      // that host; whether the account exists, the provider route decides.
+      const boundToHost = providers.some((candidate) => candidate.provider === provider
+        && normalizeProviderInstance(candidate.provider, candidate.instance) === instance);
+      const remote = context.remotes.find((candidate) => candidate.name === primaryRemote);
+      const remoteHost = remote ? hostOf(remote.fetch.displayUrl) : null;
+      if (boundToHost || !remoteHost || remoteHost !== hostOf(instance)) {
+        throw readContextError('SOURCE_CONTROL_BINDING_CONTEXT_MISMATCH', 'Source control repository binding context does not match', 409);
+      }
+      return { directory, repositoryId, provider, instance, accountId, bindingRevision, primaryRemote };
     }
     if (boundProvider.readiness === 'config-changed') throw staleBindingError('Source control repository remote changed', current);
     if (boundProvider.readiness !== 'ready') {
@@ -520,6 +542,14 @@ export function createBindingService({
     validateReadContext: (input) => validateAuthority(input, invalidReadInput, bindingInputError),
     validateMutationContext: async (input) => {
       const context = await validateAuthority(input, mutationContextError);
+      // A write goes to the provider on the repository's behalf, so the
+      // binding it was made against must still describe the repository's
+      // remotes; a read tolerates that drift, a mutation does not.
+      const repository = await resolve(context.directory);
+      const current = await readCurrent(repository);
+      if (current.binding && current.binding.configRevision !== repository.configRevision) {
+        throw staleBindingError('Source control repository remotes changed', current);
+      }
       return {
         ...context,
         idempotencyKey: requiredString(input.idempotencyKey, 'idempotencyKey', mutationContextError),

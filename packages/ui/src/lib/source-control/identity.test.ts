@@ -97,10 +97,21 @@ describe('source-control binding read contexts', () => {
     }]);
   });
 
-  test('missing and needs-attention bindings grant no read authority', () => {
+  test('missing and needs-attention bindings grant no read authority when nobody is signed in', () => {
     for (const status of ['missing', 'needs-attention'] as const) {
       expect(getBoundSourceControlReadContexts(bindingRead(status), '/repo')).toEqual([]);
     }
+  });
+
+  test('an unbound repository is read with the current account of the host its remote points at', () => {
+    const active = (identity: SourceControlIdentity) => (identity.provider === 'github' ? 'github.com#current' : null);
+    expect(getBoundSourceControlReadContexts(bindingRead('missing'), '/repo', active)).toEqual([{
+      provider: 'github', instance: 'github.com', accountId: 'github.com#current', primaryRemote: 'origin',
+      directory: '/repo', repositoryId: 'repo-one', bindingRevision: 0,
+    }]);
+    // A host the binding already answers for keeps its bound account, even when it needs attention.
+    expect(getBoundSourceControlReadContexts(bindingRead('needs-attention'), '/repo', active)).toEqual([]);
+    expect(getBoundSourceControlReadContexts(bindingRead('bound'), '/repo', active)).toEqual([expect.objectContaining({ accountId: 'github.com#7' })]);
   });
 });
 

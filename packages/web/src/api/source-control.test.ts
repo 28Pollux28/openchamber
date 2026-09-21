@@ -916,7 +916,7 @@ describe('createWebSourceControlAPI', () => {
     expect(runtimeFetchMock).not.toHaveBeenCalled();
   });
 
-  it.each([0, Number.MAX_SAFE_INTEGER + 1])('rejects invalid mutation binding revision %s', async (bindingRevision) => {
+  it.each([-1, Number.MAX_SAFE_INTEGER + 1])('rejects invalid mutation binding revision %s', async (bindingRevision) => {
     const api = createWebSourceControlAPI({ fetch: runtimeFetchMock });
     const payload = { ...mutationContext, bindingRevision };
     await expect(api.changeRequestReady(payload))
@@ -933,7 +933,7 @@ describe('createWebSourceControlAPI', () => {
   });
 
   it.each([
-    ['binding revision zero', { bindingRevision: 0 }],
+    ['negative binding revision', { bindingRevision: -1 }],
     ['unsafe binding revision', { bindingRevision: Number.MAX_SAFE_INTEGER + 1 }],
     ['number zero', { number: 0 }],
     ['unsafe number', { number: Number.MAX_SAFE_INTEGER + 1 }],
