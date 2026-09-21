@@ -60,18 +60,16 @@ import { fetchGitHubRepoMetas } from '../skills-catalog/github-meta.js';
 import crypto from 'node:crypto';
 import { getGitHubAuthByAccountId } from '../github/auth.js';
 import { createSourceControlAuthStore } from '../gitlab/auth-storage.js';
-import { createGitCredentialResolver, createHttpsCredentialReference } from '../git/credential-resolver.js';
+import { createGitCredentialResolver, createHttpsCredentialReference, parseGitCredentialReference } from '../git/credential-resolver.js';
+import { createGitRepositoryCredentialRuntime } from '../git/repository-credential-runtime.js';
+import { managedSshCommand } from '../git/network-operations.js';
 import { createNetworkOperations } from '../git/network-operations.js';
-import { createGitAgentOperations } from '../git/agent-operations.js';
-import { createGitAgentCredentialRuntime } from '../git/agent-credential-runtime.js';
-import { createGitShellBoundaryRuntime } from '../git/shell-boundary-runtime.js';
-import { createGitAgentAuthorityStore, registerGitAgentAuthorityRoutes } from '../git/agent-authority-storage.js';
 import { createManagedSshCredentialStore } from '../git/ssh-credential-storage.js';
 import { createManagedSshInventory } from '../git/credentials.js';
 import { createContributorProvenanceStore } from '../git/contributor-provenance-storage.js';
 import { createGitNetworkOperationStore } from '../git/network-operation-storage.js';
 import { readEffectiveGitTransportRevision } from '../git/transport-config.js';
-import { completeWorktreeCheckoutHydration } from '../git/service.js';
+import { completeWorktreeCheckoutHydration, configureRepositoryTransport } from '../git/service.js';
 import { createPrivateRepositoryIdentityResolver } from '../source-control/repository-identity.js';
 import { createSourceControlAuditStore } from '../source-control/audit-storage.js';
 
@@ -102,10 +100,8 @@ export const createFeatureRoutesRuntime = (dependencies) => {
 
   let walkthroughService = null;
   let walkthroughBindingService = null;
+  let gitRepositoryCredentialRuntime = null;
   let networkOperations = null;
-  let gitAgentOperations = null;
-  let gitAgentCredentialRuntime = null;
-  let gitShellBoundaryRuntime = null;
   const getWalkthroughService = async () => {
     if (!walkthroughService) {
       const [service, pullRequest] = await Promise.all([
@@ -402,7 +398,27 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       managedKeyRoot: path.join(openchamberDataDir, 'git-ssh-private-keys'),
       fsImpl: fsPromises,
     });
+    // What a repository's own `.git/config` names for pushing and pulling
+    // follows its grants: OpenChamber's credential helper for an account, the
+    // SSH wrapper with the key for a managed key, nothing for System Git.
+    const syncRepositoryTransport = async (directory, read) => {
+      if (typeof directory !== 'string' || !directory.trim() || !gitRepositoryCredentialRuntime) return;
+      const grants = (read?.binding?.remotes ?? []).filter((grant) => grant.readiness === 'ready' && grant.mode === 'managed' && grant.credentialId);
+      let credentialHelper = null;
+      let sshCommand = null;
+      for (const grant of grants) {
+        let reference;
+        try { reference = parseGitCredentialReference(grant.credentialId); } catch { continue; }
+        if (reference.transport === 'https') credentialHelper = gitRepositoryCredentialRuntime.helperCommand();
+        if (reference.transport === 'ssh' && !sshCommand) {
+          const key = await sshCredentialStore.lookup(reference.keyId);
+          if (key?.privateKeyPath) sshCommand = managedSshCommand(key.privateKeyPath);
+        }
+      }
+      await configureRepositoryTransport(directory, { credentialHelper, sshCommand });
+    };
     walkthroughBindingService = registerSourceControlRoutes(app, {
+      onRepositoryTransportChanged: syncRepositoryTransport,
       validateManagedSshCredential: managedSshInventory.assertAvailable,
       readManagedSshCredentialPresentation: managedSshInventory.presentation,
       configRoot: openchamberDataDir,
@@ -461,6 +477,15 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       fsImpl: fsPromises,
       snapshotRoot: path.join(openchamberDataDir, 'git-ssh-operation-keys'),
     });
+    gitRepositoryCredentialRuntime = createGitRepositoryCredentialRuntime({
+      readBinding: (directory) => walkthroughBindingService.get(directory),
+      credentialResolver: gitCredentialResolver,
+      dataDir: openchamberDataDir,
+      fsPromises,
+      getActivePort: routeDependencies.getActivePort ?? (() => null),
+      getActiveHost: routeDependencies.getActiveHost ?? (() => null),
+    });
+    gitRepositoryCredentialRuntime.registerRoutes(app);
     networkOperations = createNetworkOperations({
       validateManagedSshCredential: managedSshInventory.assertAvailable,
       resolveSourceControlAccount,
@@ -482,41 +507,6 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       gitBinary,
       validateGitIdentity,
       resolveGitIdentity,
-    });
-    // The agent reaches transfers through the same planned operations the Git
-    // panel runs, so a bound repository acts as its bound account there too.
-    gitAgentOperations = createGitAgentOperations({
-      networkOperations,
-      readBinding: walkthroughBindingService.get,
-      readStatus: async (directory) => (await import('../git/index.js')).getStatus(directory),
-    });
-    // Git in the agent's own shell answers to the binding too: the managed
-    // OpenCode child is started by OpenChamber, so its environment can name
-    // this helper as the credential chain for the hosts we hold bindings on.
-    const gitAgentAuthorityStore = createGitAgentAuthorityStore({
-      filePath: path.join(openchamberDataDir, 'git-agent-authority.json'),
-      fsImpl: fsPromises,
-    });
-    const isRepositoryEnabled = gitAgentAuthorityStore.isEnabled;
-    gitAgentCredentialRuntime = createGitAgentCredentialRuntime({
-      readBinding: walkthroughBindingService.get,
-      listRemoteGrants: walkthroughBindingService.listRemoteGrants,
-      credentialResolver: gitCredentialResolver,
-      isRepositoryEnabled,
-      getActivePort: routeDependencies.getActivePort ?? (() => null),
-      getActiveHost: routeDependencies.getActiveHost ?? (() => null),
-    });
-    gitAgentCredentialRuntime.registerRoutes(app);
-    gitShellBoundaryRuntime = createGitShellBoundaryRuntime({
-      readBinding: walkthroughBindingService.get,
-      isRepositoryEnabled,
-      getActivePort: routeDependencies.getActivePort ?? (() => null),
-      getActiveHost: routeDependencies.getActiveHost ?? (() => null),
-    });
-    gitShellBoundaryRuntime.registerRoutes(app);
-    registerGitAgentAuthorityRoutes(app, {
-      store: gitAgentAuthorityStore,
-      resolveRepositoryId: async (directory) => (await walkthroughBindingService.get(directory)).repository.repositoryId,
     });
     await registerBuiltInGuests({ persistPath: extensionsPersistPath(openchamberDataDir), root: routeDependencies.builtInExtensionsDir });
     registerGuestRoutes(app, { openchamberDataDir, openchamberVersion, resolveGitBinaryForSpawn, resolveOptionalProjectDirectory, getSmallModelService, onGuestDeactivated });
@@ -585,9 +575,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
   return {
     registerRoutes,
     hydrateBoundCheckout,
-    /** Null until the Git feature routes are registered. */
-    getGitAgentOperations: () => gitAgentOperations,
-    getGitAgentCredentialRuntime: () => gitAgentCredentialRuntime,
-    getGitShellBoundaryRuntime: () => gitShellBoundaryRuntime,
+    /** Writes the Git credential helper's endpoint file; a no-op until the Git routes are registered. */
+    publishRepositoryCredentialEndpoint: async () => { await gitRepositoryCredentialRuntime?.publish(); },
   };
 };

@@ -9,8 +9,6 @@ import type {
 
 export const createWebGitAPI = (): GitAPI => ({
   managedSshCredentials,
-  getAgentGitAuthority: gitApiHttp.getAgentGitAuthority,
-  setAgentGitAuthority: gitApiHttp.setAgentGitAuthority,
   configureTransportBinding: configureWebTransportBinding,
   removeTransportBinding: removeWebTransportBinding,
   configureAuxiliaryBinding: configureWebAuxiliaryBinding,

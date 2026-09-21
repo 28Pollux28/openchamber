@@ -214,39 +214,6 @@ const createToolEntry = ({ name, description, definitions, parameters }) => Stri
     },
 `;
 
-/**
- * Raw Git transfers in the agent's shell, refused where a managed action exists.
- *
- * `tool.execute.before` can only deny, so this asks OpenChamber and throws with
- * what to use instead. The name test is deliberately coarse: it decides only
- * whether to ask, and OpenChamber decides whether to refuse. Anything that goes
- * wrong here allows the command, because a guard that fails closed on its own
- * plumbing would strand an agent that has done nothing wrong.
- */
-const SHELL_BOUNDARY_HOOK_SOURCE = `const SHELL_TOOLS = new Set(["bash", "shell", "cmd", "terminal", "shell_command"])
-const MENTIONS_GIT = /(^|[^\\w-])(git|gh|glab|hub)([^\\w-]|$)/
-
-const shellBoundaryGuard = async (input, output) => {
-  if (!SHELL_TOOLS.has(String(input?.tool ?? "").toLowerCase())) return
-  const command = output?.args?.command
-  if (typeof command !== "string" || !MENTIONS_GIT.test(command)) return
-  const endpoint = process.env.OPENCHAMBER_SHELL_BOUNDARY_URL
-  const token = process.env.OPENCHAMBER_SHELL_BOUNDARY_TOKEN
-  if (!endpoint || !token) return
-  let decision = null
-  try {
-    const response = await fetch(endpoint, {
-      method: "POST",
-      headers: { authorization: "Bearer " + token, "content-type": "application/json" },
-      body: JSON.stringify({ command, directory: input?.directory ?? process.cwd() }),
-    })
-    if (response.ok) decision = await response.json()
-  } catch {
-    return
-  }
-  if (decision?.blocked === true) throw new Error(decision.reason)
-}
-`;
 
 const createPluginSource = ({ includeControl, includeWeb, includeMemory }) => {
   const entries = [];
@@ -275,29 +242,26 @@ const createPluginSource = ({ includeControl, includeWeb, includeMemory }) => {
     }));
   }
 
-  // The callbacks carry per-child tokens over plain HTTP. With a proxy in the
-  // child's environment, fetch would hand a non-loopback callback, token
+  // The callback carries the per-child token over plain HTTP. With a proxy in
+  // the child's environment, fetch would hand a non-loopback callback, token
   // included, to that proxy, and no per-request option turns that off. The
   // exemption is added inside the child because only there is the final
   // NO_PROXY, merged from the shell and server environments, visible.
-  return `const exemptCallbacksFromProxy = () => {
-  for (const endpoint of [process.env.OPENCHAMBER_AGENT_TOOL_URL, process.env.OPENCHAMBER_SHELL_BOUNDARY_URL]) {
-    if (!endpoint || !URL.canParse(endpoint)) continue
-    const host = new URL(endpoint).hostname.replace(/^\\[|\\]$/g, "")
-    for (const key of ["NO_PROXY", "no_proxy"]) {
-      const entries = (process.env[key] || "").split(",").map((entry) => entry.trim()).filter(Boolean)
-      if (!entries.includes(host)) process.env[key] = [...entries, host].join(",")
-    }
+  return `const exemptCallbackFromProxy = () => {
+  const endpoint = process.env.OPENCHAMBER_AGENT_TOOL_URL
+  if (!endpoint || !URL.canParse(endpoint)) return
+  const host = new URL(endpoint).hostname.replace(/^\\[|\\]$/g, "")
+  for (const key of ["NO_PROXY", "no_proxy"]) {
+    const entries = (process.env[key] || "").split(",").map((entry) => entry.trim()).filter(Boolean)
+    if (!entries.includes(host)) process.env[key] = [...entries, host].join(",")
   }
 }
 
-${SHELL_BOUNDARY_HOOK_SOURCE}
 export const OpenChamberPlugin = async () => {
-  exemptCallbacksFromProxy()
+  exemptCallbackFromProxy()
   return {
     tool: {
 ${entries.join('')}    },
-    "tool.execute.before": shellBoundaryGuard,
   }
 }
 `;

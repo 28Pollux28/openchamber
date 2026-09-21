@@ -85,16 +85,15 @@ both settings are `false`.
   equal to that address: the OS sources a local connection to `<ip>` from
   `<ip>`. A wildcard bind keeps the loopback-only rule, and another machine on
   the network always arrives with its own address.
-  `callback-address.js` owns this rule; the Git shell boundary and the agent
-  credential helper (`lib/git/`) hand their child the same kind of callback and
-  share it.
+  `callback-address.js` owns this rule; the repository credential helper
+  (`lib/git/repository-credential-runtime.js`) reaches the server the same way
+  and shares it.
 - The token is never persisted, logged, returned to the UI, or written into
   the materialized plugin.
 - The plugin adds the callback host to `NO_PROXY`/`no_proxy` inside the managed
   child when it loads. Without that, an `HTTP_PROXY` in the child's environment
   would receive a non-loopback callback, token included, because `fetch` has no
-  per-request way to skip the environment proxy. The shell-boundary callback
-  is exempted the same way.
+  per-request way to skip the environment proxy.
 - Inputs map to a fixed action and parameter allowlist. There is no arbitrary
   CLI, shell, route, or URL forwarding.
 - Session/worktree deletion and project-path registration are not exposed.

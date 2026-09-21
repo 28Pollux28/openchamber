@@ -192,9 +192,17 @@ export function registerSourceControlRoutes(app, dependencies = {}) {
       return sendBindingError(res, error);
     }
   });
+  // A remote grant decides how the repository's own `.git/config` pushes
+  // and pulls, so every change to one is followed there.
+  const afterTransportChange = async (directory, read) => {
+    if (!(dependencies.onRepositoryTransportChanged instanceof Function)) return;
+    try { await dependencies.onRepositoryTransportChanged(directory, read); }
+    catch (error) { console.warn('Repository transport configuration was not updated:', redactSensitiveText(error?.message)); }
+  };
   app.post('/api/source-control/binding/transport', async (req, res) => {
     try {
       const result = await bindingService.configureTransportBinding(req.body ?? {});
+      await afterTransportChange(req.body?.directory, result);
       return res.json(bindingService.present ? await bindingService.present(result) : result);
     } catch (error) {
       return sendBindingError(res, error);
@@ -203,6 +211,7 @@ export function registerSourceControlRoutes(app, dependencies = {}) {
   app.post('/api/source-control/binding/transport/remove', async (req, res) => {
     try {
       const result = await bindingService.removeTransportBinding(req.body ?? {});
+      await afterTransportChange(req.body?.directory, result);
       return res.json(bindingService.present ? await bindingService.present(result) : result);
     } catch (error) {
       return sendBindingError(res, error);
@@ -210,7 +219,9 @@ export function registerSourceControlRoutes(app, dependencies = {}) {
   });
   app.post('/api/source-control/binding/reset', async (req, res) => {
     try {
-      return res.json(await bindingService.resetRepositoryBinding(req.body ?? {}));
+      const result = await bindingService.resetRepositoryBinding(req.body ?? {});
+      await afterTransportChange(req.body?.directory, result);
+      return res.json(result);
     } catch (error) {
       return sendBindingError(res, error);
     }

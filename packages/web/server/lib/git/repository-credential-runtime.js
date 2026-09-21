@@ -1,15 +1,17 @@
 import crypto from 'node:crypto';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createCallbackAddress } from '../agent-tool/callback-address.js';
 import { parseGitCredentialQuery } from './credential-broker.js';
 import { parseGitCredentialReference } from './credential-resolver.js';
+import { helperShellCommand } from './helper-launch.js';
 
-const HELPER_PATH = fileURLToPath(new URL('./agent-credential-helper.js', import.meta.url));
+const HELPER_PATH = fileURLToPath(new URL('./repository-credential-helper.js', import.meta.url));
 const MAX_QUERY_BYTES = 64 * 1024;
 const NONE = Object.freeze({ mode: 'none' });
+const SYSTEM = Object.freeze({ mode: 'system' });
 
 const isString = (value) => Object.prototype.toString.call(value) === '[object String]';
-const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
 /** The origin a redacted remote URL points at, or null when it is not HTTPS. */
 const httpsOrigin = (displayUrl) => {
@@ -68,50 +70,39 @@ const credentialEndpoint = (endpointUrl) => {
 };
 
 /**
- * OpenChamber answering Git for the agent's own shell.
+ * OpenChamber answering Git wherever a repository names it.
  *
- * The managed OpenCode process is started by OpenChamber, so its environment
- * can say that for the hosts OpenChamber holds bindings on, this helper is the
- * credential chain. A bound repository then acts as its bound account even when
- * the agent runs `git push` itself; a repository bound to System Git keeps
- * using the person's own chain; and a repository nothing is bound for gets no
- * credential at all, instead of quietly borrowing the person's.
+ * A repository given an identity with an account has `.git/config` name this
+ * helper as its credential chain, so `git push` acts as that account from
+ * any shell: the person's terminal, the agent's, a script. The helper reaches
+ * the server through an endpoint file in the data directory that the server
+ * rewrites on every start, port and secret included, so a repository's
+ * configuration stays valid across restarts and app updates.
  *
- * Nothing is written to any repository and nothing is persisted: the token
- * lives in one child process's environment and dies with it. Outside that
- * process — the person's own terminal — nothing changes.
+ * The server answers only for the repository the helper runs in: the grant
+ * of that repository's own binding, resolved to a credential for this one
+ * request. A repository bound to System Git, or nothing, is handed back to
+ * the person's own chain by the helper itself. Nothing is persisted here
+ * beyond the endpoint file, and no secret ever reaches a repository.
  */
-export function createGitAgentCredentialRuntime({
+export function createGitRepositoryCredentialRuntime({
   readBinding,
-  listRemoteGrants,
   credentialResolver,
-  isRepositoryEnabled = null,
+  dataDir,
+  fsPromises,
   getActivePort,
   getActiveHost = () => null,
   helperPath = HELPER_PATH,
-  nodePath = process.execPath,
   randomBytes = crypto.randomBytes,
-  env = process.env,
 }) {
-  if (!(readBinding instanceof Function) || !(listRemoteGrants instanceof Function)
-    || !credentialResolver || !(getActivePort instanceof Function)) {
-    throw new TypeError('Git agent credential runtime dependencies are invalid');
+  if (!(readBinding instanceof Function) || !credentialResolver || !isString(dataDir)
+    || !fsPromises || !(getActivePort instanceof Function)) {
+    throw new TypeError('Git repository credential runtime dependencies are invalid');
   }
-  let activeToken = null;
   const { callbackHost, isSameMachineAddress } = createCallbackAddress(getActiveHost);
-
-  const managedOrigins = async () => {
-    const grants = await listRemoteGrants();
-    const origins = new Set();
-    for (const grant of grants) {
-      // SSH grants do not travel through a credential helper, and anonymous
-      // ones deliberately carry no credential, so neither claims a host.
-      if (grant.mode !== 'managed' && grant.mode !== 'system') continue;
-      const origin = httpsOrigin(grant.displayUrl);
-      if (origin) origins.add(origin);
-    }
-    return [...origins];
-  };
+  const endpointFilePath = path.join(dataDir, 'git-credential-endpoint.json');
+  const launcherPath = path.join(dataDir, 'bin', 'git-credential-openchamber');
+  let activeSecret = null;
 
   const answer = async (payload) => {
     const cwd = isString(payload?.cwd) ? payload.cwd : '';
@@ -124,17 +115,11 @@ export function createGitAgentCredentialRuntime({
     let read;
     try { read = await readBinding(cwd); }
     catch { return NONE; }
-    if (read.status === 'missing' || !read.binding) return NONE;
+    if (!read.binding) return SYSTEM;
     const matched = grantForOrigin(read, origin);
-    if (!matched) return NONE;
+    if (!matched) return SYSTEM;
     const { grant, endpointUrl } = matched;
-    // Excluded repositories are handed back the same way System Git is: this
-    // host's chain is severed for the whole process, so answering nothing would
-    // leave them without the setup they asked to keep.
-    const repositoryId = read.repository?.repositoryId;
-    if (isRepositoryEnabled && !(await isRepositoryEnabled(repositoryId))) return { mode: 'system' };
-    // The person decided this repository may use whatever the machine holds.
-    if (grant.mode === 'system') return { mode: 'system' };
+    if (grant.mode === 'system') return SYSTEM;
     if (grant.mode !== 'managed' || !grant.credentialId) return NONE;
     try {
       if (parseGitCredentialReference(grant.credentialId).transport !== 'https') return NONE;
@@ -142,7 +127,7 @@ export function createGitAgentCredentialRuntime({
         mode: 'managed',
         credentialId: grant.credentialId,
         endpoint: credentialEndpoint(endpointUrl),
-        operationId: `git_agent_${randomBytes(8).toString('hex')}`,
+        operationId: `git_repo_${randomBytes(8).toString('hex')}`,
         deadline: Date.now() + 15_000,
       });
       if (credential?.transport !== 'https' || !credential.username || !credential.password) return NONE;
@@ -153,53 +138,44 @@ export function createGitAgentCredentialRuntime({
   };
 
   const authorize = (req) => {
-    if (!activeToken || !isSameMachineAddress(req.socket?.remoteAddress)) return false;
+    if (!activeSecret || !isSameMachineAddress(req.socket?.remoteAddress)) return false;
     const header = isString(req.headers?.authorization) ? req.headers.authorization : '';
     if (!header.startsWith('Bearer ')) return false;
     const provided = Buffer.from(header.slice(7));
-    const expected = Buffer.from(activeToken);
+    const expected = Buffer.from(activeSecret);
     return provided.length === expected.length && crypto.timingSafeEqual(provided, expected);
   };
 
+  const writePrivate = async (target, content, mode) => {
+    await fsPromises.mkdir(path.dirname(target), { recursive: true });
+    const temporary = `${target}.${crypto.randomUUID()}.tmp`;
+    await fsPromises.writeFile(temporary, content, { encoding: 'utf8', mode });
+    await fsPromises.chmod(temporary, mode);
+    await fsPromises.rename(temporary, target);
+  };
+
   return Object.freeze({
+    /** The command a repository's `.git/config` names as its credential helper. */
+    helperCommand: () => `!'${launcherPath.replace(/\\/g, '/').replace(/'/g, `'\\''`)}'`,
     /**
-     * Git configuration for the managed OpenCode child, or nothing.
-     *
-     * Nothing is injected while no binding names an HTTPS host: a person who
-     * only uses their own Git setup should not have OpenChamber step into it.
+     * Writes what Git needs to reach this server: the launcher, which pins
+     * this executable and tells Electron to run as Node, and the endpoint
+     * file with the port and a fresh secret. Called once the server listens;
+     * a repository configured against an earlier start keeps working.
      */
-    prepareManagedOpenCodeEnv: async () => {
+    publish: async () => {
       const port = getActivePort();
-      const origins = Number.isInteger(port) && port > 0 ? await managedOrigins() : [];
-      if (!origins.length) {
-        activeToken = null;
-        return {};
+      if (!Number.isInteger(port) || port <= 0) {
+        throw new Error('OpenChamber listener port is unavailable for the Git credential helper');
       }
-      activeToken = randomBytes(32).toString('base64url');
-      const helper = `!${shellQuote(nodePath)} ${shellQuote(helperPath)}`;
-      // Command-scope entries outrank every configuration file, and an empty
-      // value severs the chain for that host — the same pair `gh auth
-      // setup-git` writes, scoped to one process tree instead of the machine.
-      const inherited = Number.parseInt(env.GIT_CONFIG_COUNT ?? '', 10);
-      let index = Number.isSafeInteger(inherited) && inherited > 0 ? inherited : 0;
-      const config = {};
-      for (const origin of origins) {
-        config[`GIT_CONFIG_KEY_${index}`] = `credential.${origin}.helper`;
-        config[`GIT_CONFIG_VALUE_${index}`] = '';
-        index += 1;
-        config[`GIT_CONFIG_KEY_${index}`] = `credential.${origin}.helper`;
-        config[`GIT_CONFIG_VALUE_${index}`] = helper;
-        index += 1;
-      }
-      return {
-        ...config,
-        GIT_CONFIG_COUNT: String(index),
-        OPENCHAMBER_GIT_CREDENTIAL_URL: `http://${callbackHost()}:${port}/api/git/agent-credential`,
-        OPENCHAMBER_GIT_CREDENTIAL_TOKEN: activeToken,
-      };
+      activeSecret = randomBytes(32).toString('base64url');
+      const url = `http://${callbackHost()}:${port}/api/git/repository-credential`;
+      await writePrivate(endpointFilePath, `${JSON.stringify({ version: 1, url, secret: activeSecret })}\n`, 0o600);
+      const script = `#!/bin/sh\nexec ${helperShellCommand(path.resolve(helperPath), [endpointFilePath])} "$@"\n`;
+      await writePrivate(launcherPath, script, 0o700);
     },
     registerRoutes: (app) => {
-      app.post('/api/git/agent-credential', async (req, res) => {
+      app.post('/api/git/repository-credential', async (req, res) => {
         res.set('Cache-Control', 'no-store');
         if (!authorize(req)) return res.status(403).end();
         return res.json(await answer(req.body ?? {}));

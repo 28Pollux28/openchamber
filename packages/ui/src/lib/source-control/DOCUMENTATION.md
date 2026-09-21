@@ -106,16 +106,19 @@ account or anonymous identity on a non-HTTPS remote, or an SSH-key identity on a
 non-SSH remote is disabled with a localized reason (`describeIdentityApplicability`)
 and never proposed. `proposeIdentityForHost` proposes, among applicable identities,
 the one whose account answers for the remote host, then the default identity,
-then the System identity — the repository as it is. On the add screen a proposed
-System identity is written only when the person chose it or confirmed its
-credentials, so adding a directory never clears an author on its own.
+then the System identity — the repository as it is. The add screen shows the
+repository as it is signed today, its own local author included, and writes
+nothing unless the person picked an identity themselves: adding a directory
+never rewrites an author or binds an account on its own.
 
-Git in an agent shell answers to bindings only through the environment the
-managed OpenCode child was started with, so the first HTTPS credential grant a
-remote receives — from an identity apply or a clone — records a pending
-OpenCode restart (`recordDeferredOpenCodeRestart('cli', …)`), the same way the
-machine-wide agent switch does. A key identity travels over SSH and records
-none; a remote the agent already answers for records none either. The same rule serves the add and clone screens
+Applying an identity grants every remote it can serve, so a fork answers
+beside its upstream without being named twice; an address the identity cannot
+reach — another instance, a scheme its transport does not speak — keeps no
+grant and is offered in the repository configuration. System Git needs no
+confirmation: it is what a repository uses until something else is chosen.
+Git in a terminal or the agent's shell follows the same grants through the
+repository's own `.git/config`, which the server writes; the UI records no
+OpenCode restart for it. The same rule serves the add and clone screens
 (`DirectoryExplorerDialog`), the Git panel (`IdentityDropdown` in `GitHeader`),
 and the mobile Changes surface.
 
@@ -132,9 +135,9 @@ authoritative empty binding. VS Code offers no identity switching; the webview
 projects repository remotes as a ready System binding.
 
 `RepositoryConfigurationDialog` in `SourceControlBindingSettings.tsx` is reached
-from the identity menu and holds what an identity does not decide: whether the
-repository's identity is applied in agent shells, and checkout hydration repair
-(`AuxiliaryBindingSettings` in `RepositoryBindingEditors.tsx`). There is no
+from the identity menu and holds what an identity does not decide: the other
+addresses it could not serve (`AdditionalRemoteGrants`) and checkout hydration
+repair (`AuxiliaryBindingSettings` in `RepositoryBindingEditors.tsx`). There is no
 separate reset: choosing the System identity removes the provider association,
 the transport grant and the repository-local author. Its draft lifetime ends on
 close or runtime/directory scope change; drafts and cancellation do not mutate,

@@ -36,6 +36,7 @@ import {
   resolveBaseRefForLog,
   revertCommit,
   setLocalIdentity,
+  configureRepositoryTransport,
   getGlobalIdentity,
   stageFiles,
   subscribeWorktreeTopologyChanges,
@@ -204,6 +205,44 @@ describe('git index path validation', () => {
     await expect(unstageFiles('/repo', ['../secret.txt'])).rejects.toThrow(
       'Path is outside repository: ../secret.txt'
     );
+  });
+});
+
+describe.runIf(canRunGit())('configureRepositoryTransport', () => {
+  const helper = "!'/data/bin/git-credential-openchamber'";
+  const helpers = (repo) => {
+    try { return execFileSync('git', ['config', '--local', '--get-all', 'credential.helper'], { cwd: repo, encoding: 'utf8' }).replace(/\n$/, '').split('\n'); }
+    catch { return []; }
+  };
+  const sshCommand = (repo) => {
+    try { return execFileSync('git', ['config', '--local', '--get', 'core.sshCommand'], { cwd: repo, encoding: 'utf8' }).trim(); }
+    catch { return ''; }
+  };
+
+  it('names the helper after a reset, leaves the person\'s own entries, and removes only its own', async () => {
+    const repo = createTempDir();
+    runGit(repo, ['init', '-b', 'main']);
+    runGit(repo, ['config', '--local', 'credential.helper', 'osxkeychain']);
+    await configureRepositoryTransport(repo, { credentialHelper: helper });
+    expect(helpers(repo)).toEqual(['osxkeychain', '', helper]);
+    // Writing the same thing again changes nothing.
+    await configureRepositoryTransport(repo, { credentialHelper: helper });
+    expect(helpers(repo)).toEqual(['osxkeychain', '', helper]);
+    await configureRepositoryTransport(repo, { credentialHelper: null });
+    expect(helpers(repo)).toEqual(['osxkeychain']);
+  });
+
+  it('writes and removes the managed SSH command without touching one the person wrote', async () => {
+    const repo = createTempDir();
+    runGit(repo, ['init', '-b', 'main']);
+    const managed = "OPENCHAMBER_GIT_SSH_KEY='/data/keys/one' '/usr/bin/bun' '/srv/ssh-wrapper.js'";
+    await configureRepositoryTransport(repo, { sshCommand: managed });
+    expect(sshCommand(repo)).toBe(managed);
+    await configureRepositoryTransport(repo, { sshCommand: null });
+    expect(sshCommand(repo)).toBe('');
+    runGit(repo, ['config', '--local', 'core.sshCommand', 'ssh -i ~/.ssh/mine']);
+    await configureRepositoryTransport(repo, { sshCommand: null });
+    expect(sshCommand(repo)).toBe('ssh -i ~/.ssh/mine');
   });
 });
 

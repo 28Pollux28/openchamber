@@ -20,6 +20,15 @@ const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 const CLEANUP_TIMEOUT_MS = 5_000;
 const DEFAULT_OUTPUT_BYTES = 64 * 1024;
 const SSH_WRAPPER_PATH = fileURLToPath(new URL('./ssh-wrapper.js', import.meta.url));
+
+/**
+ * The `core.sshCommand` a repository names for a managed key, so `git` from
+ * any shell reaches the wrapper with that key, the way a managed transfer
+ * does. The key path travels as a variable rather than an argument, which is
+ * what the wrapper reads and what keeps it out of the SSH command line.
+ */
+export const managedSshCommand = (privateKeyPath) =>
+  `OPENCHAMBER_GIT_SSH_KEY=${shellQuote(privateKeyPath)} ${helperShellCommand(SSH_WRAPPER_PATH)}`;
 const MANAGED_ENV_NAMES = new Set([
   'GIT_ASKPASS', 'SSH_ASKPASS', 'SSH_ASKPASS_REQUIRE', 'GIT_CONFIG_COUNT',
   'GIT_CONFIG', 'GIT_CONFIG_PARAMETERS', 'GIT_CONFIG_GLOBAL', 'GIT_CONFIG_NOSYSTEM',

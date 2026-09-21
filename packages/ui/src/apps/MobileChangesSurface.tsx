@@ -21,7 +21,7 @@ import { useContributorDestinationChooser } from '@/components/views/git/contrib
 import { RepositoryConfigurationDialog } from '@/components/sections/openchamber/SourceControlBindingSettings';
 import { IdentityDropdown } from '@/components/views/git/GitHeader';
 import { useGitIdentitiesStore } from '@/stores/useGitIdentitiesStore';
-import { applyIdentityToRepository, identityApplicability, isSignatureOnlyIdentity } from '@/lib/source-control/applyIdentity';
+import { applyIdentityToRepository, identityApplicability } from '@/lib/source-control/applyIdentity';
 import { remoteTraits,
   selectableIdentities,
   identityDisplayName,
@@ -160,7 +160,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
   const refreshIdentityAccounts = useSourceControlAuthStore((state) => state.refreshIdentityAccounts);
   const availableIdentities = React.useMemo(
     () => selectableIdentities(gitIdentityProfiles, globalGitIdentity,
-      (identity) => (isCompleteIdentity(identity) || isSignatureOnlyIdentity(identity))
+      (identity) => isCompleteIdentity(identity)
         && identityAccountConnected(identity, connectedAccountIds)),
     [gitIdentityProfiles, globalGitIdentity, connectedAccountIds],
   );

@@ -19,6 +19,8 @@ This module provides Git repository operations for the web server runtime, inclu
   - `contributor-provenance-storage.js`: strict bounded persistence for contributor-fork worktree identity and push-safety authority.
   - `credential-resolver.js` and `credential-broker.js`: resolve opaque managed credential references and provide one-operation Git authentication without returning secrets to clients.
   - `redaction.js`: bounded Git output and error redaction.
+  - `helper-launch.js`: how Git reaches this module's helper scripts through `sh`, telling Electron to run as Node inside the command itself.
+  - `repository-credential-runtime.js` and `repository-credential-helper.js`: the credential helper a repository's own `.git/config` names, so `git push` from any shell acts as the identity the repository was given.
 
 ## Public API
 
@@ -255,79 +257,53 @@ VS Code runs existing-repository network operations as plain Git commands on the
 - `stashPop(directory, options)`: Apply a stash by ref and drop it only after a successful apply.
 - `stashDrop(directory, options)`: Drop a stash by ref.
 
-## Git the agent runs itself
+## Git from any shell
 
 Planned operations own every transfer OpenChamber starts, and they run with a
-scrubbed environment so no ambient credential can reach them. A `git push` the
-agent types in its own shell is a different process: it inherits the person's
-environment, their global config and their credential helpers, so a bound
-repository would still transfer as whoever the machine happens to hold.
+scrubbed environment so no ambient credential can reach them. A `git push`
+typed in a terminal or in the agent's shell is a different process: it reads
+the repository's own configuration and the machine's credential helpers. A
+repository given an identity with an account therefore names OpenChamber in
+its own `.git/config`, so that push acts as the same account from anywhere.
 
-Two modules close that, both scoped to the OpenCode process OpenChamber itself
-starts. Neither writes anything to a repository and neither persists anything.
+- `configureRepositoryTransport(directory, { credentialHelper, sshCommand })`
+  in `service.js` writes and removes what OpenChamber names there: an empty
+  `credential.helper` (Git's way of saying the entries before it do not apply
+  to this repository) followed by the launcher for an account grant, and
+  `core.sshCommand` naming `ssh-wrapper.js` with the key for a managed-key
+  grant. It removes only its own entries; a helper the person configured
+  stays. `source-control/routes.js` calls it after every transport grant
+  change, so choosing the System identity removes both.
+- `repository-credential-runtime.js` answers Git. On every server start it
+  writes `bin/git-credential-openchamber` (a launcher pinning this executable,
+  which tells Electron to run as Node) and `git-credential-endpoint.json`
+  (the callback URL and a fresh secret, mode `0600`) under
+  `OPENCHAMBER_DATA_DIR`, so a repository configured against an earlier start
+  keeps working. `POST /api/git/repository-credential` takes the helper's
+  working directory and Git's query and answers only for that repository's own
+  binding: a managed HTTPS grant resolves to a credential for this one request,
+  a System grant or an unbound repository is handed back to the machine, and a
+  grant whose credential is gone answers nothing.
+- `repository-credential-helper.js` is what Git runs. When the server says
+  System, or when the server is not running at all, it asks the person's own
+  credential chain by running `git credential fill` from outside the
+  repository, so the local entries that name it are not consulted. A closed
+  app never blocks a push; it only means the machine's own account answers.
 
-- `agent-operations.js` gives the agent `git.push`, `git.pull` and `git.fetch`
-  through the managed OpenChamber tool. They build the same planned operation
-  the Git panel builds. Anything needing a person's decision — no binding, a
-  stale or unready grant, several bound remotes with none named, a detached
-  HEAD, a branch with no upstream, a push over an anonymous transport — is
-  refused with what to do instead.
-- `agent-credential-runtime.js` answers Git itself. It puts command-scope
-  `credential.<origin>.helper` entries into the managed child's environment —
-  an empty value to sever the inherited chain, then `agent-credential-helper.js`
-  — for the HTTPS origins the bindings name. Command scope outranks every
-  configuration file, which is what lets a binding override the machine's
-  default, and the process boundary is what keeps the person's own terminal
-  untouched.
+The route is exempt from the UI session guard because it carries the secret
+from the endpoint file and refuses any peer that is not this machine
+(`agent-tool/callback-address.js`: loopback, or the bound address when the
+listener is bound to one concrete address). The helper has no UI session and
+cannot obtain one, so the guard would make a repository's account silently
+unusable wherever a UI password is set, which Docker requires.
 
-The helper reports the working directory it was invoked from, and Git runs a
-credential helper from the repository root, so the answer is per repository:
-a managed grant answers with its account, a System Git grant is handed back to
-the person's own chain with this helper removed from it, and anything else
-answers nothing at all — which is the point, because nothing is what stops an
-unbound repository from silently borrowing an ambient identity.
-
-Nothing is injected while no binding names an HTTPS host, and the set is read
-when the child starts: the shared UI records a pending OpenCode restart when a
-remote first receives an HTTPS credential grant. The bearer token lives only in
-that child's environment and dies with the process. `/api/git/agent-credential` and
-`/api/git/shell-boundary` are exempt from the UI session guard because they
-carry that token and refuse any peer that is not this machine (`agent-tool/callback-address.js`: loopback,
-or the bound address when the listener is bound to one concrete address, which is also where the
-callback URL points): the helper has no UI session and cannot obtain one, so the guard would make bindings silently unenforceable wherever a UI
-password is set, which Docker requires.
-
-`shell-boundary-runtime.js` closes the last gap. The credential answer already
-decides which identity a transfer uses, but it cannot reach `gh`, `glab` or an
-SSH remote, and an agent that hits an authentication error has no idea what to
-do next. The plugin's `tool.execute.before` hook asks OpenChamber about any
-shell command that mentions Git, and a repository that is configured in
-OpenChamber refuses with the managed action to use instead. A repository nobody
-configured is left alone, because there is nowhere to send the agent. The hook
-can only deny — it is not an approval prompt — and anything that goes wrong in
-it allows the command, since a guard that fails closed on its own plumbing
-would strand an agent that has done nothing wrong.
-
-Both are switched off in two places. `agentGitAuthorityEnabled` is a machine
-fact in the settings registry — `instance` scope, so a phone cannot flip how
-Git behaves on a workstation — and `OPENCHAMBER_GIT_AGENT_AUTHORITY=off` pins
-it for whoever starts the process. With it off nothing is put into the child's
-environment at all. `agent-authority-storage.js` then holds the per-repository
-answer, and stores only exclusions: when the machine-wide answer is no there is
-nothing for a single repository to turn back on, so the per-repository control
-can only be an opt-out, and it lives in the repository dialog alone — adding or
-cloning a repository asks nothing, because the default is the answer. An
-excluded repository is answered the same way a
-System Git one is — handed back to the person's own chain, because the host's
-chain is severed for the whole process and answering nothing would leave it
-with no credential at all.
-
-`shell-boundary.js` decides what counts as a transfer. It names the
-subcommands it blocks, which is the opposite of the UI's
-`shellOperationBoundary`: that one labels a call that already ran, where a
-missed label is the worse mistake, so it treats anything it does not recognise
-as crossing. Blocking has to err the other way, because a refusal that guesses
-stops ordinary work.
+Anyone who can run Git in the repository under the same user gets that
+account's credential, exactly as with `gh auth setup-git` or a credential
+manager. The agent's shell is one such place, which is the point: the agent
+pushes as the identity the repository was given, without a tool of its own.
+OpenChamber offers no managed transfer actions to the agent and does not
+intercept its shell; `gh` and `glab` are its own to run when they are
+installed.
 
 ## Internal Helpers
 

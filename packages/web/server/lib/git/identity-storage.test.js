@@ -61,10 +61,11 @@ describe('git identity storage', () => {
     // requests are a question about the host, not about the transfer.
     expect(ssh).toMatchObject({ transport: 'ssh', sshCredentialId: 'ocgit:v1:ssh:key-one', account });
 
-    // A signature alone is not an identity: nothing says whose it is or how it authenticates.
-    expect(() => store.createProfile(profile('personal'))).toThrow(/requires an account/i);
-    expect(() => store.createProfile({ ...profile('personal'), account, transport: 'system' }))
-      .toThrow(/authenticates with its account, a managed key, or anonymously/i);
+    // A signature that pushes with the machine's own Git needs no account,
+    // and may still name one so it answers for issues and change requests.
+    expect(store.createProfile(profile('personal'))).toMatchObject({ account: null, transport: 'system' });
+    expect(store.createProfile({ ...profile('personal-with-account'), account, transport: 'system' }))
+      .toMatchObject({ account, transport: 'system' });
   });
 
   it('refuses an identity whose transport and credentials disagree', async () => {

@@ -7,7 +7,7 @@ import type {
   SourceControlProviderBindingMutation,
   SourceControlRepositoryBinding,
 } from '@/lib/api/types';
-import { applyIdentityToRepository, auxiliaryGrantIntent, describeIdentityApplicability, grantIdentityToRemote, identityApplicability, isSignatureOnlyIdentity } from './applyIdentity';
+import { applyIdentityToRepository, auxiliaryGrantIntent, describeIdentityApplicability, grantIdentityToRemote, identityApplicability } from './applyIdentity';
 import { repositoryBindingOwner } from './repository-binding';
 
 const account = { provider: 'github', instance: 'github.com', accountId: 'occred:v1:github:one:r1' } as const;
@@ -422,9 +422,9 @@ describe('auxiliaryGrantIntent', () => {
   });
 
   test('names nothing when the identity carries no way to reach the endpoint', () => {
-    // An identity from an earlier release claims no credentials, so confirming
-    // System Git on its behalf would grant what it never named.
-    expect(auxiliaryGrantIntent(identity({ id: 'profile-1' }), authority)).toBeNull();
+    // An identity from an earlier release reaches it with the machine's own Git.
+    expect(auxiliaryGrantIntent(identity({ id: 'profile-1' }), authority))
+      .toEqual({ ...authority, operation: 'configure', transport: 'system', unverifiedConfirmed: true });
     // An account with no credential, and a key that is not there.
     expect(auxiliaryGrantIntent(identity({ transport: 'account' }), authority)).toBeNull();
     expect(auxiliaryGrantIntent(identity({ transport: 'ssh' }), authority)).toBeNull();
@@ -473,15 +473,6 @@ describe('grantIdentityToRemote', () => {
     expect(authorCalls).toEqual([]);
   });
 
-  test('gives nothing away for an identity from an earlier release', async () => {
-    const { apis, transportCalls } = harness(withFork());
-    expect(await grantIdentityToRemote(
-      { directory: '/repo', remoteName: 'fork', identity: identity({ id: 'profile-1' }) },
-      apis,
-    )).toEqual({ status: 'failed', reason: 'binding' });
-    expect(transportCalls).toEqual([]);
-  });
-
   test('gives System Git to another address without asking', async () => {
     const system = identity({ id: 'global', transport: 'system' });
     const confirmed = harness(withFork());
@@ -528,10 +519,10 @@ describe('grantIdentityToRemote', () => {
   });
 });
 
-describe('signature-only identities from an earlier release', () => {
+describe('identities from an earlier release', () => {
   const legacy = identity({ id: 'profile-1', name: 'Work' });
 
-  test('writes the author and leaves the repository account and transport alone', async () => {
+  test('writes the author and gives every remote the machine\'s own Git, dropping the previous account', async () => {
     const bound = {
       provider: 'github' as const, instance: 'github.com', accountId: 'occred:v1:github:one:r1',
       primaryRemote: 'origin', readiness: 'ready' as const, endpoint: endpoint('fetch-one'),
@@ -541,16 +532,8 @@ describe('signature-only identities from an earlier release', () => {
     expect(await applyIdentityToRepository({ directory: '/repo', remoteName: 'origin', identity: legacy }, apis))
       .toEqual({ status: 'applied' });
     expect(authorCalls).toEqual(['/repo:profile-1']);
-    // In the release that made these, choosing one wrote the author and nothing
-    // else. Removing the repository's account here would be a new behaviour.
-    expect(providerCalls).toEqual([]);
-    expect(transportCalls).toEqual([]);
-  });
-
-  test('is not the System identity', () => {
-    expect(isSignatureOnlyIdentity(legacy)).toBe(true);
-    expect(isSignatureOnlyIdentity(identity({ id: 'global', transport: 'system' }))).toBe(false);
-    // An identity that names an account is complete, not a signature.
-    expect(isSignatureOnlyIdentity(identity({ account, transport: 'account' }))).toBe(false);
+    // It names no account, so the repository stops answering to the one it had.
+    expect(providerCalls.map((call) => call.operation)).toEqual(['remove']);
+    expect(transportCalls.map((call) => [call.remote, call.transport])).toEqual([['origin', 'system']]);
   });
 });

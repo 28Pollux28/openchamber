@@ -67,11 +67,11 @@ export const parsePublicGitIdentityProfile = (value, expectedId) => {
   const transport = parseIdentityTransport(value.transport);
   const sshCredentialId = value.sshCredentialId === null || value.sshCredentialId === undefined
     ? null : value.sshCredentialId.trim();
-  // An identity is complete or it is not one: the account it acts as, the way
-  // it authenticates, and the signature. Records written before identities
-  // carried an account are still read; a client cannot write another.
-  if (!account) throw new TypeError('An identity requires an account');
-  if (transport === 'system') throw new TypeError('An identity authenticates with its account, a managed key, or anonymously');
+  // An identity is a signature, a way to push and pull, and optionally the
+  // account it acts as. Only the account transport needs that account; the
+  // machine's own Git, a managed key and anonymous reads need none, and an
+  // account beside them still answers for issues and change requests.
+  if (transport === 'account' && !account) throw new TypeError('An account transport requires an account');
   if (transport === 'ssh' && !sshCredentialId) throw new TypeError('An SSH transport requires a managed key');
   if (transport !== 'ssh' && sshCredentialId) throw new TypeError('Only an SSH transport names a managed key');
   const profile = {
@@ -93,9 +93,10 @@ export const toPublicGitIdentityProfile = (value) => {
   let account = null;
   try { account = parseIdentityAccount(value.account); }
   catch { account = null; }
-  // A stored record from before identities carried a transport keeps only its
-  // signature; the legacy `authType`, `sshKey` and `host` beside it named no
-  // credential this build can resolve, so they are not carried forward.
+  // A stored record from before identities carried a transport pushes and
+  // pulls with the machine's own Git; the legacy `authType`, `sshKey` and
+  // `host` beside it named no credential this build can resolve, so they are
+  // not carried forward.
   let transport = 'system';
   try { transport = parseIdentityTransport(value.transport); }
   catch { transport = 'system'; }

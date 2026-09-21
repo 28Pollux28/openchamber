@@ -13,13 +13,12 @@ import {
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { GitOperationResultError, runGitClone } from '@/lib/boundGitNetworkOperation';
 import { PendingGitOperationError } from '@/lib/source-control/git-operation-recovery';
-import { recordDeferredOpenCodeRestart } from '@/lib/opencode/deferredRestart';
 import { useGitOperationRecovery } from '@/components/views/git/useGitOperationRecovery';
 import { GitOperationStatus } from '@/components/views/git/GitOperationStatus';
 import { useExistingRepositorySummary } from './useExistingRepositorySummary';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { identityTransport, isCompleteIdentity } from '@/lib/api/git-identity';
-import { applyIdentityToRepository, identityApplicability, type IdentityApplicability, isSignatureOnlyIdentity } from '@/lib/source-control/applyIdentity';
+import { applyIdentityToRepository, identityApplicability, type IdentityApplicability } from '@/lib/source-control/applyIdentity';
 import type { GitIdentityProfile } from '@/lib/api/types';
 import { useSourceControlAuthStore, useConnectedAccountIds } from '@/stores/useSourceControlAuthStore';
 import { IdentityDropdown } from '@/components/views/git/GitHeader';
@@ -269,7 +268,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
   const connectedAccountIds = useConnectedAccountIds();
   const availableGitIdentities = React.useMemo(
     () => selectableIdentities(gitIdentityProfiles, globalGitIdentity,
-      (identity) => (isCompleteIdentity(identity) || isSignatureOnlyIdentity(identity))
+      (identity) => isCompleteIdentity(identity)
         && identityAccountConnected(identity, connectedAccountIds)),
     [gitIdentityProfiles, globalGitIdentity, connectedAccountIds],
   );
@@ -601,12 +600,6 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
         if (result.status === 'cancelled') return;
         setupRequired = result.status === 'setup-required';
         selectedTarget = target;
-        // The clone's credential grant reaches Git in agent shells only once
-        // the managed OpenCode child restarts with its host in the environment.
-        const cloneTransport = identityTransport(selectedGitIdentity);
-        if (remoteUrl.trim().startsWith('https://') && (cloneTransport === 'account' || cloneTransport === 'system')) {
-          recordDeferredOpenCodeRestart('cli', { id: `agent-git:${target}` });
-        }
       } else if (selectionToAdd.length > 0) {
         // Batch path wins over single-target create: with checkboxes ticked,
         // the user wants the selections added, not a fresh directory created

@@ -53,14 +53,12 @@ describe('core-routes', () => {
       normalizeTunnelSessionTtlMs: vi.fn(),
     });
     // Registered after the guard, exactly as the git feature routes are.
-    app.post('/api/git/agent-credential', (_req, res) => res.json({ mode: 'none' }));
-    app.post('/api/git/shell-boundary', (_req, res) => res.json({ decision: 'allow' }));
+    app.post('/api/git/repository-credential', (_req, res) => res.json({ mode: 'none' }));
     app.post('/api/git/identities', (_req, res) => res.json({ reached: true }));
 
-    // Neither has a UI session or can get one; their own bearer tokens and
-    // loopback checks are what protect them.
-    await request(app).post('/api/git/agent-credential').send({}).expect(200, { mode: 'none' });
-    await request(app).post('/api/git/shell-boundary').send({}).expect(200, { decision: 'allow' });
+    // Git's helper has no UI session and cannot get one; its own bearer secret
+    // and same-machine check are what protect it.
+    await request(app).post('/api/git/repository-credential').send({}).expect(200, { mode: 'none' });
     expect(requireAuth).not.toHaveBeenCalled();
 
     await request(app).post('/api/git/identities').send({}).expect(401);

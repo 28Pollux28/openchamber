@@ -594,15 +594,15 @@ export const registerAuthAndAccessRoutes = (app, dependencies) => {
   /**
    * Endpoints that carry their own authority instead of a UI session.
    *
-   * The agent's Git credential helper and the plugin's shell guard both run
-   * inside the managed OpenCode child. Each authenticates with a bearer token
-   * minted for that child and rotated every time it starts, and each route
-   * refuses any peer that is not loopback. Neither has a UI session or can
-   * obtain one, so leaving them behind the session guard makes repository
-   * bindings silently unenforceable — and raw transfers silently allowed — on
+   * The repository credential helper runs from Git itself, in a terminal or
+   * the agent's shell, wherever a repository names it in `.git/config`. It
+   * authenticates with the secret the server writes beside its endpoint file,
+   * rotated every start, and the route refuses any peer that is not this
+   * machine. It has no UI session and cannot obtain one, so leaving it behind
+   * the session guard would make a repository's account silently unusable on
    * every instance that sets a UI password, which Docker requires.
    */
-  const selfAuthenticatedApiPaths = new Set(['/api/git/agent-credential', '/api/git/shell-boundary']);
+  const selfAuthenticatedApiPaths = new Set(['/api/git/repository-credential']);
 
   const isGuestOauthCallback = (req) => (
     req.method === 'GET'

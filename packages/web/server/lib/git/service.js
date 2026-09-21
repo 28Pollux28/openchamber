@@ -2502,6 +2502,51 @@ export async function setLocalIdentity(directory, profile) {
   }
 }
 
+/**
+ * What a repository's own `.git/config` says about how it pushes and pulls.
+ *
+ * An identity with an account names OpenChamber's credential helper here, so
+ * `git push` from any shell — the person's terminal, the agent's — acts as
+ * that account; a managed key names the SSH wrapper with that key. Both are
+ * written after an empty `credential.helper`, which is how Git is told that
+ * the entries before it, the machine's own, do not apply to this repository.
+ * Null for either removes what OpenChamber wrote and nothing else: a helper
+ * the person configured themselves is not OpenChamber's to remove.
+ */
+export async function configureRepositoryTransport(directory, { credentialHelper = null, sshCommand = null } = {}) {
+  const directoryPath = normalizeDirectoryPath(directory);
+  if (typeof directoryPath !== 'string' || !directoryPath.trim()) throw new Error('Git directory is required');
+  const config = (args) => runGitCommand(directoryPath, ['config', '--local', ...args]);
+  const managedHelper = (value) => value === '' || value.startsWith('!') && /git-credential-openchamber/.test(value);
+  const helpers = await config(['--get-all', 'credential.helper']);
+  const current = helpers.success ? helpers.stdout.replace(/\n$/, '').split('\n') : [];
+  const wanted = credentialHelper ? ['', credentialHelper] : [];
+  const ours = current.filter(managedHelper);
+  if (JSON.stringify(ours) !== JSON.stringify(wanted)) {
+    for (const value of new Set(ours)) {
+      const removed = await config(['--unset-all', '--fixed-value', 'credential.helper', value]);
+      if (!removed.success && removed.exitCode !== 5) throw new Error(removed.stderr || 'Failed to update the repository credential helper');
+    }
+    for (const value of wanted) {
+      const added = await config(['--add', 'credential.helper', value]);
+      if (!added.success) throw new Error(added.stderr || 'Failed to write the repository credential helper');
+    }
+  }
+  const currentSsh = await config(['--get', 'core.sshCommand']);
+  const existingSsh = currentSsh.success ? currentSsh.stdout.trim() : '';
+  const oursSsh = /ssh-wrapper\.js/.test(existingSsh);
+  if (sshCommand) {
+    if (existingSsh !== sshCommand) {
+      const written = await config(['core.sshCommand', sshCommand]);
+      if (!written.success) throw new Error(written.stderr || 'Failed to write the repository SSH command');
+    }
+  } else if (oursSsh) {
+    const removed = await config(['--unset', 'core.sshCommand']);
+    if (!removed.success && removed.exitCode !== 5) throw new Error(removed.stderr || 'Failed to remove the repository SSH command');
+  }
+  return true;
+}
+
 // Beyond this many untracked files, a directory stays one `dir/` entry in
 // status. Every file would otherwise become a row, a diff request, and a stat
 // on the server, and the only directories that large are ones that belong in
