@@ -7,9 +7,8 @@ import type {
   SourceControlProviderBindingMutation,
   SourceControlRepositoryBinding,
 } from '@/lib/api/types';
-import { applyIdentityToRepository, auxiliaryGrantIntent, describeIdentityApplicability, grantIdentityToRemote, identityApplicability, isSignatureOnlyIdentity, needsSystemAcknowledgement } from './applyIdentity';
+import { applyIdentityToRepository, auxiliaryGrantIntent, describeIdentityApplicability, grantIdentityToRemote, identityApplicability, isSignatureOnlyIdentity } from './applyIdentity';
 import { repositoryBindingOwner } from './repository-binding';
-import { usePendingOpenCodeRestartStore } from '@/stores/usePendingOpenCodeRestartStore';
 
 const account = { provider: 'github', instance: 'github.com', accountId: 'occred:v1:github:one:r1' } as const;
 const endpoint = (fingerprint: string) => ({ displayUrl: 'https://github.com/team/repo.git', fingerprint });
@@ -111,27 +110,6 @@ describe('identityApplicability', () => {
   });
 });
 
-describe('needsSystemAcknowledgement', () => {
-  const system = identity({ id: 'global', transport: 'system' });
-
-  test('asks before the identity that uses whatever the machine holds', () => {
-    expect(needsSystemAcknowledgement(system, true)).toBe(true);
-    // A stored identity that names no account is a signature, not a claim on
-    // the machine's credentials, so it asks nothing.
-    expect(needsSystemAcknowledgement(identity(), true)).toBe(false);
-  });
-
-  test('asks nothing when the identity names its own credentials', () => {
-    expect(needsSystemAcknowledgement(identity({ account, transport: 'account' }), true)).toBe(false);
-    expect(needsSystemAcknowledgement(identity({ transport: 'ssh', sshCredentialId: 'k' }), true)).toBe(false);
-    expect(needsSystemAcknowledgement(identity({ transport: 'anonymous' }), true)).toBe(false);
-  });
-
-  test('asks nothing when there is no remote to bind', () => {
-    expect(needsSystemAcknowledgement(identity({ transport: 'system' }), false)).toBe(false);
-  });
-});
-
 describe('applyIdentityToRepository', () => {
   test('writes the account, the transport and the signature from one identity', async () => {
     const { apis, providerCalls, transportCalls, authorCalls } = harness();
@@ -171,34 +149,6 @@ describe('applyIdentityToRepository', () => {
     });
   });
 
-  test('asks for an OpenCode restart when a remote first gets an HTTPS credential grant', async () => {
-    const pending = () => usePendingOpenCodeRestartStore.getState().changes.map((change) => change.id);
-    usePendingOpenCodeRestartStore.getState().clear();
-    await applyIdentityToRepository(
-      { directory: '/repo', remoteName: 'origin', identity: identity({ account, transport: 'account' }) },
-      harness().apis,
-    );
-    expect(pending().some((id) => id.startsWith('cli:agent-git:/repo:'))).toBe(true);
-
-    // A key travels over SSH and never through the credential helper.
-    usePendingOpenCodeRestartStore.getState().clear();
-    await applyIdentityToRepository(
-      { directory: '/repo', remoteName: 'origin', identity: identity({ transport: 'ssh', sshCredentialId: 'ocgit:v1:ssh:key' }) },
-      harness().apis,
-    );
-    expect(pending()).toEqual([]);
-
-    // A remote the agent already answers for needs no second restart.
-    const answered = read();
-    answered.binding!.remotes = [{ ...remote, mode: 'managed', credentialId: 'grant', readiness: 'ready' }];
-    usePendingOpenCodeRestartStore.getState().clear();
-    await applyIdentityToRepository(
-      { directory: '/repo', remoteName: 'origin', identity: identity({ account, transport: 'account' }) },
-      harness(answered).apis,
-    );
-    expect(pending()).toEqual([]);
-  });
-
   test('binds a managed key, and an SSH identity may still answer to an account', async () => {
     const { apis, transportCalls, providerCalls } = harness();
     await applyIdentityToRepository({
@@ -214,20 +164,12 @@ describe('applyIdentityToRepository', () => {
     expect(providerCalls).toHaveLength(1);
   });
 
-  test('asks before trusting whatever the machine holds', async () => {
-    const unacknowledged = harness();
-    expect(await applyIdentityToRepository(
-      { directory: '/repo', remoteName: 'origin', identity: identity({ id: 'global', transport: 'system' }) },
-      unacknowledged.apis,
-    )).toEqual({ status: 'acknowledgement-required' });
-    expect(unacknowledged.transportCalls).toEqual([]);
-    // The signature is still written: it is about who commits, not about trust.
-    expect(unacknowledged.authorCalls).toEqual(['/repo:global']);
-
+  test('writes System Git without asking: it is what a repository uses by default', async () => {
     const acknowledged = harness();
     expect(await applyIdentityToRepository({
-      directory: '/repo', remoteName: 'origin', identity: identity({ id: 'global', transport: 'system' }), acknowledgedSystem: true,
+      directory: '/repo', remoteName: 'origin', identity: identity({ id: 'global', transport: 'system' }),
     }, acknowledged.apis)).toEqual({ status: 'applied' });
+    expect(acknowledged.authorCalls).toEqual(['/repo:global']);
     expect(acknowledged.transportCalls[0]).toEqual({
       directory: '/repo', expectedRepositoryId: 'repo_one', expectedRevision: 2, expectedConfigRevision: 'config_one',
       expectedFetchFingerprint: 'fetch-one', expectedPushFingerprint: 'push-one', remote: 'origin',
@@ -256,7 +198,6 @@ describe('applyIdentityToRepository', () => {
     const { apis, providerCalls, authorCalls } = harness(read([bound]));
     await applyIdentityToRepository({
       directory: '/repo', remoteName: 'origin', identity: identity({ id: 'global', transport: 'system' }),
-      acknowledgedSystem: true,
     }, apis);
     // The account it used to answer to belonged to the identity it replaced.
     expect(providerCalls[0]).toEqual({
@@ -359,6 +300,32 @@ describe('the addresses an identity was already given', () => {
     expect(removalCalls).toEqual([]);
   });
 
+  test('an address that was never granted is granted along with the rest', async () => {
+    // A fork beside its upstream: the identity answers for both without the
+    // second being named separately.
+    const state = withFork('https://github.com/ada/repo.git');
+    state.binding!.remotes = [{ ...remote, mode: 'managed', credentialId: 'grant-origin', readiness: 'ready' }];
+    const { apis, transportCalls, removalCalls } = harness(state);
+    expect(await applyIdentityToRepository(
+      { directory: '/repo', remoteName: 'origin', identity: identity({ account: next, transport: 'account' }) },
+      apis,
+    )).toEqual({ status: 'applied' });
+    expect(transportCalls.map((call) => [call.remote, call.transport])).toEqual([['origin', 'https'], ['fork', 'https']]);
+    expect(removalCalls).toEqual([]);
+  });
+
+  test('an address that was never granted and cannot be served is left alone', async () => {
+    const state = withFork('https://gitlab.com/ada/repo.git');
+    state.binding!.remotes = [{ ...remote, mode: 'managed', credentialId: 'grant-origin', readiness: 'ready' }];
+    const { apis, transportCalls, removalCalls } = harness(state);
+    await applyIdentityToRepository(
+      { directory: '/repo', remoteName: 'origin', identity: identity({ account: next, transport: 'account' }) },
+      apis,
+    );
+    expect(transportCalls.map((call) => call.remote)).toEqual(['origin']);
+    expect(removalCalls).toEqual([]);
+  });
+
   test('lose their grant when the identity cannot serve them', async () => {
     const { apis, transportCalls, removalCalls } = harness(withFork('https://gitlab.com/ada/repo.git'));
 
@@ -434,34 +401,33 @@ describe('auxiliaryGrantIntent', () => {
   };
 
   test('an account answers over HTTPS with its own credential', () => {
-    expect(auxiliaryGrantIntent(identity({ account, transport: 'account' }), authority, false))
+    expect(auxiliaryGrantIntent(identity({ account, transport: 'account' }), authority))
       .toEqual({ ...authority, operation: 'configure', transport: 'https', credentialAccount: account });
   });
 
   test('a managed key answers over SSH', () => {
-    expect(auxiliaryGrantIntent(identity({ transport: 'ssh', sshCredentialId: 'ocgit:v1:ssh:key' }), authority, false))
+    expect(auxiliaryGrantIntent(identity({ transport: 'ssh', sshCredentialId: 'ocgit:v1:ssh:key' }), authority))
       .toEqual({ ...authority, operation: 'configure', transport: 'ssh', sshCredentialId: 'ocgit:v1:ssh:key' });
   });
 
   test('an anonymous identity reads without naming anyone', () => {
-    expect(auxiliaryGrantIntent(identity({ transport: 'anonymous' }), authority, false))
+    expect(auxiliaryGrantIntent(identity({ transport: 'anonymous' }), authority))
       .toEqual({ ...authority, operation: 'configure', transport: 'anonymous' });
   });
 
-  test('System Git is written only once someone has said so', () => {
+  test('System Git answers without a separate confirmation', () => {
     const system = identity({ id: 'global', transport: 'system' });
-    expect(auxiliaryGrantIntent(system, authority, false)).toBeNull();
-    expect(auxiliaryGrantIntent(system, authority, true))
+    expect(auxiliaryGrantIntent(system, authority))
       .toEqual({ ...authority, operation: 'configure', transport: 'system', unverifiedConfirmed: true });
   });
 
   test('names nothing when the identity carries no way to reach the endpoint', () => {
     // An identity from an earlier release claims no credentials, so confirming
     // System Git on its behalf would grant what it never named.
-    expect(auxiliaryGrantIntent(identity({ id: 'profile-1' }), authority, true)).toBeNull();
+    expect(auxiliaryGrantIntent(identity({ id: 'profile-1' }), authority)).toBeNull();
     // An account with no credential, and a key that is not there.
-    expect(auxiliaryGrantIntent(identity({ transport: 'account' }), authority, false)).toBeNull();
-    expect(auxiliaryGrantIntent(identity({ transport: 'ssh' }), authority, false)).toBeNull();
+    expect(auxiliaryGrantIntent(identity({ transport: 'account' }), authority)).toBeNull();
+    expect(auxiliaryGrantIntent(identity({ transport: 'ssh' }), authority)).toBeNull();
   });
 });
 
@@ -481,7 +447,6 @@ describe('grantIdentityToRemote', () => {
     state.binding!.remotes = [{ ...remote, mode: 'managed', credentialId: 'grant-origin', readiness: 'ready' }];
     return state;
   };
-  const pending = () => usePendingOpenCodeRestartStore.getState().changes.map((change) => change.id);
 
   test('writes the transfer half for the named remote and leaves the account alone', async () => {
     const { apis, transportCalls, providerCalls, authorCalls } = harness(withFork());
@@ -517,16 +482,11 @@ describe('grantIdentityToRemote', () => {
     expect(transportCalls).toEqual([]);
   });
 
-  test('asks before trusting whatever the machine holds', async () => {
+  test('gives System Git to another address without asking', async () => {
     const system = identity({ id: 'global', transport: 'system' });
-    const unconfirmed = harness(withFork());
-    expect(await grantIdentityToRemote({ directory: '/repo', remoteName: 'fork', identity: system }, unconfirmed.apis))
-      .toEqual({ status: 'acknowledgement-required' });
-    expect(unconfirmed.transportCalls).toEqual([]);
-
     const confirmed = harness(withFork());
     expect(await grantIdentityToRemote(
-      { directory: '/repo', remoteName: 'fork', identity: system, acknowledgedSystem: true },
+      { directory: '/repo', remoteName: 'fork', identity: system },
       confirmed.apis,
     )).toEqual({ status: 'applied' });
     expect(confirmed.transportCalls[0]).toEqual({
@@ -540,29 +500,6 @@ describe('grantIdentityToRemote', () => {
       transport: 'system',
       unverifiedConfirmed: true,
     });
-  });
-
-  test('asks for an OpenCode restart only when the new address travels over HTTPS', async () => {
-    usePendingOpenCodeRestartStore.getState().clear();
-    await grantIdentityToRemote(
-      { directory: '/repo', remoteName: 'fork', identity: identity({ account, transport: 'account' }) },
-      harness(withFork()).apis,
-    );
-    expect(pending().some((id) => id.startsWith('cli:agent-git:/repo:'))).toBe(true);
-
-    // A key travels over SSH and never through the credential helper.
-    const sshFork = withFork();
-    sshFork.repository.remotes = [remote, {
-      name: 'fork',
-      fetch: { displayUrl: 'git@github.com:ada/repo.git', fingerprint: 'fork-fetch' },
-      push: { displayUrl: 'git@github.com:ada/repo.git', fingerprint: 'fork-push' },
-    }];
-    usePendingOpenCodeRestartStore.getState().clear();
-    await grantIdentityToRemote(
-      { directory: '/repo', remoteName: 'fork', identity: identity({ transport: 'ssh', sshCredentialId: 'ocgit:v1:ssh:key' }) },
-      harness(sshFork).apis,
-    );
-    expect(pending()).toEqual([]);
   });
 
   test('reports what it could not write, and names a remote the repository does not have', async () => {
@@ -610,12 +547,9 @@ describe('signature-only identities from an earlier release', () => {
     expect(transportCalls).toEqual([]);
   });
 
-  test('is not the System identity, so it asks for no acknowledgement', () => {
+  test('is not the System identity', () => {
     expect(isSignatureOnlyIdentity(legacy)).toBe(true);
-    expect(needsSystemAcknowledgement(legacy, true)).toBe(false);
-    // The System identity still asks: it does claim the machine's credentials.
     expect(isSignatureOnlyIdentity(identity({ id: 'global', transport: 'system' }))).toBe(false);
-    expect(needsSystemAcknowledgement(identity({ id: 'global', transport: 'system' }), true)).toBe(true);
     // An identity that names an account is complete, not a signature.
     expect(isSignatureOnlyIdentity(identity({ account, transport: 'account' }))).toBe(false);
   });

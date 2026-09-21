@@ -68,7 +68,6 @@ import { createGitShellBoundaryRuntime } from '../git/shell-boundary-runtime.js'
 import { createGitAgentAuthorityStore, registerGitAgentAuthorityRoutes } from '../git/agent-authority-storage.js';
 import { createManagedSshCredentialStore } from '../git/ssh-credential-storage.js';
 import { createManagedSshInventory } from '../git/credentials.js';
-import { createSystemPushAcknowledgementStore } from '../git/system-push-acknowledgement-storage.js';
 import { createContributorProvenanceStore } from '../git/contributor-provenance-storage.js';
 import { createGitNetworkOperationStore } from '../git/network-operation-storage.js';
 import { readEffectiveGitTransportRevision } from '../git/transport-config.js';
@@ -439,10 +438,6 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       if (!profile) throw new Error('Git identity profile is unavailable');
       return profile;
     };
-    const systemPushAcknowledgements = createSystemPushAcknowledgementStore({
-      filePath: path.join(openchamberDataDir, 'git-system-push-acknowledgements.json'),
-      fsImpl: fsPromises,
-    });
     const contributorProvenance = createContributorProvenanceStore({
       filePath: path.join(openchamberDataDir, 'git-contributor-provenance.json'),
       resolveRepositoryIdentity: resolveTransportRepository,
@@ -470,7 +465,6 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       bindClonedRepository: walkthroughBindingService.bindClonedRepository,
       validateGitTransportContext: walkthroughBindingService.validateGitTransportContext,
       validateGitAuxiliaryContext: walkthroughBindingService.validateGitAuxiliaryContext,
-      systemPushAcknowledgements,
       contributorProvenance,
       resolveChangeRequestSource: walkthroughBindingService.resolveChangeRequestSource,
       credentialResolver: gitCredentialResolver,

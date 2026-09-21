@@ -83,13 +83,12 @@ export function registerGitRoutes(app, {
     else if (!storageFailure && code.includes('INVALID')) status = 400;
     else if (code.includes('STALE') || code.includes('CHANGED') || code.includes('CONFLICT')) status = 409;
     else if (code === 'AUTHENTICATION_REQUIRED') status = 401;
-    else if (code === 'ACKNOWLEDGEMENT_REQUIRED') status = 409;
     else if (code === 'DESTINATION_SELECTION_REQUIRED' || code === 'CONTRIBUTOR_MANAGED_TRANSPORT_REQUIRED') status = 409;
     else if (code === 'RUNTIME_UNSUPPORTED') status = 501;
 
     const preservedCodes = [
       'STALE_REPOSITORY', 'STALE_BINDING', 'STALE_CONFIG', 'REMOTE_CHANGED',
-      'AUTHENTICATION_REQUIRED', 'ACKNOWLEDGEMENT_REQUIRED', 'TIMEOUT', 'RUNTIME_UNSUPPORTED',
+      'AUTHENTICATION_REQUIRED', 'TIMEOUT', 'RUNTIME_UNSUPPORTED',
       'DESTINATION_SELECTION_REQUIRED', 'CONTRIBUTOR_MANAGED_TRANSPORT_REQUIRED',
     ];
     let publicCode;
@@ -110,7 +109,6 @@ export function registerGitRoutes(app, {
       STALE_CONFIG: 'Git repository configuration changed',
       REMOTE_CHANGED: 'Git remote or transport binding changed',
       AUTHENTICATION_REQUIRED: 'Git authentication is required',
-      ACKNOWLEDGEMENT_REQUIRED: 'System Git transport acknowledgement is required',
       DESTINATION_SELECTION_REQUIRED: 'Contributor push destination selection is required',
       CONTRIBUTOR_MANAGED_TRANSPORT_REQUIRED: 'Contributor transfers require managed credentials',
       TIMEOUT: 'Git network operation timed out',

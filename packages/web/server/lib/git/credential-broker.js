@@ -3,6 +3,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { normalizeGitCredentialEndpoint } from './credential-resolver.js';
+import { helperShellCommand } from './helper-launch.js';
 
 const DEFAULT_CAPACITY = 64;
 const DEFAULT_TTL_MS = 2 * 60 * 1000;
@@ -161,7 +162,7 @@ export function createGitCredentialBroker({
         used: false,
       });
       operationOwners.set(operationId, nonce);
-      const helperCommand = `!${shellQuote(process.execPath)} ${shellQuote(path.resolve(helperPath))} ${shellQuote(brokerUrl)} ${shellQuote(nonce)}`;
+      const helperCommand = `!${helperShellCommand(path.resolve(helperPath), [brokerUrl, nonce])}`;
       return Object.freeze({
         gitConfigArgs: Object.freeze([
           '-c', 'credential.helper=',

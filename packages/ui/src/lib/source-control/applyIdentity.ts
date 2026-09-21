@@ -9,7 +9,6 @@ import type {
 import { identityTransport } from '@/lib/api/git-identity';
 import { instanceHost, remoteTraits, type RemoteTraits, GLOBAL_IDENTITY_ID } from './identity';
 import { repositoryBindingOwner } from './repository-binding';
-import { recordDeferredOpenCodeRestart } from '@/lib/opencode/deferredRestart';
 
 export type IdentityApplicability =
   | { applicable: true }
@@ -43,16 +42,13 @@ export const identityApplicability = (
 
 type ApplyIdentityOutcome =
   | { status: 'applied' }
-  | { status: 'acknowledgement-required' }
   | { status: 'failed'; reason: 'binding' | 'author' };
 
 type ApplyIdentityInput = {
   directory: string;
   identity: GitIdentityProfile;
-  /** The remote the identity answers for, or null when the repository has none. */
+  /** The remote the identity's account answers for, or null when the repository has none. */
   remoteName: string | null;
-  /** Passing System Git on means the person confirmed the unverified transport. */
-  acknowledgedSystem?: boolean;
 };
 
 type ApplyIdentityAPIs = {
@@ -63,14 +59,13 @@ type ApplyIdentityAPIs = {
 /**
  * The binding an identity asks for, or null when it names nothing to bind.
  *
- * System Git is a decision about trusting whatever the machine holds, so it is
- * only written once someone has said so.
+ * System Git is what a repository uses when nothing else was chosen, so it
+ * needs no confirmation: the grant only records that this is the choice.
  */
 const transportIntent = (
   identity: GitIdentityProfile,
   read: SourceControlBindingRead,
   remoteName: string,
-  acknowledgedSystem: boolean,
   directory: string,
 ): GitTransportBindingIntent | null => {
   const remote = read.repository.remotes.find((entry) => entry.name === remoteName);
@@ -92,9 +87,7 @@ const transportIntent = (
     return { ...authority, transport: 'ssh', sshCredentialId: identity.sshCredentialId };
   }
   if (transport === 'anonymous') return { ...authority, transport: 'anonymous' };
-  if (transport === 'system' && acknowledgedSystem) {
-    return { ...authority, transport: 'system', unverifiedConfirmed: true };
-  }
+  if (transport === 'system') return { ...authority, transport: 'system', unverifiedConfirmed: true };
   return null;
 };
 
@@ -122,22 +115,6 @@ export const isSignatureOnlyIdentity = (
 ): boolean => identity.id !== GLOBAL_IDENTITY_ID && !identity.account && identityTransport(identity) === 'system';
 
 /**
- * Whether applying this identity has to be confirmed first.
- *
- * A System Git identity says "use whatever this machine holds", and
- * OpenChamber cannot tell whose credentials those are. Asking beforehand keeps
- * a cancelled choice from leaving a signature written and a transport refused.
- * A repository with no remote binds nothing, so there is nothing to confirm.
- */
-export const needsSystemAcknowledgement = (
-  identity: Pick<GitIdentityProfile, 'id' | 'account' | 'transport'>,
-  hasBindableRemote: boolean,
-): boolean => hasBindableRemote && identityTransport(identity) === 'system'
-  // A signature-only identity claims no credentials at all, so it binds
-  // nothing and there is nothing to confirm.
-  && !isSignatureOnlyIdentity(identity);
-
-/**
  * Writes one identity onto a repository.
  *
  * The three answers a repository needs — whose issues these are, how transfers
@@ -149,7 +126,7 @@ export const needsSystemAcknowledgement = (
  * missing.
  */
 export const applyIdentityToRepository = async (
-  { directory, identity, remoteName, acknowledgedSystem = false }: ApplyIdentityInput,
+  { directory, identity, remoteName }: ApplyIdentityInput,
   { git, sourceControl }: ApplyIdentityAPIs,
 ): Promise<ApplyIdentityOutcome> => {
   // The transfer half needs a remote to answer for and a runtime that holds
@@ -158,7 +135,7 @@ export const applyIdentityToRepository = async (
   // author and leaves the repository's account and transport as they were.
   let outcome: ApplyIdentityOutcome = remoteName && git.configureTransportBinding && !isSignatureOnlyIdentity(identity)
     ? await applyBinding(
-      { directory, identity, remoteName, acknowledgedSystem },
+      { directory, identity, remoteName },
       { configureTransportBinding: git.configureTransportBinding, removeTransportBinding: git.removeTransportBinding, sourceControl },
     )
     : { status: 'applied' };
@@ -190,16 +167,13 @@ type AuxiliaryGrantAuthority = Omit<GitAuxiliaryBindingIntent & { operation: 're
 export const auxiliaryGrantIntent = (
   identity: GitIdentityProfile,
   authority: AuxiliaryGrantAuthority,
-  acknowledgedSystem: boolean,
 ): GitAuxiliaryBindingIntent | null => {
   const operation = 'configure' as const;
   const transport = identityTransport(identity);
   // An identity from an earlier release claims no credentials at all, so
   // confirming System Git on its behalf would grant what it never named.
   if (isSignatureOnlyIdentity(identity)) return null;
-  if (transport === 'system') {
-    return acknowledgedSystem ? { ...authority, operation, transport, unverifiedConfirmed: true } : null;
-  }
+  if (transport === 'system') return { ...authority, operation, transport, unverifiedConfirmed: true };
   if (transport === 'account' && identity.account) {
     return { ...authority, operation, transport: 'https', credentialAccount: identity.account };
   }
@@ -224,8 +198,8 @@ export const auxiliaryGrantIntent = (
  * revisited by naming one more address.
  */
 export const grantIdentityToRemote = async (
-  { directory, identity, remoteName, acknowledgedSystem = false }: {
-    directory: string; identity: GitIdentityProfile; remoteName: string; acknowledgedSystem?: boolean;
+  { directory, identity, remoteName }: {
+    directory: string; identity: GitIdentityProfile; remoteName: string;
   },
   { git, sourceControl }: ApplyIdentityAPIs,
 ): Promise<ApplyIdentityOutcome> => {
@@ -239,25 +213,14 @@ export const grantIdentityToRemote = async (
   } catch {
     return { status: 'failed', reason: 'binding' };
   }
-  const intent = transportIntent(identity, read, remoteName, acknowledgedSystem, directory);
-  if (!intent) {
-    return identityTransport(identity) === 'system' ? { status: 'acknowledgement-required' } : { status: 'failed', reason: 'binding' };
-  }
+  const intent = transportIntent(identity, read, remoteName, directory);
+  if (!intent) return { status: 'failed', reason: 'binding' };
   const mutation = repositoryBindingOwner.captureMutation(scope, read);
-  const remoteIsHttps = read.repository.remotes.find((entry) => entry.name === remoteName)
-    ?.fetch.displayUrl.startsWith('https://') ?? false;
   let outcome: ApplyIdentityOutcome = { status: 'applied' };
   try {
     const result = await git.configureTransportBinding(intent);
     if (result.status === 'configured') {
       repositoryBindingOwner.setMutationResult(mutation, result.binding);
-      // Git in the agent's shell learns an HTTPS host only from the environment
-      // the managed OpenCode child starts with, so a newly granted one asks for
-      // a restart the way the first grant does. A key travels over SSH and
-      // never through the credential helper, so it asks for nothing.
-      if (remoteIsHttps && (intent.transport === 'https' || intent.transport === 'system')) {
-        recordDeferredOpenCodeRestart('cli', { id: `agent-git:${directory}` });
-      }
     } else {
       await repositoryBindingOwner.reconcile(mutation, sourceControl);
     }
@@ -272,8 +235,8 @@ export const grantIdentityToRemote = async (
 
 /** The account and transport half of an identity, written through the binding owner. */
 const applyBinding = async (
-  { directory, identity, remoteName, acknowledgedSystem }: {
-    directory: string; identity: GitIdentityProfile; remoteName: string; acknowledgedSystem: boolean;
+  { directory, identity, remoteName }: {
+    directory: string; identity: GitIdentityProfile; remoteName: string;
   },
   { configureTransportBinding, removeTransportBinding, sourceControl }: {
     configureTransportBinding: NonNullable<GitAPI['configureTransportBinding']>;
@@ -290,13 +253,6 @@ const applyBinding = async (
   }
   const mutation = repositoryBindingOwner.captureMutation(scope, read);
   let outcome: ApplyIdentityOutcome = { status: 'applied' };
-  // Git in the agent's shell learns about an HTTPS host only when the managed
-  // OpenCode child starts with it in its environment, so the first credential
-  // grant on a remote asks for a restart the way other configuration does.
-  const previousGrant = read.binding?.remotes.find((entry) => entry.name === remoteName);
-  const remoteIsHttps = read.repository.remotes.find((entry) => entry.name === remoteName)
-    ?.fetch.displayUrl.startsWith('https://') ?? false;
-  const agentGitAnswered = Boolean(previousGrant && (previousGrant.mode === 'managed' || previousGrant.mode === 'system'));
   try {
     // The identity is the whole answer for this repository, so an identity
     // that names no account leaves it answering to none — the account it used
@@ -321,38 +277,31 @@ const applyBinding = async (
     } else if (target) {
       read = await sourceControl.repositoryProviderBindingMutate({ ...context, operation: 'remove', target });
     }
-    const intent = transportIntent(identity, read, remoteName, acknowledgedSystem, directory);
+    const intent = transportIntent(identity, read, remoteName, directory);
     if (intent) {
       const result = await configureTransportBinding(intent);
-      if (result.status === 'configured') {
-        read = result.binding;
-        if (remoteIsHttps && !agentGitAnswered && (intent.transport === 'https' || intent.transport === 'system')) {
-          recordDeferredOpenCodeRestart('cli', { id: `agent-git:${directory}` });
-        }
-      }
-    } else if (identityTransport(identity) === 'system') {
-      outcome = { status: 'acknowledgement-required' };
+      if (result.status === 'configured') read = result.binding;
     }
-    // The identity is the whole answer for this repository, so the other
-    // addresses it was already given follow it rather than keeping the
-    // previous person's credential. One it cannot serve — another instance,
-    // an address its transport cannot reach — loses its grant instead, and is
-    // offered again beside the repository's own remotes.
-    for (const name of (read.binding?.remotes ?? []).map((entry) => entry.name)) {
+    // The identity is the whole answer for this repository, so every address
+    // it can serve follows it: a fork beside its upstream answers as the same
+    // person without being named twice. One it cannot serve — another
+    // instance, an address its transport cannot reach — keeps no grant, and
+    // the repository configuration offers it separately.
+    for (const current of read.repository.remotes) {
+      const name = current.name;
       if (name === remoteName) continue;
-      const current = read.repository.remotes.find((entry) => entry.name === name);
       const granted = read.binding?.remotes.find((entry) => entry.name === name);
       // A grant whose address moved under it, or whose credential is already
       // in question, is flagged for attention on its own and cannot be
       // rewritten from here: the authority it was written against is gone.
-      if (!current || granted?.readiness !== 'ready') continue;
+      if (granted && granted.readiness !== 'ready') continue;
       const fits = identityApplicability(identity, remoteTraits(current.fetch.displayUrl)).applicable;
-      const next = fits ? transportIntent(identity, read, name, acknowledgedSystem, directory) : null;
+      const next = fits ? transportIntent(identity, read, name, directory) : null;
       try {
         if (next) {
           const result = await configureTransportBinding(next);
           if (result.status === 'configured') read = result.binding;
-        } else if (removeTransportBinding) {
+        } else if (granted && removeTransportBinding) {
           const result = await removeTransportBinding({
             directory,
             expectedRepositoryId: read.repository.repositoryId,

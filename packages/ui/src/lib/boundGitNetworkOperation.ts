@@ -11,6 +11,7 @@ import type {
   SourceControlIdentity,
 } from '@/lib/api/types';
 import { GitNetworkOperationRequestError } from '@/lib/api/types';
+import { effectiveRepositoryBinding } from '@/lib/source-control/types';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { gitOperationRecoveryOwner } from '@/lib/source-control/git-operation-recovery';
 import { notifyGitPush } from '@/lib/gitPushEvents';
@@ -30,7 +31,6 @@ export class BoundGitNetworkOperationError extends Error {
     | 'tracking-remote-mismatch'
     | 'binding-remote-missing'
     | 'stale-runtime'
-    | 'system-transport-declined'
     | 'contributor-publish-cancelled'
     | 'contributor-publish-cancelled-after-update'
     | 'operation-unavailable'
@@ -50,8 +50,7 @@ const fail = (code: BoundGitNetworkOperationError['code']): never => {
 };
 
 const requireRemoteReady = (read: SourceControlBindingRead, name: string) => {
-  if (!read.binding) throw new BoundGitNetworkOperationError('binding-required');
-  const grant = read.binding.remotes.find((remote) => remote.name === name);
+  const grant = effectiveRepositoryBinding(read).remotes.find((remote) => remote.name === name);
   if (!grant) throw new BoundGitNetworkOperationError('binding-remote-missing');
   const remote = read.repository.remotes.find((remote) => remote.name === name);
   if (grant.readiness !== 'ready' || !remote || grant.fetch.fingerprint !== remote.fetch.fingerprint
@@ -172,39 +171,20 @@ const executePlan = async (
 // confirmed push, against the runtime captured before it started.
 const announcePush = (directory: string, capturedRuntime: string) => notifyGitPush(directory, capturedRuntime);
 
-type ConfirmSystemTransport = () => boolean | Promise<boolean>;
-
-const planWithSystemAcknowledgement = async (
+const planOperation = async (
   git: Pick<GitAPI, 'planNetworkOperation'>,
   request: GitNetworkOperationRequest,
-  confirmSystemTransport: ConfirmSystemTransport | undefined,
   runtimeKey: () => string,
   capturedRuntime: string,
   onOperation?: (read: GitOperationRead) => void,
 ): Promise<GitNetworkOperationPlan> => {
-  let plan: GitNetworkOperationPlan;
-  try {
-    plan = await gitOperationRecoveryOwner.plan(git, request, capturedRuntime, () => runtimeKey() === capturedRuntime);
-  } catch (error) {
-    if (!(error instanceof GitNetworkOperationRequestError) || error.code !== 'ACKNOWLEDGEMENT_REQUIRED') throw error;
-    if (request.operation !== 'push' && request.operation !== 'sync' && request.operation !== 'delete-remote-branch') throw error;
-    const push = request.operation === 'sync' ? request.push : request;
-    if (push.transportMode !== 'system' || !confirmSystemTransport) throw error;
-    const accepted = await confirmSystemTransport();
-    requireCurrentRuntime(runtimeKey, capturedRuntime);
-    if (!accepted) fail('system-transport-declined');
-    const acknowledgedRequest: GitNetworkOperationRequest = request.operation === 'sync'
-      ? { ...request, push: { ...request.push, acknowledgeSystemTransport: true } }
-      : { ...request, acknowledgeSystemTransport: true };
-    plan = await gitOperationRecoveryOwner.plan(git, acknowledgedRequest, capturedRuntime, () => runtimeKey() === capturedRuntime);
-  }
+  const plan = await gitOperationRecoveryOwner.plan(git, request, capturedRuntime, () => runtimeKey() === capturedRuntime);
   onOperation?.({ runtimeKey: capturedRuntime, operation: plan, availability: 'available' });
   return plan;
 };
 
 export const runBoundRemoteBranchDelete = async ({
   branch,
-  confirmSystemTransport,
   directory,
   git,
   remoteName,
@@ -212,7 +192,6 @@ export const runBoundRemoteBranchDelete = async ({
   sourceControl,
 }: {
   branch: string;
-  confirmSystemTransport?: ConfirmSystemTransport;
   directory: string;
   git: Pick<GitAPI, 'planNetworkOperation' | 'executeNetworkOperation' | 'getNetworkOperation'>;
   remoteName: string;
@@ -222,9 +201,7 @@ export const runBoundRemoteBranchDelete = async ({
   const capturedRuntime = runtimeKey();
   const bindingRead = await sourceControl.repositoryBinding(directory);
   requireCurrentRuntime(runtimeKey, capturedRuntime);
-  if (bindingRead.status === 'missing') fail('binding-required');
-  const binding = bindingRead.binding;
-  if (!binding) throw new BoundGitNetworkOperationError('binding-required');
+  const binding = effectiveRepositoryBinding(bindingRead);
   const remote = requireRemoteReady(bindingRead, remoteName.trim());
   if (remote.mode === 'anonymous') fail('anonymous-read-only');
   const branchName = branch.trim().replace(/^refs\/heads\//, '');
@@ -239,9 +216,7 @@ export const runBoundRemoteBranchDelete = async ({
     destinationRef: `refs/heads/${branchName}`,
     transportMode: remote.mode,
   };
-  const plan = await planWithSystemAcknowledgement(
-    git, request, confirmSystemTransport, runtimeKey, capturedRuntime,
-  );
+  const plan = await planOperation(git, request, runtimeKey, capturedRuntime);
   requireCurrentRuntime(runtimeKey, capturedRuntime);
   const completion = await executePlan(git, plan, runtimeKey, capturedRuntime);
   return completion;
@@ -332,8 +307,7 @@ export const runCheckoutHydration = async ({
   const capturedRuntime = runtimeKey();
   const bindingRead = await sourceControl.repositoryBinding(directory);
   requireCurrentRuntime(runtimeKey, capturedRuntime);
-  const binding = bindingRead.binding;
-  if (!binding) throw new BoundGitNetworkOperationError('binding-required');
+  const binding = effectiveRepositoryBinding(bindingRead);
   const grant = requireRemoteReady(bindingRead, parentRemoteName.trim());
   const request: GitNetworkOperationRequest = {
     operation: 'checkout-hydration',
@@ -378,8 +352,7 @@ export const buildBoundGitNetworkOperationRequest = ({
   status: GitStatus;
   targets?: GitPublishTargets;
 }): GitNetworkOperationRequest => {
-  if (bindingRead.status === 'missing') throw new BoundGitNetworkOperationError('binding-required');
-  const binding = bindingRead.binding;
+  const binding = effectiveRepositoryBinding(bindingRead);
 
   if (action === 'fetch') {
     const selectedRemote = remoteName.trim();
@@ -484,9 +457,7 @@ export const buildBoundBranchPushRequest = ({
   destinationRef: string;
   configureUpstream?: boolean;
 }): GitNetworkOperationRequest => {
-  if (bindingRead.status === 'missing') fail('binding-required');
-  const binding = bindingRead.binding;
-  if (!binding) throw new BoundGitNetworkOperationError('binding-required');
+  const binding = effectiveRepositoryBinding(bindingRead);
   const localBranch = branch.trim();
   if (!localBranch || localBranch === 'HEAD') fail('branch-required');
   requireHeadRef(destinationRef);
@@ -522,7 +493,7 @@ export type GitPublishContext = {
   action: 'push' | 'sync';
   directory: string;
   runtime: string;
-  bindingRead: Exclude<SourceControlBindingRead, { status: 'missing' }>;
+  bindingRead: SourceControlBindingRead;
   status: GitStatus;
   branches: GitBranch;
 };
@@ -550,11 +521,12 @@ export const readGitPublishContext = async ({
     sourceControl.repositoryBinding(directory), git.getGitStatus(directory), git.getGitBranches(directory),
   ]);
   requireCurrentRuntime(runtimeKey, runtime);
-  if (bindingRead.status === 'missing') throw new BoundGitNetworkOperationError('binding-required');
-  if (!bindingRead.binding.remotes.some((remote) => remote.readiness === 'ready')) {
+  const remotes = effectiveRepositoryBinding(bindingRead).remotes;
+  if (remotes.length === 0) throw new BoundGitNetworkOperationError('binding-required');
+  if (!remotes.some((remote) => remote.readiness === 'ready')) {
     throw new BoundGitNetworkOperationError('binding-needs-attention');
   }
-  if (!bindingRead.binding.remotes.some((remote) => remote.readiness === 'ready' && remote.mode !== 'anonymous')) fail('anonymous-read-only');
+  if (!remotes.some((remote) => remote.readiness === 'ready' && remote.mode !== 'anonymous')) fail('anonymous-read-only');
   if (!status.current || status.current === 'HEAD') throw new BoundGitNetworkOperationError('branch-required');
   if (status.current !== branches.current) throw new BoundGitNetworkOperationError('publish-selection-stale');
   return { action, directory, runtime, bindingRead, status, branches };
@@ -571,8 +543,8 @@ export const validateGitPublishSelection = async ({
 }): Promise<GitPublishContext> => {
   requireCurrentRuntime(runtimeKey, selection.runtime);
   const current = await readGitPublishContext({ ...selection, git, sourceControl, runtimeKey });
-  const previousBinding = selection.bindingRead.binding;
-  const binding = current.bindingRead.binding;
+  const previousBinding = effectiveRepositoryBinding(selection.bindingRead);
+  const binding = effectiveRepositoryBinding(current.bindingRead);
   if (current.status.current !== selection.status.current
     || current.status.tracking !== selection.status.tracking
     || binding.repositoryId !== previousBinding.repositoryId
@@ -608,7 +580,7 @@ export const prepareGitPublish = async ({
 };
 
 export const runPreparedGitPublish = async ({
-  selection, git, sourceControl, runtimeKey = getRuntimeKey, confirmSystemTransport, allowNewCommit = false, assertCurrent, onOperation,
+  selection, git, sourceControl, runtimeKey = getRuntimeKey, allowNewCommit = false, assertCurrent, onOperation,
 }: BoundGitNetworkDependencies & {
   selection: GitPublishSelection;
   git: Pick<GitAPI, 'getGitStatus' | 'getGitBranches' | 'planNetworkOperation' | 'executeNetworkOperation' | 'getNetworkOperation'>;
@@ -623,7 +595,7 @@ export const runPreparedGitPublish = async ({
       ...current, branch: current.status.current, remoteName: selection.targets.push.remoteName,
       destinationRef: selection.targets.push.ref, configureUpstream: !current.status.tracking,
     });
-  const plan = await planWithSystemAcknowledgement(git, request, confirmSystemTransport, runtimeKey, selection.runtime, onOperation);
+  const plan = await planOperation(git, request, runtimeKey, selection.runtime, onOperation);
   requireCurrentRuntime(runtimeKey, selection.runtime);
   assertCurrent?.();
   const completion = await executePlan(git, plan, runtimeKey, selection.runtime, onOperation);
@@ -662,7 +634,6 @@ type BoundGitNetworkDependencies = {
   git: Pick<GitAPI, 'planNetworkOperation' | 'executeNetworkOperation' | 'getNetworkOperation'>;
   onOperation?: (read: GitOperationRead) => void;
   runtimeKey?: () => string;
-  confirmSystemTransport?: ConfirmSystemTransport;
 };
 
 export const runBoundGitNetworkOperation = async ({
@@ -674,7 +645,6 @@ export const runBoundGitNetworkOperation = async ({
   sourceControl,
   git,
   runtimeKey = getRuntimeKey,
-  confirmSystemTransport,
   targets,
   onOperation,
 }: {
@@ -690,9 +660,7 @@ export const runBoundGitNetworkOperation = async ({
   requireCurrentRuntime(runtimeKey, capturedRuntime);
 
   const request = buildBoundGitNetworkOperationRequest({ action, bindingRead, directory, fetchTarget, remoteName, status, targets });
-  const plan = await planWithSystemAcknowledgement(
-    git, request, confirmSystemTransport, runtimeKey, capturedRuntime, onOperation,
-  );
+  const plan = await planOperation(git, request, runtimeKey, capturedRuntime, onOperation);
   requireCurrentRuntime(runtimeKey, capturedRuntime);
 
   const completion = await executePlan(git, plan, runtimeKey, capturedRuntime, onOperation);
@@ -729,7 +697,6 @@ export const runContributorPush = async ({
     sourceControl.repositoryBinding(directory), initialDestinations ?? git.listContributorDestinations(directory),
   ]);
   requireCurrentRuntime(runtimeKey, capturedRuntime);
-  if (bindingRead.status === 'missing') fail('binding-required');
   const destinations = requireContributorDestinations(listedDestinations, 'binding-required');
   const selectedName = await choose(destinations.candidates);
   requireCurrentRuntime(runtimeKey, capturedRuntime);
@@ -779,7 +746,6 @@ export const runContributorAwareSync = async ({
   git,
   choose,
   runtimeKey = getRuntimeKey,
-  confirmSystemTransport,
   targets,
   onOperation,
 }: {
@@ -791,7 +757,6 @@ export const runContributorAwareSync = async ({
   onOperation?: (read: GitOperationRead) => void;
   choose: (candidates: ContributorDestinations['candidates']) => string | null | Promise<string | null>;
   runtimeKey?: () => string;
-  confirmSystemTransport?: ConfirmSystemTransport;
   targets?: GitPublishTargets;
 }): Promise<GitNetworkOperation> => {
   const capturedRuntime = runtimeKey();
@@ -800,7 +765,7 @@ export const runContributorAwareSync = async ({
   if (destinations.kind === 'ordinary') {
     return runBoundGitNetworkOperation({
       action: 'sync', directory, remoteName, status, sourceControl, git, runtimeKey,
-      confirmSystemTransport, targets, onOperation,
+      targets, onOperation,
     });
   }
 
@@ -808,7 +773,7 @@ export const runContributorAwareSync = async ({
   if (updateRequired) {
     await runBoundGitNetworkOperation({
       action: 'pull', directory, remoteName, status, sourceControl, git, runtimeKey,
-      confirmSystemTransport, onOperation,
+      onOperation,
     });
     requireCurrentRuntime(runtimeKey, capturedRuntime);
     destinations = await git.listContributorDestinations(directory);
@@ -837,7 +802,6 @@ export const runContributorAwarePush = async ({
   git,
   choose,
   runtimeKey = getRuntimeKey,
-  confirmSystemTransport,
   destinationRef,
   onOperation,
 }: {
@@ -849,7 +813,6 @@ export const runContributorAwarePush = async ({
   onOperation?: (read: GitOperationRead) => void;
   choose: (candidates: ContributorDestinations['candidates']) => string | null | Promise<string | null>;
   runtimeKey?: () => string;
-  confirmSystemTransport?: ConfirmSystemTransport;
   destinationRef?: string;
 }): Promise<void> => {
   const capturedRuntime = runtimeKey();
@@ -860,9 +823,7 @@ export const runContributorAwarePush = async ({
     const bindingRead = await sourceControl.repositoryBinding(directory);
     requireCurrentRuntime(runtimeKey, capturedRuntime);
     const request = buildBoundBranchPushRequest({ bindingRead, branch, directory, remoteName, destinationRef, configureUpstream: true });
-    const plan = await planWithSystemAcknowledgement(
-      git, request, confirmSystemTransport, runtimeKey, capturedRuntime, onOperation,
-    );
+    const plan = await planOperation(git, request, runtimeKey, capturedRuntime, onOperation);
     requireCurrentRuntime(runtimeKey, capturedRuntime);
     await executePlan(git, plan, runtimeKey, capturedRuntime, onOperation);
     announcePush(directory, capturedRuntime);

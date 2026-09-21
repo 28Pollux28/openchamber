@@ -78,6 +78,20 @@ describe('explicit remote transport configuration', () => {
     return { store, service, input, resolveTransportRepository, readTransportAccount, files };
   };
 
+  it('answers for every remote of an unconfigured repository with the machine\'s own Git', async () => {
+    const { service, input } = await setup();
+    const authority = { directory: '/repo', repositoryId: context.repositoryId, bindingRevision: 0,
+      configRevision: context.configRevision, remote: 'origin', endpointKind: 'push' };
+    expect(await service.validateGitTransportContext(authority)).toMatchObject({
+      transportMode: 'system', endpointFingerprint: context.remotes[0].push.fingerprint,
+    });
+    expect(await service.validateGitTransportContext(authority)).not.toHaveProperty('credentialId');
+    // A plan made against the unbound state does not survive a configuration.
+    await service.configureTransportBinding(input);
+    await expect(service.validateGitTransportContext(authority)).rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_STALE' });
+    await expect(service.validateGitTransportContext({ ...authority, remote: 'nowhere' })).rejects.toMatchObject({ code: 'SOURCE_CONTROL_BINDING_STALE' });
+  });
+
   it('creates an explicit System grant without a provider or credential lookup', async () => {
     const { service, input, readTransportAccount } = await setup();
     const after = await service.configureTransportBinding(input);

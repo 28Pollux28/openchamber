@@ -295,7 +295,6 @@ export function createNetworkOperationPlanner({
   validateGitTransportContext,
   validateManagedSshCredential,
   resolveSourceControlAccount,
-  systemPushAcknowledgements,
   contributorProvenance,
   resolveRef,
   resolveSymbolicRef = async () => null,
@@ -307,8 +306,6 @@ export function createNetworkOperationPlanner({
   pathImpl = path,
 } = {}) {
   if (!(validateGitTransportContext instanceof Function)
-    || !(systemPushAcknowledgements?.isAcknowledged instanceof Function)
-    || !(systemPushAcknowledgements?.acknowledge instanceof Function)
     || !(resolveRef instanceof Function)
     || !(resolveSymbolicRef instanceof Function)
     || !(idFactory instanceof Function)) {
@@ -376,7 +373,7 @@ export function createNetworkOperationPlanner({
       || !hasExactKeys(input.pull, ['destinationRef'])
       || !isPlainObject(input.push)
       || !hasExactKeys(input.push, ['remote', 'sourceRef', 'destinationRef', 'transportMode'], [
-        'forceWithLease', 'acknowledgeSystemTransport',
+        'forceWithLease',
       ])) {
       throw planError('Git sync targets are invalid');
     }
@@ -393,10 +390,6 @@ export function createNetworkOperationPlanner({
     const fetchTransportMode = parseTransportMode(input.fetch.transportMode);
     const pushTransportMode = parseTransportMode(input.push.transportMode);
     if (pushTransportMode === 'anonymous') throw planError('Anonymous Git transport is read-only', 400, 'INVALID_REQUEST');
-    if (input.push.acknowledgeSystemTransport !== undefined
-      && !isBoolean(input.push.acknowledgeSystemTransport)) {
-      throw planError('acknowledgeSystemTransport is invalid');
-    }
     let forceWithLease;
     if (input.push.forceWithLease !== undefined) {
       if (!isPlainObject(input.push.forceWithLease)
@@ -406,9 +399,6 @@ export function createNetworkOperationPlanner({
       forceWithLease = {
         expectedRemoteSha: parseSha(input.push.forceWithLease.expectedRemoteSha, 'expectedRemoteSha'),
       };
-    }
-    if (pushTransportMode === 'managed' && input.push.acknowledgeSystemTransport !== undefined) {
-      throw planError('acknowledgeSystemTransport is not allowed for managed transport');
     }
 
     const authorityInput = (remote, endpointKind) => ({
@@ -438,19 +428,6 @@ export function createNetworkOperationPlanner({
     };
     const fetchTransportRevision = validateAuthority(fetchAuthority, fetchRemote, fetchTransportMode);
     const pushTransportRevision = validateAuthority(pushAuthority, pushRemote, pushTransportMode);
-    if (pushTransportMode === 'system') {
-      const acknowledged = await systemPushAcknowledgements.isAcknowledged(
-        repositoryId, pushRemote.name, pushAuthority.endpointFingerprint, pushTransportRevision,
-      );
-      if (!acknowledged && input.push.acknowledgeSystemTransport !== true) {
-        throw planError('System Git transport acknowledgement is required', 409, 'ACKNOWLEDGEMENT_REQUIRED');
-      }
-      if (!acknowledged) {
-        await systemPushAcknowledgements.acknowledge(
-          repositoryId, pushRemote.name, pushAuthority.endpointFingerprint, pushTransportRevision,
-        );
-      }
-    }
     const currentHeadRef = await resolveSymbolicRef(directory);
     if (currentHeadRef !== pullDestinationRef) {
       throw planError('Sync destination is not the checked out branch', 409, 'GIT_NETWORK_OPERATION_AUTHORITY_CHANGED');
@@ -525,8 +502,7 @@ export function createNetworkOperationPlanner({
     const remoteFetch = input.operation === 'fetch' && input.fetchScope === 'remote';
     const pushMutation = input.operation === 'push' || input.operation === 'delete-remote-branch';
     const optional = input.operation === 'push'
-      ? ['forceWithLease', 'configureUpstream', 'acknowledgeSystemTransport', 'destinationSelectionId'] : [];
-    if (input.operation === 'delete-remote-branch') optional.push('acknowledgeSystemTransport');
+      ? ['forceWithLease', 'configureUpstream', 'destinationSelectionId'] : [];
     if (input.operation === 'fetch') optional.push('fetchScope');
     const required = [
       'operation', 'directory', 'repositoryId', 'bindingRevision', 'configRevision',
@@ -559,10 +535,6 @@ export function createNetworkOperationPlanner({
     }
     if (contributor && transportMode === 'system') {
       throw contributorError('CONTRIBUTOR_MANAGED_TRANSPORT_REQUIRED', 'Contributor transfers require managed credentials');
-    }
-    if (input.acknowledgeSystemTransport !== undefined
-      && !isBoolean(input.acknowledgeSystemTransport)) {
-      throw planError('acknowledgeSystemTransport is invalid');
     }
     if (input.configureUpstream !== undefined && !isBoolean(input.configureUpstream)) {
       throw planError('configureUpstream is invalid');
@@ -613,24 +585,6 @@ export function createNetworkOperationPlanner({
     if (remoteFetch) {
       if (!(resolveRemoteFetchMapping instanceof Function)) throw planError('Remote Fetch mapping is unavailable', 409, 'STALE_CONFIG');
       fetchMapping = parseRemoteFetchMapping(remote.name, await resolveRemoteFetchMapping(directory, remote.name));
-    }
-    if (pushMutation) {
-      if (transportMode === 'managed' && input.acknowledgeSystemTransport !== undefined) {
-        throw planError('acknowledgeSystemTransport is not allowed for managed transport');
-      }
-      if (transportMode === 'system') {
-        const acknowledged = await systemPushAcknowledgements.isAcknowledged(
-          repositoryId, remote.name, authority.endpointFingerprint, transportRevision,
-        );
-        if (!acknowledged && input.acknowledgeSystemTransport !== true) {
-          throw planError('System Git transport acknowledgement is required', 409, 'ACKNOWLEDGEMENT_REQUIRED');
-        }
-        if (!acknowledged) {
-          await systemPushAcknowledgements.acknowledge(
-            repositoryId, remote.name, authority.endpointFingerprint, transportRevision,
-          );
-        }
-      }
     }
     const sourceSha = operation === 'push'
       ? parseSha(await resolveRef(directory, sourceRef), 'resolved source ref')

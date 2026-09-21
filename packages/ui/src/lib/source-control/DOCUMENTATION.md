@@ -242,8 +242,7 @@ Removal failure leaves the blocker in place and exposes storage recovery.
 `outcome-unknown`, failed reads, authentication failures, and `NOT_FOUND` after a
 server restart retain the reference. The UI exposes the ID, Refresh, and external
 repository/remote inspection guidance. It does not offer a forget-and-retry
-waiver: System Git credential acknowledgement does not establish an unknown
-transfer's outcome. Full terminal feedback and the local-commit notice remain
+waiver: nothing establishes an unknown transfer's outcome. Full terminal feedback and the local-commit notice remain
 mounted-view state, not persisted history.
 
 `git-operation-recovery.test.ts` covers storage failures, reload, capacity,
@@ -260,7 +259,7 @@ demand, mutation overlays, aliases, scope invalidation, conflict reconciliation
 and retention. The 100-consumer regression permits one initial request and no
 additional requests or notifications for 10,000 warm snapshot reads.
 `applyIdentity.test.ts` covers the provider/transport/author writes an identity
-produces, the System acknowledgement gate, and instance and scheme applicability;
+produces, that every remote the identity can serve follows it, and instance and scheme applicability;
 `identity.test.ts` covers remote traits and host proposal. Account cases in
 `sourceControlOAuthPolling.test.tsx` cover localized retry and runtime switching.
 These tests do not validate a packaged runtime, real credentials or browser paint.

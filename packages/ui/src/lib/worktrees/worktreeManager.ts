@@ -725,7 +725,6 @@ export async function removeProjectWorktree(project: ProjectRef, worktree: Workt
   network?: {
     sourceControl: Pick<SourceControlAPI, 'repositoryBinding'>;
     git: Pick<GitAPI, 'planNetworkOperation' | 'executeNetworkOperation' | 'getNetworkOperation'>;
-    confirmSystemTransport?: () => boolean | Promise<boolean>;
   };
 }): Promise<void> {
   const projectDirectory = normalizePath(project.path);
@@ -744,7 +743,6 @@ export async function removeProjectWorktree(project: ProjectRef, worktree: Workt
       remoteName,
       sourceControl: options.network.sourceControl,
       git: options.network.git,
-      confirmSystemTransport: options.network.confirmSystemTransport,
     });
   }
   const raw = await git.worktree.remove(projectDirectory, {

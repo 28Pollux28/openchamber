@@ -155,6 +155,12 @@ const parseAuxiliary = (value) => {
   return bindings;
 };
 
+/** The grant an unconfigured repository holds for one of its remotes. */
+const implicitSystemRemote = (remote) => Object.freeze({
+  name: remote.name, mode: 'system', readiness: 'ready',
+  fetch: { fingerprint: remote.fetch?.fingerprint }, push: { fingerprint: remote.push?.fingerprint },
+});
+
 const publicContext = (context) => {
   const remotes = context.remotes.map((remote) => {
     const fetch = { displayUrl: remote.fetch.displayUrl, fingerprint: remote.fetch.fingerprint };
@@ -383,7 +389,7 @@ export function createBindingService({
       throw transportContextError('endpointKind is invalid');
     }
     const bindingRevision = input.bindingRevision;
-    if (!Number.isInteger(bindingRevision) || bindingRevision < 1) {
+    if (!Number.isInteger(bindingRevision) || bindingRevision < 0) {
       throw transportContextError('bindingRevision is required');
     }
 
@@ -392,15 +398,20 @@ export function createBindingService({
     const current = await readCurrent(context);
     const conflict = (message) => staleBindingError(message, current);
     if (context.repositoryId !== repositoryId) throw conflict('Git transport repository changed');
-    if (!current.binding) throw conflict('Git transport repository is not bound');
-    if (current.revision !== bindingRevision || current.binding.revision !== bindingRevision) {
+    if (current.revision !== bindingRevision || (current.binding && current.binding.revision !== bindingRevision)) {
       throw conflict('Git transport binding changed');
     }
     if (context.configRevision !== configRevision) {
       throw conflict('Git transport repository remotes changed');
     }
     const repositoryRemote = context.remotes.find((candidate) => candidate.name === remote);
-    const boundRemote = current.binding.remotes.find((candidate) => candidate.name === remote);
+    // A repository nobody configured uses the machine's own Git for every
+    // remote, exactly as before bindings existed. Its revision is the store's
+    // tombstone revision, so a later configuration still invalidates a plan
+    // made against the unbound state.
+    const boundRemote = current.binding
+      ? current.binding.remotes.find((candidate) => candidate.name === remote)
+      : (repositoryRemote ? implicitSystemRemote(repositoryRemote) : null);
     if (!repositoryRemote || !boundRemote) throw conflict('Git transport remote binding changed');
     if (boundRemote.readiness !== 'ready') throw conflict('Git transport remote binding needs attention');
     const endpoint = repositoryRemote[endpointKind];

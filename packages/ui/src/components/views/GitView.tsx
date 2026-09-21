@@ -90,14 +90,13 @@ import { PublishDialog } from './git/PublishDialog';
 import { ContributorDestinationDialog } from './git/ContributorDestinationDialog';
 import { useContributorDestinationChooser } from './git/contributorDestination';
 import { RepositoryConfigurationDialog } from '@/components/sections/openchamber/SourceControlBindingSettings';
-import { applyIdentityToRepository, identityApplicability, needsSystemAcknowledgement, type IdentityApplicability, isSignatureOnlyIdentity } from '@/lib/source-control/applyIdentity';
+import { applyIdentityToRepository, identityApplicability, type IdentityApplicability, isSignatureOnlyIdentity } from '@/lib/source-control/applyIdentity';
 import { remoteTraits,
   selectableIdentities,
   identityDisplayName,
   identityAccountConnected,
   activeIdentityFor,
 } from '@/lib/source-control/identity';
-import { SystemIdentityConfirmDialog } from '@/components/views/git/SystemIdentityConfirmDialog';
 
 type SyncAction = 'fetch' | 'sync' | 'publish' | null;
 type CommitAction = 'commit' | 'commitAndPush' | null;
@@ -357,7 +356,6 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
   const [remotes, setRemotes] = React.useState<GitRemote[]>([]);
   const binding = useRepositoryBinding(gitDirectory, sourceControl, isActive);
   const [isRepositoryConfigurationOpen, setRepositoryConfigurationOpen] = React.useState(false);
-  const [pendingSystemIdentity, setPendingSystemIdentity] = React.useState<GitIdentityProfile | null>(null);
   /**
    * The remote an identity answers for: the one the binding already names, or
    * the repository's own anchor. Without one there is nothing to bind, and
@@ -1163,7 +1161,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
 
     try {
       if (action === 'sync' || action === 'publish') {
-        const execute = await publishChooser.prepare(action === 'publish' ? 'push' : 'sync', { forceChoose: forceChoose || action === 'publish', onOperation: recovery.onOperation });
+        const execute = await publishChooser.prepare(action === 'publish' ? 'push' : 'sync', { forceChoose, onOperation: recovery.onOperation });
         await execute();
       } else if (remote && status) {
         await runBoundGitNetworkOperation({
@@ -1486,18 +1484,15 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
    *
    * An identity is the account, the transport and the signature, so choosing
    * one here writes the same three answers the add and clone screens write.
-   * System Git is the exception it cannot write on its own: trusting whatever
-   * the machine holds is a separate confirmation, and the repository
-   * configuration dialog is where it is given.
    */
-  const applyIdentity = async (profile: GitIdentityProfile, acknowledgedSystem: boolean) => {
+  const handleApplyIdentity = async (profile: GitIdentityProfile) => {
     if (!gitDirectory) return;
     const runtimeKey = getRuntimeKey();
     beginIdentityApply();
 
     try {
       const outcome = await applyIdentityToRepository(
-        { directory: gitDirectory, identity: profile, remoteName: bindingRemoteName || null, acknowledgedSystem },
+        { directory: gitDirectory, identity: profile, remoteName: bindingRemoteName || null },
         { git, sourceControl },
       );
       if (getRuntimeKey() !== runtimeKey) return;
@@ -1511,16 +1506,6 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
     } finally {
       endIdentityApply();
     }
-  };
-
-  const handleApplyIdentity = async (profile: GitIdentityProfile) => {
-    // Asked before anything is written, so cancelling leaves the repository as
-    // it was rather than with a signature applied and a transport refused.
-    if (needsSystemAcknowledgement(profile, Boolean(bindingRemoteName))) {
-      setPendingSystemIdentity(profile);
-      return;
-    }
-    await applyIdentity(profile, false);
   };
 
   const localBranches = React.useMemo(() => {
@@ -2471,15 +2456,6 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
           />
 
       {/* VS Code manages Git hosting itself; the webview projects remotes as a system binding without a settings surface. */}
-      <SystemIdentityConfirmDialog
-        open={pendingSystemIdentity !== null}
-        onCancel={() => setPendingSystemIdentity(null)}
-        onConfirm={() => {
-          const profile = pendingSystemIdentity;
-          setPendingSystemIdentity(null);
-          if (profile) void applyIdentity(profile, true);
-        }}
-      />
       {!runtime.isVSCode ? <RepositoryConfigurationDialog
         open={isRepositoryConfigurationOpen}
         onOpenChange={setRepositoryConfigurationOpen}
@@ -2784,7 +2760,6 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
                 sourceControl,
                 git,
                 choose: contributorDestination.choose,
-                confirmSystemTransport: () => window.confirm(t('gitView.confirm.systemTransport')),
                 destinationRef: `refs/heads/${sourceBranch}`,
               });
               pushedRemoteName = remote.name;

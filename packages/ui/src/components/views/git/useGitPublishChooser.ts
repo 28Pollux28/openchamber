@@ -9,6 +9,25 @@ import {
 } from '@/lib/boundGitNetworkOperation';
 import { getRuntimeKey, subscribeRuntimeEndpointWillChange } from '@/lib/runtime-switch';
 import type { ContributorDestinationCandidate } from './contributorDestination';
+import { effectiveRepositoryBinding } from '@/lib/source-control/types';
+
+const obviousPublishTargets = (context: GitPublishContext): GitPublishTargets | null => {
+  const remotes = effectiveRepositoryBinding(context.bindingRead).remotes
+    .filter((remote) => remote.readiness === 'ready' && remote.mode !== 'anonymous');
+  const branch = context.status.current;
+  const tracking = context.status.tracking ?? '';
+  const tracked = remotes.find((remote) => tracking.startsWith(`${remote.name}/`));
+  if (tracked) {
+    const ref = `refs/heads/${tracking.slice(tracked.name.length + 1)}`;
+    return context.action === 'sync'
+      ? { push: { remoteName: tracked.name, ref }, fetch: { remoteName: tracked.name, ref } }
+      : { push: { remoteName: tracked.name, ref } };
+  }
+  if (context.action === 'push' && remotes.length === 1) {
+    return { push: { remoteName: remotes[0].name, ref: `refs/heads/${branch}` } };
+  }
+  return null;
+};
 
 export function useGitPublishChooser({ directory, branch, chooseContributor }: {
   directory: string | null | undefined;
@@ -52,7 +71,6 @@ export function useGitPublishChooser({ directory, branch, chooseContributor }: {
     };
     const provenance = runtime.isVSCode ? { kind: 'ordinary' as const } : await git.listContributorDestinations(directory);
     assertCurrent();
-    const confirmSystemTransport = () => window.confirm(t('gitView.confirm.systemTransport'));
     if (provenance.kind === 'contributor') {
       const status = await git.getGitStatus(directory);
       assertCurrent();
@@ -68,15 +86,15 @@ export function useGitPublishChooser({ directory, branch, chooseContributor }: {
         if (action === 'sync') {
           const binding = await sourceControl.repositoryBinding(directory);
           assertCurrent();
-          const remote = binding.binding?.remotes.find((entry) => current.tracking?.startsWith(`${entry.name}/`));
+          const remote = effectiveRepositoryBinding(binding).remotes.find((entry) => current.tracking?.startsWith(`${entry.name}/`));
           await runContributorAwareSync({
             directory, remoteName: remote?.name ?? '', status: current, git, sourceControl,
-            choose: chooseContributor, confirmSystemTransport, onOperation: options.onOperation,
+            choose: chooseContributor, onOperation: options.onOperation,
           });
         } else {
           await runContributorAwarePush({
             directory, branch: current.current, remoteName: '', git, sourceControl,
-            choose: chooseContributor, confirmSystemTransport, onOperation: options.onOperation,
+            choose: chooseContributor, onOperation: options.onOperation,
           });
         }
       };
@@ -94,6 +112,10 @@ export function useGitPublishChooser({ directory, branch, chooseContributor }: {
         action, directory, git, sourceControl,
         choose: (next) => {
           assertCurrent();
+          // One clear answer needs no dialog: the branch's own remote, or the
+          // only remote there is. The dialog is for the genuinely open case.
+          const obvious = options.forceChoose ? null : obviousPublishTargets(next);
+          if (obvious) return Promise.resolve(obvious);
           return new Promise<GitPublishTargets | null>((resolve) => {
             pending.current?.(null);
             pending.current = resolve;
@@ -107,17 +129,18 @@ export function useGitPublishChooser({ directory, branch, chooseContributor }: {
     return async () => {
       assertCurrent();
       confirmed.current = null;
-      await runPreparedGitPublish({ selection, git, sourceControl, confirmSystemTransport, allowNewCommit: options.beforeCommit, assertCurrent, onOperation: options.onOperation });
+      await runPreparedGitPublish({ selection, git, sourceControl, allowNewCommit: options.beforeCommit, assertCurrent, onOperation: options.onOperation });
       assertCurrent();
       // A failed post-push read cannot undo a completed publication or retain reusable authority.
       const current = await readGitPublishContext({ action, directory, git, sourceControl }).catch(() => null);
       assertCurrent();
-      const previousBinding = selection.bindingRead.binding;
-      if (current && current.status.current === selection.status.current
-        && current.bindingRead.binding.repositoryId === previousBinding.repositoryId
-        && current.bindingRead.binding.revision === previousBinding.revision
-        && current.bindingRead.binding.configRevision === previousBinding.configRevision
-        && JSON.stringify(current.bindingRead.binding.remotes) === JSON.stringify(previousBinding.remotes)
+      const previousBinding = effectiveRepositoryBinding(selection.bindingRead);
+      const currentBinding = current ? effectiveRepositoryBinding(current.bindingRead) : null;
+      if (current && currentBinding && current.status.current === selection.status.current
+        && currentBinding.repositoryId === previousBinding.repositoryId
+        && currentBinding.revision === previousBinding.revision
+        && currentBinding.configRevision === previousBinding.configRevision
+        && JSON.stringify(currentBinding.remotes) === JSON.stringify(previousBinding.remotes)
         && (current.status.tracking === selection.status.tracking
           || (!selection.status.tracking && current.status.tracking === `${selection.targets.push.remoteName}/${selection.targets.push.ref.slice(11)}`))) {
         confirmed.current = { ...current, targets: selection.targets };

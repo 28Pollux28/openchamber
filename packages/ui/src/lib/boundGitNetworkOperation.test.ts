@@ -494,8 +494,17 @@ describe('bound Git network request construction', () => {
       .toBe('binding-needs-attention');
   });
 
+  test('an unbound repository uses the machine\'s own Git for every remote', () => {
+    const unbound = { ...boundRead, status: 'missing', binding: null, revision: 0 } satisfies SourceControlBindingRead;
+    const request = buildBoundGitNetworkOperationRequest({
+      action: 'sync', bindingRead: unbound, directory: '/repo', remoteName: 'upstream', status, targets,
+    });
+    expect(request).toMatchObject({ operation: 'sync', bindingRevision: 0, push: { transportMode: 'system' }, fetch: { transportMode: 'system' } });
+    expect(buildBoundBranchPushRequest({ bindingRead: unbound, branch: 'main', directory: '/repo', remoteName: 'upstream', destinationRef: 'refs/heads/main' }))
+      .toMatchObject({ bindingRevision: 0, transportMode: 'system' });
+  });
+
   for (const [label, bindingRead, code] of [
-    ['unbound repository', { ...boundRead, status: 'missing', binding: null } satisfies SourceControlBindingRead, 'binding-required'],
     ['attention-required binding', {
       ...boundRead,
       status: 'needs-attention',
@@ -628,7 +637,7 @@ describe('explicit publication selection', () => {
       const dependencies = { directory: '/repo', git, sourceControl: { repositoryBinding: async () => bindingRead }, runtimeKey: () => 'runtime-one' };
       const selection = await prepareGitPublish({
         ...dependencies, action: 'push', choose: async (context) => {
-          expect(context.bindingRead.binding.providers).toEqual([]);
+          expect(context.bindingRead.binding?.providers).toEqual([]);
           expect(context.branches).toBe(branches);
           expect(requests).toHaveLength(0);
           expect(executions).toBe(0);
@@ -898,18 +907,26 @@ describe('bound Git network operation runtime safety', () => {
     }]);
   });
 
-  test('does not plan checkout hydration without a current repository binding', async () => {
-    let plans = 0;
-    await expect(runCheckoutHydration({
+  test('plans checkout hydration for an unbound repository through the machine\'s own Git', async () => {
+    const hydrationPlan: GitNetworkOperationPlan = {
+      ...plan,
+      transport: { mode: 'system', verification: { status: 'unverified', reason: 'system-credentials' } },
+      target: {
+        operation: 'checkout-hydration', repositoryId: 'repository-one', bindingRevision: 0,
+        configRevision: 'config-one', remote: { name: 'upstream', endpoint: FETCH_ENDPOINT }, requirements: [],
+      },
+    };
+    const requests: GitNetworkOperationRequest[] = [];
+    await runCheckoutHydration({
       directory: '/repo', parentRemoteName: 'upstream', runtimeKey: () => 'runtime-one',
-      sourceControl: { repositoryBinding: async () => ({ ...boundRead, status: 'missing', binding: null }) },
+      sourceControl: { repositoryBinding: async () => ({ ...boundRead, status: 'missing', binding: null, revision: 0 }) },
       git: {
-        planNetworkOperation: async () => { plans += 1; return plan; },
-        executeNetworkOperation: async () => plan,
+        planNetworkOperation: async (request) => { requests.push(request); return hydrationPlan; },
+        executeNetworkOperation: async () => ({ ...hydrationPlan, state: 'succeeded', hydration: { status: 'not-needed', submodules: [], lfs: [] } }),
         getNetworkOperation,
       },
-    })).rejects.toThrow('binding-required');
-    expect(plans).toBe(0);
+    });
+    expect(requests[0]).toMatchObject({ operation: 'checkout-hydration', bindingRevision: 0, remote: { name: 'upstream' } });
   });
 
   test('plans and executes clone explicitly with System transport', async () => {
@@ -1311,52 +1328,6 @@ describe('bound Git network operation runtime safety', () => {
       sourceRef: 'refs/heads/new-branch', destinationRef: 'refs/heads/new-branch',
       transportMode: 'managed', configureUpstream: true,
     });
-  });
-
-  test('retries the same System push authority only after explicit acknowledgement', async () => {
-    const systemRead: SourceControlBindingRead = {
-      ...boundRead,
-      binding: {
-        ...boundRead.binding,
-        remotes: boundRead.binding.remotes.map((remote) => ({ ...remote, mode: 'system', credentialId: undefined })),
-      },
-    };
-    const pushPlan: GitNetworkOperationPlan = {
-      ...plan,
-      target: {
-        operation: 'push', repositoryId: 'repository-one', bindingRevision: 7, configRevision: 'config-one',
-        remote: { name: 'upstream', endpoint: PUSH_ENDPOINT }, sourceRef: 'refs/heads/new-branch',
-        destinationRef: 'refs/heads/new-branch', configureUpstream: true,
-      },
-      transport: { mode: 'system', verification: { status: 'unverified', reason: 'system-credentials' } },
-    };
-    const requests: GitNetworkOperationRequest[] = [];
-    let confirmations = 0;
-    await runContributorAwarePush({
-      directory: '/repo', branch: 'new-branch', remoteName: 'upstream',
-      destinationRef: 'refs/heads/new-branch',
-      sourceControl: { repositoryBinding: async () => systemRead },
-      git: {
-        listContributorDestinations: async () => ({ kind: 'ordinary' }),
-        issueContributorDestination: async () => { throw new Error('not expected'); },
-        planNetworkOperation: async (request) => {
-          requests.push(request);
-          if (requests.length === 1) {
-            throw new GitNetworkOperationRequestError('ACKNOWLEDGEMENT_REQUIRED', 'acknowledgement required', 409);
-          }
-          return pushPlan;
-        },
-        executeNetworkOperation: async () => ({ ...pushPlan, state: 'succeeded' }),
-        getNetworkOperation,
-      },
-      choose: () => null,
-      confirmSystemTransport: () => { confirmations += 1; return true; },
-      runtimeKey: () => 'runtime-one',
-    });
-
-    expect(confirmations).toBe(1);
-    expect(requests).toHaveLength(2);
-    expect(requests[1]).toEqual({ ...requests[0], acknowledgeSystemTransport: true });
   });
 
   test('plans and executes one operation while the runtime remains current', async () => {

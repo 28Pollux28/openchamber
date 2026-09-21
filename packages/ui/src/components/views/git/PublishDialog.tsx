@@ -13,6 +13,7 @@ import {
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import type { GitPublishContext, GitPublishTargets } from '@/lib/boundGitNetworkOperation';
+import { effectiveRepositoryBinding } from '@/lib/source-control/types';
 
 /** Dialog controls fill their stacked field; the settings width cap is for wide pages. */
 const CONTROL_CLASS = 'max-w-none';
@@ -23,9 +24,11 @@ export function PublishDialog({ context, onSelect }: {
 }) {
   const { t } = useI18n();
   const id = React.useId();
-  const remotes = context.bindingRead.binding.remotes;
+  const remotes = effectiveRepositoryBinding(context.bindingRead).remotes;
   const trackedRemote = remotes.find((remote) => context.status.tracking?.startsWith(`${remote.name}/`));
-  const [pushRemote, setPushRemote] = React.useState('');
+  // The branch's own remote, or the only one there is: the dialog then asks
+  // only about what is genuinely open.
+  const [pushRemote, setPushRemote] = React.useState(trackedRemote?.name ?? (remotes.length === 1 ? remotes[0].name : ''));
   const [pushBranch, setPushBranch] = React.useState(context.status.current);
   const [fetchRemote, setFetchRemote] = React.useState(trackedRemote?.name ?? '');
   const [fetchBranch, setFetchBranch] = React.useState(trackedRemote

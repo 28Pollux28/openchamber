@@ -106,7 +106,6 @@ export const MobileDeleteWorktreeDialog: React.FC<MobileDeleteWorktreeDialogProp
       network: {
         git,
         sourceControl,
-        confirmSystemTransport: () => true,
       },
     });
 
@@ -246,11 +245,6 @@ export const MobileDeleteWorktreeDialog: React.FC<MobileDeleteWorktreeDialogProp
           <div className="flex flex-col gap-2">
             {toggle(deleteLocalBranch, setDeleteLocalBranch, t('mobile.projectEdit.deleteLocalBranch'), isProcessing)}
             {toggle(deleteRemoteBranch, setDeleteRemoteBranch, t('mobile.projectEdit.deleteRemoteBranch'), isProcessing || !remoteName)}
-            {deleteRemoteBranch ? (
-              <p className="px-1 typography-micro text-status-warning" role="note">
-                {t('gitView.confirm.systemTransport')}
-              </p>
-            ) : null}
           </div>
         ) : null}
       </div>

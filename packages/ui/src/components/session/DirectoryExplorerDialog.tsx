@@ -2,6 +2,7 @@ import React from 'react';
 import { ScrollableOverlay } from '@/components/ui/ScrollableOverlay';
 import {
   GLOBAL_IDENTITY_ID,
+  activeIdentityFor,
   isSshRemoteUrl,
   proposeIdentityForHost,
   remoteTraits,
@@ -18,11 +19,10 @@ import { GitOperationStatus } from '@/components/views/git/GitOperationStatus';
 import { useExistingRepositorySummary } from './useExistingRepositorySummary';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { identityTransport, isCompleteIdentity } from '@/lib/api/git-identity';
-import { applyIdentityToRepository, identityApplicability, type IdentityApplicability, isSignatureOnlyIdentity, needsSystemAcknowledgement } from '@/lib/source-control/applyIdentity';
+import { applyIdentityToRepository, identityApplicability, type IdentityApplicability, isSignatureOnlyIdentity } from '@/lib/source-control/applyIdentity';
 import type { GitIdentityProfile } from '@/lib/api/types';
 import { useSourceControlAuthStore, useConnectedAccountIds } from '@/stores/useSourceControlAuthStore';
 import { IdentityDropdown } from '@/components/views/git/GitHeader';
-import { Checkbox } from '@/components/ui/checkbox';
 import { useMobileAppActions } from '@/apps/mobileAppContext';
 import {
   Dialog,
@@ -214,7 +214,6 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
   // One identity carries the account, the transport and the signature, so the
   // add and clone screens ask once instead of assembling three answers.
   const [identityChoice, setIdentityChoice] = React.useState<{ key: string; id: string } | null>(null);
-  const [unverifiedConfirmed, setUnverifiedConfirmed] = React.useState(false);
   const cloneController = React.useRef<AbortController | null>(null);
   const cloneRecovery = useGitOperationRecovery(open && isCloneMode ? 'clone' : null, git, sourceControl, { kind: 'clone' });
   const [showHidden, setShowHidden] = React.useState(false);
@@ -237,7 +236,6 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     setIsCloneMode(false);
     setCloneRemoteUrl('');
     setIdentityChoice(null);
-    setUnverifiedConfirmed(false);
     setSelectedPaths([]);
     setShowHidden(false);
     requestAnimationFrame(() => focusPathInput(inputRef.current));
@@ -434,28 +432,26 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
     identityRemote ? identityApplicability(identity, identityRemote) : { applicable: true },
   [identityRemote]);
   const existingAuthor = existingRepository?.author ?? null;
+  // What the repository is signed as today, shown as it is: one of the stored
+  // identities when the author matches one, the machine's own author, or the
+  // repository's own author when it matches neither. A clone has no author
+  // yet, so it is proposed an identity that can reach the address.
   const proposedIdentity = React.useMemo(() => {
     const applicable = availableGitIdentities.filter((identity) => identityApplicabilityOf(identity).applicable);
-    // A repository already signed as one of the identities is proposed as that
-    // identity: it says what the repository is, before any host can guess.
-    const signedAs = existingAuthor
-      ? applicable.find((identity) => identity.userName === existingAuthor.userName
-        && identity.userEmail === existingAuthor.userEmail)
-      : undefined;
-    return signedAs ?? proposeIdentityForHost(applicable, identityHost, defaultGitIdentityId);
-  }, [availableGitIdentities, defaultGitIdentityId, existingAuthor, identityApplicabilityOf, identityHost]);
+    if (!isCloneMode) {
+      return activeIdentityFor(applicable, globalGitIdentity, existingAuthor, (author) => ({
+        id: 'local-config', name: author.userName, ...author, color: 'info', icon: 'user',
+      }));
+    }
+    return proposeIdentityForHost(applicable, identityHost, defaultGitIdentityId);
+  }, [availableGitIdentities, defaultGitIdentityId, existingAuthor, globalGitIdentity, identityApplicabilityOf, identityHost, isCloneMode]);
+  const identityChosen = identityChoice?.key === identityChoiceKey;
   const selectedGitIdentity = React.useMemo(() => {
-    const chosen = identityChoice?.key === identityChoiceKey
-      ? availableGitIdentities.find((identity) => identity.id === identityChoice.id)
+    const chosen = identityChosen
+      ? availableGitIdentities.find((identity) => identity.id === identityChoice?.id)
       : null;
     return chosen ?? proposedIdentity;
-  }, [availableGitIdentities, identityChoice, identityChoiceKey, proposedIdentity]);
-  // Confirming System Git is about credentials a transfer would use, so it is
-  // asked only when there is a remote to bind: a clone always has one, and a
-  // local-only repository has none and binds nothing.
-  const identityNeedsAcknowledgement = Boolean(selectedGitIdentity && needsSystemAcknowledgement(
-    selectedGitIdentity, isCloneMode || Boolean(existingRepository?.primaryRemote),
-  ));
+  }, [availableGitIdentities, identityChoice, identityChosen, proposedIdentity]);
   /**
    * How the clone authenticates, read off the identity.
    *
@@ -474,12 +470,14 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
       return { transportMode: 'managed', sshCredentialId: selectedGitIdentity.sshCredentialId };
     }
     if (transport === 'anonymous' && https) return { transportMode: 'anonymous' };
-    if (transport === 'system' && unverifiedConfirmed) return { transportMode: 'system', unverifiedConfirmed: true };
+    // System Git, and an identity from an earlier release that names no
+    // credentials of its own, clone with whatever the machine holds.
+    if (transport === 'system') return { transportMode: 'system', unverifiedConfirmed: true };
     return null;
-  }, [cloneRemoteUrl, selectedGitIdentity, unverifiedConfirmed]);
+  }, [cloneRemoteUrl, selectedGitIdentity]);
 
   const canSubmitClone = canAddProject && !runtime.isVSCode && !cloneRecovery.blocked && cloneRemoteUrl.trim().length > 0
-    && Boolean(cloneSelection) && (!identityNeedsAcknowledgement || unverifiedConfirmed);
+    && Boolean(cloneSelection);
   const highlightedRow = rows[highlightedIndex] ?? null;
   const hasHighlightedBrowseItem = Boolean(
     highlightedRow && (highlightedRow.type === 'up' || highlightedRow.type === 'directory')
@@ -635,13 +633,10 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
         });
         return;
       }
-      // A System identity proposed by default describes the repository as it
-      // is; it is written only when the person chose it or confirmed its
-      // credentials, so adding a directory never clears an author on its own.
-      const identityChosen = identityChoice?.key === identityChoiceKey;
-      const applyIdentity = selectedGitIdentity
-        && (identityChosen || selectedGitIdentity.id !== GLOBAL_IDENTITY_ID || unverifiedConfirmed);
-      if (!isCloneMode && applyIdentity && existingRepository
+      // The proposal describes the repository as it is. Nothing is written
+      // unless the person picked an identity themselves: adding a directory
+      // never rewrites its author or binds an account on its own.
+      if (!isCloneMode && identityChosen && selectedGitIdentity && existingRepository
         && existingRepository.directory === selectedTarget) {
         const outcome = await applyIdentityToRepository({
           directory: project.path,
@@ -649,7 +644,6 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
           // written, because it also says who commits there.
           remoteName: existingRepository.primaryRemote?.name ?? null,
           identity: selectedGitIdentity,
-          acknowledgedSystem: unverifiedConfirmed,
         }, { git, sourceControl });
         // The project is added either way; what could not be written is said
         // here rather than swallowed, and the Git panel can finish it.
@@ -671,7 +665,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
       cloneController.current = null;
       setIsConfirming(false);
     }
-  }, [addProject, addProjects, addedProjectPaths, canSubmitClone, cloneRecovery, cloneSelection, identityChoice, identityChoiceKey, unverifiedConfirmed, cloneRemoteUrl, existingRepository, git, handleClose, isCloneMode, isConfirming, mobileActions, openContextSurface, openProjectDraft, runtimeKey, selectedGitIdentity, selectedPaths, shouldCreateTarget, sourceControl, targetPath, t]);
+  }, [addProject, addProjects, addedProjectPaths, canSubmitClone, cloneRecovery, cloneSelection, identityChosen, cloneRemoteUrl, existingRepository, git, handleClose, isCloneMode, isConfirming, mobileActions, openContextSurface, openProjectDraft, runtimeKey, selectedGitIdentity, selectedPaths, shouldCreateTarget, sourceControl, targetPath, t]);
 
   const browseToDisplayPath = React.useCallback((displayPath: string) => {
     setQuery(ensureBrowseDirectoryPath(displayPath));
@@ -780,31 +774,20 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
    *
    * The identity says whose account it is, how transfers authenticate and who
    * commits, so the screen names the configuration rather than asking for its
-   * parts. System Git still asks: it is a decision about trusting whatever the
-   * machine holds, and choosing an identity is not the same as saying that.
+   * parts.
    */
   const identityPicker = availableGitIdentities.length ? (
     <>
       <IdentityDropdown
         activeProfile={selectedGitIdentity ?? null}
         identities={availableGitIdentities}
-        onSelect={(identity) => {
-          setIdentityChoice({ key: identityChoiceKey, id: identity.id });
-          setUnverifiedConfirmed(false);
-        }}
+        onSelect={(identity) => setIdentityChoice({ key: identityChoiceKey, id: identity.id })}
         isApplying={isConfirming}
         applicability={identityApplicabilityOf}
         triggerClassName="w-full max-w-none border border-border"
         menuAlign="start"
       />
-      {identityNeedsAcknowledgement ? (
-        <label className="flex items-start gap-2 typography-micro text-muted-foreground">
-          <Checkbox checked={unverifiedConfirmed} onChange={setUnverifiedConfirmed} disabled={isConfirming}
-            ariaLabel={t('settings.sourceControl.transport.unverifiedConfirmation')} />
-          {t('settings.sourceControl.transport.unverifiedConfirmation')}
-        </label>
-      ) : null}
-      {isCloneMode && selectedGitIdentity && !cloneSelection && !identityNeedsAcknowledgement ? (
+      {isCloneMode && cloneRemoteUrl.trim() && selectedGitIdentity && !cloneSelection ? (
         <p className="typography-micro text-muted-foreground">{t('directoryExplorerDialog.clone.identityMismatch')}</p>
       ) : null}
     </>
@@ -824,10 +807,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
             <Input
               value={cloneRemoteUrl}
               disabled={isConfirming}
-              onChange={(event) => {
-                setCloneRemoteUrl(event.target.value);
-                setUnverifiedConfirmed(false);
-              }}
+              onChange={(event) => setCloneRemoteUrl(event.target.value)}
               placeholder={t('directoryExplorerDialog.clone.remoteUrlPlaceholder')}
               aria-label={t('directoryExplorerDialog.clone.remoteUrlPlaceholder')}
               className="min-w-0 flex-1 border-border/60 bg-[var(--surface-elevated)] font-mono typography-ui-label shadow-none"

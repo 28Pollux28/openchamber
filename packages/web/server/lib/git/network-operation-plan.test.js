@@ -66,10 +66,6 @@ const makePlanner = (overrides = {}) => createNetworkOperationPlanner({
   resolveRef: vi.fn(async () => SHA),
   resolveSymbolicRef: vi.fn(async () => 'refs/heads/feature'),
   runtimeIdentity: { id: 'server_one', platform: 'web' },
-  systemPushAcknowledgements: {
-    isAcknowledged: vi.fn(async () => true),
-    acknowledge: vi.fn(async () => {}),
-  },
   idFactory: () => 'git_operation_one',
   fsImpl: { stat: vi.fn(async () => { const error = new Error('missing'); error.code = 'ENOENT'; throw error; }) },
   ...overrides,
@@ -104,7 +100,7 @@ describe('Git network operation planner', () => {
     expect(plans.publicPlan.transport).toEqual({ mode: 'anonymous', verification: { status: 'anonymous' } });
     expect(plans.internalPlan).not.toHaveProperty('credentialId');
     for (const extra of [{ credentialId: 'secret' }, { credentialAccount: {} }, { unverifiedConfirmed: true },
-      { acknowledgeSystemTransport: true }, { credentialAccount: undefined }, { unexpected: true }]) {
+      { credentialAccount: undefined }, { unexpected: true }]) {
       await expect(makePlanner().planNetworkOperation({ ...input, ...extra })).rejects.toThrow();
     }
     for (const remoteUrl of ['git@example.com:owner/repo.git', 'ssh://example.com/owner/repo.git']) {
@@ -428,117 +424,10 @@ describe('Git network operation planner', () => {
       .rejects.toMatchObject({ code: expect.any(String) });
   });
 
-  it('requires and persists acknowledgement for each system push transport revision', async () => {
-    const systemAuthority = { ...authority, transportMode: 'system', credentialId: undefined };
-    const systemPushAcknowledgements = {
-      isAcknowledged: vi.fn(async (_repositoryId, _remoteName, _endpointFingerprint, transportRevision) => (
-        transportRevision === 'transport_acknowledged'
-      )),
-      acknowledge: vi.fn(async () => {}),
-    };
-    const planner = makePlanner({
-      validateGitTransportContext: vi.fn(async () => systemAuthority),
-      systemPushAcknowledgements,
-    });
-    const input = existingInput('push', { transportMode: 'system' });
 
-    await expect(planner.planNetworkOperation(input)).rejects.toMatchObject({
-      code: 'ACKNOWLEDGEMENT_REQUIRED', status: 409,
-    });
-    await expect(planner.planNetworkOperation({ ...input, acknowledgeSystemTransport: true }))
-      .resolves.toHaveProperty('publicPlan.state', 'planned');
-    expect(systemPushAcknowledgements.isAcknowledged).toHaveBeenCalledWith(
-      'repo_one', 'upstream', authority.endpointFingerprint, 'transport_one',
-    );
-    expect(systemPushAcknowledgements.acknowledge).toHaveBeenCalledWith(
-      'repo_one', 'upstream', authority.endpointFingerprint, 'transport_one',
-    );
-    await expect(makePlanner({
-      validateGitTransportContext: vi.fn(async () => ({
-        ...systemAuthority, transportRevision: 'transport_acknowledged',
-      })),
-      systemPushAcknowledgements,
-    }).planNetworkOperation(input))
-      .resolves.toHaveProperty('publicPlan.state', 'planned');
-  });
 
-  it('keys sync acknowledgement to the exact push target rather than its fetch target', async () => {
-    const pushEndpoint = 'https://push.example.com/owner/repository.git';
-    const pushFingerprint = fingerprintRemoteUrl(pushEndpoint);
-    const systemPushAcknowledgements = {
-      isAcknowledged: vi.fn(async () => false),
-      acknowledge: vi.fn(async () => {}),
-    };
-    const validateGitTransportContext = vi.fn(async ({ endpointKind }) => endpointKind === 'push' ? {
-      ...authority,
-      endpoint: pushEndpoint,
-      endpointFingerprint: pushFingerprint,
-      transportMode: 'system',
-      credentialId: undefined,
-      transportRevision: 'transport_push',
-    } : authority);
-    const input = syncInput();
-    input.push = {
-      ...input.push,
-      remote: { name: 'publish', endpoint: { displayUrl: pushEndpoint, fingerprint: pushFingerprint } },
-      transportMode: 'system',
-    };
-    const planner = makePlanner({ validateGitTransportContext, systemPushAcknowledgements });
 
-    await expect(planner.planNetworkOperation(input)).rejects.toMatchObject({
-      code: 'ACKNOWLEDGEMENT_REQUIRED', status: 409,
-    });
-    await expect(planner.planNetworkOperation({
-      ...input, push: { ...input.push, acknowledgeSystemTransport: true },
-    })).resolves.toHaveProperty('publicPlan.state', 'planned');
-    expect(systemPushAcknowledgements.isAcknowledged).toHaveBeenCalledWith(
-      'repo_one', 'publish', pushFingerprint, 'transport_push',
-    );
-    expect(systemPushAcknowledgements.acknowledge).toHaveBeenCalledExactlyOnceWith(
-      'repo_one', 'publish', pushFingerprint, 'transport_push',
-    );
-    expect(systemPushAcknowledgements.isAcknowledged).not.toHaveBeenCalledWith(
-      'repo_one', 'upstream', authority.endpointFingerprint, authority.transportRevision,
-    );
-  });
 
-  it('rejects acknowledgement on managed push and every non-push operation', async () => {
-    await expect(makePlanner().planNetworkOperation(existingInput('push', { acknowledgeSystemTransport: true })))
-      .rejects.toMatchObject({ code: 'INVALID_GIT_NETWORK_OPERATION' });
-    await expect(makePlanner().planNetworkOperation(existingInput('fetch', { acknowledgeSystemTransport: true })))
-      .rejects.toMatchObject({ code: 'INVALID_GIT_NETWORK_OPERATION' });
-  });
-
-  it('fails closed when acknowledgement persistence fails', async () => {
-    const resolveRef = vi.fn(async () => SHA);
-    const planner = makePlanner({
-      validateGitTransportContext: vi.fn(async () => ({ ...authority, transportMode: 'system', credentialId: undefined })),
-      resolveRef,
-      systemPushAcknowledgements: {
-        isAcknowledged: vi.fn(async () => false),
-        acknowledge: vi.fn(async () => { throw new Error('write failed'); }),
-      },
-    });
-    await expect(planner.planNetworkOperation(existingInput('push', {
-      transportMode: 'system', acknowledgeSystemTransport: true,
-    }))).rejects.toThrow('write failed');
-    expect(resolveRef).not.toHaveBeenCalled();
-  });
-
-  it('fails closed when acknowledgement state is malformed', async () => {
-    const resolveRef = vi.fn(async () => SHA);
-    const planner = makePlanner({
-      validateGitTransportContext: vi.fn(async () => ({ ...authority, transportMode: 'system', credentialId: undefined })),
-      resolveRef,
-      systemPushAcknowledgements: {
-        isAcknowledged: vi.fn(async () => { throw Object.assign(new Error('malformed'), { code: 'SYSTEM_PUSH_ACKNOWLEDGEMENT_STORE_INVALID' }); }),
-        acknowledge: vi.fn(async () => {}),
-      },
-    });
-    await expect(planner.planNetworkOperation(existingInput('push', { transportMode: 'system' })))
-      .rejects.toMatchObject({ code: 'SYSTEM_PUSH_ACKNOWLEDGEMENT_STORE_INVALID' });
-    expect(resolveRef).not.toHaveBeenCalled();
-  });
 
   it('blocks planning when effective transport configuration cannot be queried', async () => {
     const privateFailure = new Error('/private/included.gitconfig is invalid');

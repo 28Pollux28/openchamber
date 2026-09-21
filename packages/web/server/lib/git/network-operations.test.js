@@ -168,10 +168,6 @@ const setup = ({ mode = 'managed', transport = 'https', credentialId = 'opaque-c
     validateGitTransportContext,
     validateManagedSshCredential,
     resolveSourceControlAccount,
-    systemPushAcknowledgements: {
-      isAcknowledged: vi.fn(async () => true),
-      acknowledge: vi.fn(async () => {}),
-    },
     resolveRef,
     resolveSymbolicRef,
     credentialResolver,
@@ -232,7 +228,6 @@ const createLfsPublicationFixture = async ({ transport = 'https', timeoutMs, ord
     const service = createNetworkOperations({
       validateGitTransportContext,
       validateGitAuxiliaryContext, credentialResolver, credentialBroker: broker,
-      systemPushAcknowledgements: { isAcknowledged: async () => true, acknowledge: async () => {} },
       runtimeIdentity: { id: 'fixture', platform: 'web' }, inheritedEnv: fixture.env,
       timeoutMs, auditStore,
       spawnImpl: (binary, args, options) => {
@@ -346,7 +341,6 @@ describe('Git network operations', () => {
       const destination = path.join(fixture.parent, 'checkout');
       const service = createNetworkOperations({
         validateGitTransportContext: async () => ({ endpoint, endpointFingerprint: fingerprintRemoteUrl(endpoint), transportMode: 'anonymous', transportRevision: 'one' }),
-        systemPushAcknowledgements: { isAcknowledged: async () => false, acknowledge: async () => { throw new Error('No System acknowledgement'); } },
         credentialResolver, bindClonedRepository: binding.bindClonedRepository,
         validateGitAuxiliaryContext: binding.validateGitAuxiliaryContext,
         runtimeIdentity: { id: 'public-https-test', platform: 'web' },
@@ -499,7 +493,6 @@ describe('Git network operations', () => {
           expect(rawEndpoint).toBe(endpoint);
           return { endpoint, endpointFingerprint: fingerprintRemoteUrl(endpoint), transportMode: 'managed', credentialId: 'lfs-only', transportRevision: 'transport_one' };
         },
-        systemPushAcknowledgements: { isAcknowledged: async () => true, acknowledge: async () => {} },
         runtimeIdentity: { id: 'fixture', platform: 'web' }, inheritedEnv: { ...fixture.env, LFS_DEBUG_HTTP: '1', GIT_LFS_SKIP_PUSH: '1' },
         timeoutMs: 15_000,
         spawnImpl: (binary, args, options) => {
@@ -1125,10 +1118,6 @@ describe('Git network operations', () => {
     };
     const service = createNetworkOperations({
       validateGitTransportContext: async () => authority,
-      systemPushAcknowledgements: {
-        isAcknowledged: async () => true,
-        acknowledge: async () => {},
-      },
       resolveRef: async () => SHA,
       resolveSymbolicRef: async () => 'refs/heads/published',
       credentialResolver: {
@@ -1243,10 +1232,6 @@ describe('Git network operations', () => {
     };
     const service = createNetworkOperations({
       validateGitTransportContext: async () => authority,
-      systemPushAcknowledgements: {
-        isAcknowledged: async () => true,
-        acknowledge: async () => {},
-      },
       resolveRef: async () => SHA,
       resolveSymbolicRef: async () => 'refs/heads/published',
       credentialResolver: {
@@ -1345,7 +1330,6 @@ process.exit(safe ? 0 : 1);
     };
     const service = createNetworkOperations({
       validateGitTransportContext: vi.fn(async () => authority),
-      systemPushAcknowledgements: { isAcknowledged: async () => true, acknowledge: async () => {} },
       resolveRef: async () => SHA,
       resolveSymbolicRef: async () => 'refs/heads/published',
       credentialResolver: { resolve: async () => ({
@@ -2024,7 +2008,6 @@ process.exit(safe ? 0 : 1);
     const calls = [];
     const operations = createNetworkOperations({
       validateGitTransportContext, credentialResolver, inheritedEnv: env,
-      systemPushAcknowledgements: { isAcknowledged: async () => true, acknowledge: async () => {} },
       runtimeIdentity: { id: 'fixture', platform: 'web' },
       spawnImpl: (binary, args, options) => {
         calls.push(args);
@@ -2102,7 +2085,6 @@ process.exit(safe ? 0 : 1);
     const operations = createNetworkOperations({
       validateGitTransportContext: async () => ({ endpoint: ENDPOINT, endpointFingerprint: fingerprintRemoteUrl(ENDPOINT),
         transportMode: 'managed', transportRevision: 'one', credentialId: 'selected' }),
-      systemPushAcknowledgements: { isAcknowledged: async () => true, acknowledge: async () => {} },
       credentialResolver: { resolve: async () => ({ transport: 'https', username: 'fixture', password: 'fixture' }) },
       credentialBroker, inheritedEnv: { ...env, GIT_ASKPASS: executable, SSH_AUTH_SOCK: '/ambient-agent' },
       runtimeIdentity: { id: 'fixture', platform: 'web' },
@@ -2249,7 +2231,6 @@ process.exit(safe ? 0 : 1);
     const calls = [];
     const service = createNetworkOperations({
       validateGitTransportContext: async () => { throw new Error('clone must not resolve a parent binding'); },
-      systemPushAcknowledgements: { isAcknowledged: async () => true, acknowledge: async () => {} },
       credentialResolver: { resolve: async () => { throw new Error('regular clone must not resolve LFS credentials'); } },
       bindClonedRepository: async () => {},
       runtimeIdentity: { id: 'fixture', platform: 'web' },

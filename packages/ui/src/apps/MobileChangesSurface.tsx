@@ -21,7 +21,7 @@ import { useContributorDestinationChooser } from '@/components/views/git/contrib
 import { RepositoryConfigurationDialog } from '@/components/sections/openchamber/SourceControlBindingSettings';
 import { IdentityDropdown } from '@/components/views/git/GitHeader';
 import { useGitIdentitiesStore } from '@/stores/useGitIdentitiesStore';
-import { applyIdentityToRepository, identityApplicability, needsSystemAcknowledgement, isSignatureOnlyIdentity } from '@/lib/source-control/applyIdentity';
+import { applyIdentityToRepository, identityApplicability, isSignatureOnlyIdentity } from '@/lib/source-control/applyIdentity';
 import { remoteTraits,
   selectableIdentities,
   identityDisplayName,
@@ -29,7 +29,6 @@ import { remoteTraits,
   activeIdentityFor,
 } from '@/lib/source-control/identity';
 import { useConnectedAccountIds, useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
-import { SystemIdentityConfirmDialog } from '@/components/views/git/SystemIdentityConfirmDialog';
 import type { GitIdentityProfile } from '@/lib/api/types';
 import { PierreDiffViewer } from '@/components/views/PierreDiffViewer';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
@@ -149,7 +148,6 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
   const currentIdentity = useGitIdentity(currentDirectory || null);
   const [isRepositoryConfigurationOpen, setRepositoryConfigurationOpen] = React.useState(false);
   const [isApplyingIdentity, setIsApplyingIdentity] = React.useState(false);
-  const [pendingSystemIdentity, setPendingSystemIdentity] = React.useState<GitIdentityProfile | null>(null);
   const gitIdentityProfiles = useGitIdentitiesStore((state) => state.profiles);
   const globalGitIdentity = useGitIdentitiesStore((state) => state.globalIdentity);
   const loadGitIdentityProfiles = useGitIdentitiesStore((state) => state.loadProfiles);
@@ -178,12 +176,12 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
    * screens write. System Git is the exception: trusting whatever the machine
    * holds is confirmed in the repository configuration, not by a menu pick.
    */
-  const applyIdentity = async (profile: GitIdentityProfile, acknowledgedSystem: boolean) => {
+  const handleApplyIdentity = async (profile: GitIdentityProfile) => {
     if (!currentDirectory || isApplyingIdentity) return;
     setIsApplyingIdentity(true);
     try {
       const outcome = await applyIdentityToRepository(
-        { directory: currentDirectory, identity: profile, remoteName: effectiveRemotes[0]?.name ?? null, acknowledgedSystem },
+        { directory: currentDirectory, identity: profile, remoteName: effectiveRemotes[0]?.name ?? null },
         { git, sourceControl },
       );
       if (outcome.status === 'failed') toast.error(t('gitView.toast.applyIdentityFailed'));
@@ -193,15 +191,6 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     }
   };
 
-  const handleApplyIdentity = async (profile: GitIdentityProfile) => {
-    // Asked before anything is written, so cancelling leaves the repository as
-    // it was rather than with a signature applied and a transport refused.
-    if (needsSystemAcknowledgement(profile, effectiveRemotes.length > 0)) {
-      setPendingSystemIdentity(profile);
-      return;
-    }
-    await applyIdentity(profile, false);
-  };
   const isGitRepo = useIsGitRepo(currentDirectory || null);
   const isLoadingStatus = useGitLoadingStatus(currentDirectory || null);
   const setActiveDirectory = useGitStore((state) => state.setActiveDirectory);
@@ -505,7 +494,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     const actionLabel = t(action === 'fetch' ? 'gitView.sync.fetch' : action === 'publish' ? 'gitView.publish.title' : 'gitView.sync.syncChanges');
     try {
       if (action === 'sync' || action === 'publish') {
-        const execute = await publishChooser.prepare(action === 'publish' ? 'push' : 'sync', { forceChoose: forceChoose || action === 'publish', onOperation: recovery.onOperation });
+        const execute = await publishChooser.prepare(action === 'publish' ? 'push' : 'sync', { forceChoose, onOperation: recovery.onOperation });
         await execute();
       } else if (remote && status) {
         await runBoundGitNetworkOperation({
@@ -1006,15 +995,6 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
           />
         </div>
       )}
-      <SystemIdentityConfirmDialog
-        open={pendingSystemIdentity !== null}
-        onCancel={() => setPendingSystemIdentity(null)}
-        onConfirm={() => {
-          const profile = pendingSystemIdentity;
-          setPendingSystemIdentity(null);
-          if (profile) void applyIdentity(profile, true);
-        }}
-      />
       <RepositoryConfigurationDialog
         open={isRepositoryConfigurationOpen}
         onOpenChange={setRepositoryConfigurationOpen}

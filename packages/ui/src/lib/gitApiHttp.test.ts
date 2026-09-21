@@ -316,7 +316,6 @@ const pushRequest: GitNetworkOperationRequest = {
 const systemPushRequest: GitNetworkOperationRequest = {
   ...pushRequest,
   transportMode: 'system',
-  acknowledgeSystemTransport: true,
 };
 
 const syncRequest: GitNetworkOperationRequest = {
@@ -930,7 +929,7 @@ describe('gitApiHttp network operations', () => {
     }
   });
 
-  test('serializes system transport acknowledgement without expecting it in the public plan', async () => {
+  test('plans a System push and keeps its unverified transport in the public plan', async () => {
     installWindowMock();
     const calls: FetchCall[] = [];
     globalThis.fetch = (async (input, init) => {
@@ -1169,19 +1168,6 @@ describe('gitApiHttp network operations', () => {
       expect(routeError.code).toBe('RUNTIME_UNSUPPORTED');
       expect(routeError.message).toBe('Git network operations are unavailable');
       expect(routeError.status).toBe(501);
-
-      globalThis.fetch = (async () => Response.json({
-        error: 'System Git transport acknowledgement is required',
-        code: 'ACKNOWLEDGEMENT_REQUIRED',
-      }, { status: 409 })) as typeof fetch;
-      const acknowledgementError = await captureError(async () => {
-        await planNetworkOperation(systemPushRequest);
-      });
-      expect(acknowledgementError).toBeInstanceOf(GitNetworkOperationRequestError);
-      if (acknowledgementError instanceof GitNetworkOperationRequestError) {
-        expect(acknowledgementError.code).toBe('ACKNOWLEDGEMENT_REQUIRED');
-        expect(acknowledgementError.status).toBe(409);
-      }
 
       // SAFETY: This test double accepts every fetch call and always returns a Response.
       globalThis.fetch = (async () => Response.json({

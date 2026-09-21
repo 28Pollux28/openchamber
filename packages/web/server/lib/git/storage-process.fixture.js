@@ -2,7 +2,6 @@ import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import { withSourceControlFileLock } from '../source-control/file-lock.js';
-import { createSystemPushAcknowledgementStore } from './system-push-acknowledgement-storage.js';
 import { createContributorProvenanceStore } from './contributor-provenance-storage.js';
 import { createManagedSshCredentialStore } from './ssh-credential-storage.js';
 import { createGitIdentityStore } from './identity-storage.js';
@@ -36,7 +35,6 @@ const syncFsImpl = {
 };
 const options = { filePath, lockWaitMs: 500 };
 const stores = {
-  acknowledgement: () => createSystemPushAcknowledgementStore({ ...options, fsImpl }),
   provenance: () => createContributorProvenanceStore({
     ...options,
     fsImpl,

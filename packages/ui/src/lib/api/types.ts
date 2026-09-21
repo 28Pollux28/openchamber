@@ -434,7 +434,6 @@ export type GitNetworkOperationRequest =
       operation: 'push';
       forceWithLease?: { expectedRemoteSha: string };
       configureUpstream?: boolean;
-      acknowledgeSystemTransport?: boolean;
       destinationSelectionId?: string;
     })
   | (ExistingRepositoryNetworkOperationRequest & { operation: 'fetch'; fetchScope?: 'ref' })
@@ -452,7 +451,6 @@ export type GitNetworkOperationRequest =
       remote: GitNetworkRemoteTarget;
       destinationRef: string;
       transportMode: GitNetworkTransportMode;
-      acknowledgeSystemTransport?: boolean;
     }
   | {
       operation: 'checkout-hydration';
@@ -472,7 +470,6 @@ export type GitNetworkOperationRequest =
       pull: { destinationRef: string };
       push: GitNetworkSyncRemoteRequest & {
         forceWithLease?: { expectedRemoteSha: string };
-        acknowledgeSystemTransport?: boolean;
         destinationSelectionId?: string;
       };
     }
@@ -630,7 +627,6 @@ export type GitNetworkOperationErrorCode =
   | 'STALE_CONFIG'
   | 'REMOTE_CHANGED'
   | 'AUTHENTICATION_REQUIRED'
-  | 'ACKNOWLEDGEMENT_REQUIRED'
   | 'DESTINATION_SELECTION_REQUIRED'
   | 'CONTRIBUTOR_MANAGED_TRANSPORT_REQUIRED'
   | 'AUTHENTICATION_FAILED'

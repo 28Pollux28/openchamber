@@ -357,7 +357,6 @@ export const SessionDialogs: React.FC = () => {
                     network: {
                         git,
                         sourceControl,
-                        confirmSystemTransport: () => true,
                     },
                 }
             );
@@ -628,11 +627,6 @@ export const SessionDialogs: React.FC = () => {
                     </p>
                     {hasDirtyWorktrees && (
                         <p className="typography-micro text-status-warning">{t('sessions.sidebar.sessionDialogs.worktree.uncommittedWarning')}</p>
-                    )}
-                    {deleteDialogShouldRemoveRemote && (
-                        <p className="typography-micro text-status-warning" role="note">
-                            {t('gitView.confirm.systemTransport')}
-                        </p>
                     )}
 
                 </div>

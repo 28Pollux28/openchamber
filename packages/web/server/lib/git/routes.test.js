@@ -923,22 +923,8 @@ describe('git network operation routes', () => {
     expect(response.body).toEqual({ error: 'Git network operation timed out', code: 'TIMEOUT' });
   });
 
-  it('maps system push acknowledgement requirements to the stable public code', async () => {
-    const error = Object.assign(new Error('System Git transport acknowledgement is required'), {
-      code: 'ACKNOWLEDGEMENT_REQUIRED', status: 409,
-    });
-    const { app, getRoute } = createRouteRegistry();
-    registerGitRoutes(app, { networkOperations: { plan: vi.fn(async () => { throw error; }) } });
-    const response = createMockResponse();
-    await getRoute('POST', '/api/git/network-operations')({ body: { operation: 'push' } }, response);
-    expect(response.statusCode).toBe(409);
-    expect(response.body).toEqual({
-      error: 'System Git transport acknowledgement is required', code: 'ACKNOWLEDGEMENT_REQUIRED',
-    });
-  });
-
   it('does not expose native planning paths in responses or logs', async () => {
-    const canary = '/private/openchamber-store/git-system-push-acknowledgements.json';
+    const canary = '/private/openchamber-store/git-network-operations.json';
     const error = Object.assign(new Error(`ENOENT: no such file or directory, open '${canary}'`), { code: 'ENOENT' });
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
     const { app, getRoute } = createRouteRegistry();

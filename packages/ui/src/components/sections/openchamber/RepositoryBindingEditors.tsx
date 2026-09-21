@@ -30,7 +30,6 @@ import {
   describeIdentityApplicability,
   grantIdentityToRemote,
   identityApplicability,
-  needsSystemAcknowledgement,
   type IdentityApplicability,
 } from '@/lib/source-control/applyIdentity';
 import { getRuntimeKey } from '@/lib/runtime-switch';
@@ -43,7 +42,6 @@ import {
   SETTINGS_FIELDS_STACK_CLASS,
   SETTINGS_HELPER_CLASS,
   SETTINGS_SELECT_SIZE,
-  SettingsCheckboxRow,
   SettingsControlGroup,
   SettingsGroupTitle,
   SettingsStackedField,
@@ -106,14 +104,12 @@ export const AdditionalRemoteGrants: React.FC<SourceControlBindingSettingsProps>
   const connectedAccountIds = useConnectedAccountIds();
   const repositoryAuthor = useGitIdentity(directory);
   const [pending, setPending] = React.useState('');
-  const [unverifiedConfirmed, setUnverifiedConfirmed] = React.useState(false);
   const [error, setError] = React.useState(false);
   const requestRef = React.useRef(0);
 
   React.useLayoutEffect(() => {
     requestRef.current += 1;
     setPending('');
-    setUnverifiedConfirmed(false);
     setError(false);
     return () => { requestRef.current += 1; };
   }, [binding.scope, git, sourceControl]);
@@ -147,7 +143,7 @@ export const AdditionalRemoteGrants: React.FC<SourceControlBindingSettingsProps>
     setPending(remoteName);
     setError(false);
     const outcome = await grantIdentityToRemote(
-      { directory, identity, remoteName, acknowledgedSystem: unverifiedConfirmed },
+      { directory, identity, remoteName },
       { git, sourceControl },
     );
     if (!isCurrent()) return;
@@ -158,7 +154,6 @@ export const AdditionalRemoteGrants: React.FC<SourceControlBindingSettingsProps>
   // Nothing to say when the repository has no other remote, or when its
   // identity carries no credentials to give one.
   if (!identity || !ungranted.length || !git.configureTransportBinding) return null;
-  const needsConfirmation = needsSystemAcknowledgement(identity, true);
 
   return (
     <SettingsControlGroup
@@ -181,7 +176,7 @@ export const AdditionalRemoteGrants: React.FC<SourceControlBindingSettingsProps>
             </div>
             {fit.applicable ? (
               <Button size="sm" variant="outline"
-                disabled={Boolean(pending) || (needsConfirmation && !unverifiedConfirmed)}
+                disabled={Boolean(pending)}
                 onClick={() => void grant(remote.name)}>
                 {t('gitView.remotes.grant', { identity: identityDisplayName(identity, t) })}
               </Button>
@@ -189,8 +184,6 @@ export const AdditionalRemoteGrants: React.FC<SourceControlBindingSettingsProps>
           </div>
         );
       })}
-      {needsConfirmation ? <SettingsCheckboxRow checked={unverifiedConfirmed} onChange={setUnverifiedConfirmed}
-        disabled={Boolean(pending)} label={t('settings.sourceControl.transport.unverifiedConfirmation')} /> : null}
       {error ? <EditorStatus error>{t('settings.gitlab.status.operationFailed')}</EditorStatus> : null}
     </SettingsControlGroup>
   );
@@ -204,7 +197,6 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
   const [parentRemote, setParentRemote] = React.useState('');
   const [selectedRequirement, setSelectedRequirement] = React.useState('');
   const [identityChoice, setIdentityChoice] = React.useState<{ endpoint: string; id: string } | null>(null);
-  const [unverifiedConfirmed, setUnverifiedConfirmed] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
   const [error, setError] = React.useState(false);
   const [open, setOpen] = React.useState(false);
@@ -230,7 +222,6 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
     setParentRemote('');
     setSelectedRequirement('');
     setIdentityChoice(null);
-    setUnverifiedConfirmed(false);
     setSaving(false);
     setError(false);
     setOpen(false);
@@ -238,7 +229,6 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
   }, [binding.scope, git, sourceControl]);
 
   React.useLayoutEffect(() => {
-    setUnverifiedConfirmed(false);
   }, [selected?.endpoint.fingerprint]);
 
   React.useEffect(() => {
@@ -288,7 +278,6 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
   const transport = identity ? identityTransport(identity) : null;
   const canSave = Boolean(binding.status === 'ready' && read?.binding && remote && selected
     && git.configureAuxiliaryBinding && !saving && identity && applicabilityOf(identity).applicable
-    && (transport !== 'system' || unverifiedConfirmed)
     && (transport !== 'account' || identity?.account)
     && (transport !== 'ssh' || identity?.sshCredentialId));
   const canRemove = Boolean(binding.status === 'ready' && currentGrant && remote && git.configureAuxiliaryBinding && !saving);
@@ -328,7 +317,7 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
     };
     const intent: GitAuxiliaryBindingIntent | null = operation === 'remove'
       ? { ...authority, operation }
-      : identity && auxiliaryGrantIntent(identity, authority, unverifiedConfirmed);
+      : identity && auxiliaryGrantIntent(identity, authority);
     if (!intent) return;
     const mutationScope = repositoryBindingOwner.captureMutation(binding.scope, read);
     setSaving(true);
@@ -338,7 +327,6 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
       if (!repositoryBindingOwner.setMutationResult(mutationScope, result.binding)) {
         await repositoryBindingOwner.reconcile(mutationScope, sourceControl);
       }
-      if (isCurrent()) setUnverifiedConfirmed(false);
     } catch {
       if (isCurrent()) setError(true);
       await repositoryBindingOwner.reconcile(mutationScope, sourceControl);
@@ -376,7 +364,6 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
           setParentRemote(value);
           setSelectedRequirement('');
           setIdentityChoice(null);
-          setUnverifiedConfirmed(false);
         }} disabled={!read?.binding || saving || recovery.blocked}>
           <SelectTrigger size={SETTINGS_SELECT_SIZE} className="w-full" aria-label={t('gitView.hydration.parentRemote')}>
             <SelectValue placeholder={t('settings.sourceControl.transport.remoteLabel')} />
@@ -406,10 +393,7 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
           <IdentityDropdown
             activeProfile={identity}
             identities={availableIdentities}
-            onSelect={(profile) => {
-              setIdentityChoice({ endpoint: selected.endpoint.fingerprint, id: profile.id });
-              setUnverifiedConfirmed(false);
-            }}
+            onSelect={(profile) => setIdentityChoice({ endpoint: selected.endpoint.fingerprint, id: profile.id })}
             isApplying={saving}
             applicability={applicabilityOf}
             triggerClassName="w-full max-w-none border border-border"
@@ -417,8 +401,6 @@ export const AuxiliaryBindingSettings: React.FC<SourceControlBindingSettingsProp
             onOpen={() => void refreshIdentityAccounts(sourceControl, gitIdentityProfiles.map((profile) => profile.account))}
           />
         </SettingsStackedField>
-        {transport === 'system' ? <SettingsCheckboxRow checked={unverifiedConfirmed} onChange={setUnverifiedConfirmed} disabled={saving}
-          label={t('gitView.hydration.systemConfirmation')} /> : null}
       </> : null}
       {latest?.hydration?.status === 'client-missing' ? <p role="alert" className={cn(SETTINGS_HELPER_CLASS, 'text-[var(--status-warning)]')}>
         {t('gitView.hydration.lfsMissing')}

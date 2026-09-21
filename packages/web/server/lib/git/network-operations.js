@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import { createGitCredentialBroker } from './credential-broker.js';
+import { helperShellCommand } from './helper-launch.js';
 import { gitLfsCredentialEndpointAliases, normalizeGitRemoteEndpoint, parseGitCredentialReference } from './credential-resolver.js';
 import { createNetworkOperationPlanner } from './network-operation-plan.js';
 import { createNetworkOperationRegistry } from './network-operation-registry.js';
@@ -230,7 +231,6 @@ export function createNetworkOperations({
   validateGitTransportContext,
   validateManagedSshCredential,
   resolveSourceControlAccount,
-  systemPushAcknowledgements,
   contributorProvenance,
   resolveRef,
   resolveSymbolicRef,
@@ -430,7 +430,6 @@ export function createNetworkOperations({
     validateGitTransportContext,
     validateManagedSshCredential,
     resolveSourceControlAccount,
-    systemPushAcknowledgements,
     contributorProvenance,
     resolveRef: resolveRefImpl,
     resolveSymbolicRef: resolveSymbolicRefImpl,
@@ -643,7 +642,7 @@ export function createNetworkOperations({
       throw operationError('AUTHENTICATION_REQUIRED', 'Managed Git credential is unavailable', 409);
     }
     env.OPENCHAMBER_GIT_SSH_KEY = credential.key.privateKeyPath;
-    env.GIT_SSH_COMMAND = `${shellQuote(process.execPath)} ${shellQuote(SSH_WRAPPER_PATH)}`;
+    env.GIT_SSH_COMMAND = helperShellCommand(SSH_WRAPPER_PATH);
     env.GIT_SSH_VARIANT = 'ssh';
     controls.updateTransportMetadata({ fingerprint: credential.key.fingerprint }, plan.transportRole);
     return {
