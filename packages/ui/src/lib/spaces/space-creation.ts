@@ -5,11 +5,11 @@
 // waiting message let through; a message on a model the space was not given never leaves the
 // composer (`space-model-access.ts`). The access chosen lives in
 // this window's memory until it is given, a typed key and the name of an environment variable
-// alike: a reload in the middle loses all of it, and the space then has no model access until
-// the grant dialog of a later stage gives it.
+// alike: a reload in the middle loses all of it, and the space's group then says it has no model
+// access, with the way to the grant dialog.
 
 import { createSpace, grantSpaceAccess, SpacesRequestError, type CreateSpaceRequest, type GrantRequest, type SpaceEntry, type SpaceFailure } from './spaces-api';
-import { useSpacesStore, type SpaceAccessFailure } from './spaces-store';
+import { refreshSpacesJourney, useSpacesStore, type SpaceAccessFailure } from './spaces-store';
 import {
   createPendingDraftWorktreeRequest,
   rejectPendingDraftWorktreeRequest,
@@ -26,6 +26,11 @@ type CreationOutcome = { kind: 'ready'; directory: string } | { kind: 'failed'; 
 // The draft requests that wait for a space rather than a worktree, by the space they wait for, so
 // the draft can say which, and name the space once it is ready.
 const spaceRequests = new Map<string, string>();
+
+/** Forgets the waiting requests; the runtime their spaces were asked of is gone. */
+export const resetSpaceCreationRequests = (): void => {
+  spaceRequests.clear();
+};
 
 export const isSpaceCreationRequest = (requestId: string | null | undefined): boolean => Boolean(requestId && spaceRequests.has(requestId));
 
@@ -63,7 +68,7 @@ const giveAccess = async (spaceId: string, access: readonly SpaceModelAccess[]):
   const failures: SpaceAccessFailure[] = [];
   for (const grant of access) {
     try {
-      await grantSpaceAccess(spaceId, grant);
+      useSpacesStore.getState().noteGrantGiven(spaceId, await grantSpaceAccess(spaceId, grant));
     } catch (error) {
       failures.push({
         provider: grant.provider,
@@ -81,8 +86,6 @@ type StartSpaceCreationOptions = {
   access: readonly SpaceModelAccess[];
   /** The text a waiting message is refused with when the space cannot take it, already translated. */
   refusalMessage: string;
-  /** The text a message is refused with when its model's provider was not given, already translated. */
-  modelRefusal: (providerId: string) => string;
 };
 
 /**
@@ -90,13 +93,13 @@ type StartSpaceCreationOptions = {
  * the request itself (Docker gone since the dialog checked, a project the host lost) throws here,
  * for the dialog to show. Everything after that runs on its own and ends in the space's group.
  */
-export const startSpaceCreation = async ({ projectId, request, access, refusalMessage, modelRefusal }: StartSpaceCreationOptions): Promise<SpaceEntry> => {
+export const startSpaceCreation = async ({ projectId, request, access, refusalMessage }: StartSpaceCreationOptions): Promise<SpaceEntry> => {
   const entry = await createSpace(request);
   useSpacesStore.getState().addJourneyEntry(entry);
 
   const requestId = createPendingDraftWorktreeRequest();
   spaceRequests.set(requestId, entry.id);
-  if (entry.directory) noteSpaceModelAccess({ requestId, directory: entry.directory }, access.map((grant) => grant.provider), modelRefusal);
+  if (entry.directory) noteSpaceModelAccess({ requestId, directory: entry.directory }, access.map((grant) => grant.provider));
   // A draft that is never sent must not turn a refusal into an unhandled rejection.
   void waitForPendingDraftWorktreeRequest(requestId).catch(() => undefined);
   const sessionStore = useSessionUIStore.getState();
@@ -114,6 +117,9 @@ const finishCreation = async (spaceId: string, requestId: string, access: readon
   if (outcome.kind === 'ready' && access.length > 0) {
     useSpacesStore.getState().noteCreationAccess(spaceId, { kind: 'giving' });
     failures = await giveAccess(spaceId, access);
+    // The list learns the grants before the message is let through: a running space's model
+    // check reads them there.
+    await refreshSpacesJourney().catch(() => undefined);
     useSpacesStore.getState().noteCreationAccess(spaceId, failures.length > 0 ? { kind: 'failed', failures } : null);
   }
   if (outcome.kind === 'ready' && failures.length === 0) {

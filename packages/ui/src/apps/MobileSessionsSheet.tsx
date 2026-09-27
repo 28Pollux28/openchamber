@@ -44,7 +44,7 @@ import { getDescendantIds, partitionSidebarSessions, useRecentSessionCollection 
 import { sortProjectsByOrder } from '@/components/session/sidebar/list/projectSort';
 import { collectSessionSubtreeIds, runSessionSubtreeAction, type SessionSubtreeAction } from '@/components/session/sidebar/sessions/sessionSubtreeActions';
 import { createSessionOwnershipIndex } from '@/components/session/sidebar/sessions/sessionOwnership';
-import { useSidebarSpaces, type SpaceMark } from '@/lib/spaces/spaces-store';
+import { useSidebarSpaces, useSpacesStore, type SpaceMark } from '@/lib/spaces/spaces-store';
 import { SpaceGroupStatus } from '@/components/session/spaces/SpaceGroupStatus';
 import { resolveSidebarSessionLocations } from '@/components/session/sidebar/recent/sessionLocation';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
@@ -2183,11 +2183,25 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
                                 return (
                                   <div key={bucket.key}>
                                     <MobileSwipeActionsRow
-                                      // A space has no delete-worktree action; its actions are a later stage.
-                                      actionsWidth={bucket.space ? 0 : 48}
+                                      // A space's swipe action is its grant dialog, where a worktree's is its deletion.
+                                      actionsWidth={48}
                                       revealed={revealedRowId === `wt:${bucket.key}`}
                                       onRevealedChange={(nextRevealed) => handleRowKeyRevealedChange(`wt:${bucket.key}`, nextRevealed)}
-                                      actions={bucket.worktree ? (
+                                      actions={bucket.space ? (
+                                        <button
+                                          type="button"
+                                          tabIndex={revealedRowId === `wt:${bucket.key}` ? 0 : -1}
+                                          className="flex flex-1 items-center justify-center text-foreground transition-colors active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                                          aria-label={t('spaces.group.access.giveAria', { label: bucket.label })}
+                                          onClick={() => {
+                                            setRevealedRowId(null);
+                                            if (bucket.space) useSpacesStore.getState().openAccessDialog(bucket.space.id);
+                                          }}
+                                          style={{ touchAction: 'manipulation' }}
+                                        >
+                                          <Icon name="key" className="size-[18px]" />
+                                        </button>
+                                      ) : bucket.worktree ? (
                                         <button
                                           type="button"
                                           tabIndex={revealedRowId === `wt:${bucket.key}` ? 0 : -1}

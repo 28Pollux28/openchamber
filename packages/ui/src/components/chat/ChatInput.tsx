@@ -192,6 +192,7 @@ import {
 import { NewSpaceDialog } from '@/components/session/spaces/NewSpaceDialog';
 import { isSpaceCreationRequest } from '@/lib/spaces/space-creation';
 import { spaceModelRefusal } from '@/lib/spaces/space-model-access';
+import { useSpacesStore } from '@/lib/spaces/spaces-store';
 import { isDraftSendWaiting, subscribeDraftSendWaiting } from '@/lib/worktrees/pendingDraftWorktree';
 import { ComposerAutocompletePopups } from './composer/ui/ComposerAutocompletePopups';
 import { ComposerFooter } from './composer/ui/ComposerFooter';
@@ -1684,14 +1685,21 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             return;
         }
 
-        // The first message of a space made in this window goes only on a model the space was given;
-        // otherwise it stays in the input with the reason.
-        if (!currentSessionId && newSessionDraftOpen) {
-            const refusal = spaceModelRefusal({ requestId: newSessionDraft?.pendingWorktreeRequestId ?? null, directory: newSessionDraft?.directoryOverride ?? null }, providerIdToSend);
-            if (refusal) {
-                toast.error(refusal);
-                return;
-            }
+        // A message to an isolated space goes only on a model the space holds a key for; otherwise
+        // it stays in the input with the reason and the way to the grant dialog.
+        const spaceRefusal = currentSessionId
+            ? spaceModelRefusal({ requestId: null, directory: currentSessionDirectoryForSync ?? currentDirectory ?? null }, providerIdToSend)
+            : newSessionDraftOpen
+                ? spaceModelRefusal({ requestId: newSessionDraft?.pendingWorktreeRequestId ?? null, directory: newSessionDraft?.directoryOverride ?? null }, providerIdToSend)
+                : null;
+        if (spaceRefusal) {
+            const provider = useConfigStore.getState().providers.find((entry) => entry.id === spaceRefusal.providerId)?.name ?? spaceRefusal.providerId;
+            toast.error(spaceRefusal.reason === 'needs_again'
+                ? t('spaces.draft.modelNeedsKeyAgain', { provider })
+                : t('spaces.draft.modelNotGranted', { provider }), {
+                action: { label: t('spaces.group.access.give'), onClick: () => useSpacesStore.getState().openAccessDialog(spaceRefusal.spaceId, spaceRefusal.providerId) },
+            });
+            return;
         }
 
         // Auto-review owns the active workflow; follow-ups wait in its queue.

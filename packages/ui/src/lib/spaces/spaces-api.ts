@@ -79,7 +79,7 @@ const grantSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('domain'), id: z.string(), upstream: z.string(), url: z.string() }),
 ]);
 
-type SpaceGrant = z.infer<typeof grantSchema>;
+export type SpaceGrant = z.infer<typeof grantSchema>;
 
 /** The steps of a creation, in order, as `openchamber:space-progress` announces them. */
 const SPACE_CREATION_STEPS = ['checking_place', 'creating', 'setting_network', 'bringing_code', 'ready'] as const;
@@ -167,6 +167,31 @@ export const createSpace = (body: CreateSpaceRequest): Promise<SpaceEntry> =>
 
 export const grantSpaceAccess = async (spaceId: string, body: GrantRequest): Promise<SpaceGrant> =>
   (await request(`${SPACES_ROUTE}/${spaceId}/grants`, z.object({ grant: grantSchema }), { method: 'POST', body: JSON.stringify(body) })).grant;
+
+/** Adds a domain to a running space's allowlist, live; answers the network as it now is. */
+export const openSpaceDomain = async (spaceId: string, domain: string): Promise<SpaceNetwork> =>
+  (await request(`${SPACES_ROUTE}/${spaceId}/network/domains`, z.object({ network: networkSchema }), { method: 'POST', body: JSON.stringify({ domain }) })).network;
+
+// One attempt the gatekeeper recorded: never a path, a body or a secret. `host` is what the agent
+// asked for, so it is data to show, never to act on without the user.
+const journalRecordSchema = z.object({
+  at: z.string(),
+  listener: z.string(),
+  host: z.string(),
+  port: z.number(),
+  decision: z.string(),
+});
+
+export type SpaceJournalRecord = z.infer<typeof journalRecordSchema>;
+
+// The gatekeeper's memory since it last started: `since` is when, and `dropped` counts the oldest
+// records the ring had no room for.
+const journalSchema = z.object({ records: z.array(journalRecordSchema), dropped: z.number(), since: z.string() });
+
+export type SpaceJournal = z.infer<typeof journalSchema>;
+
+export const readSpaceJournal = (spaceId: string, signal?: AbortSignal): Promise<SpaceJournal> =>
+  request(`${SPACES_ROUTE}/${spaceId}/journal`, journalSchema, { signal });
 
 // A removal can go through in part: `failures` names what stayed, and the screen says so.
 const removalSchema = z.object({ id: spaceIdSchema, removed: z.boolean(), failures: z.array(failureSchema) });
