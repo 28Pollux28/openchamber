@@ -1,6 +1,7 @@
 import { extensionsSettingsI18n } from './extensions.settings.i18n';
 import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
+import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
 export const settingsDict = {
   'settings.themeImport.selectAll': '全選',
   'settings.themeImport.deselectAll': '取消全選',
@@ -2304,10 +2305,11 @@ export const settingsDict = {
   'settings.openchamber.visual.option.enterToSend.enter.label': '按 Enter 傳送',
   'settings.openchamber.visual.option.enterToSend.modifier.label': '按 Ctrl/Cmd+Enter 傳送',
   ...linearIntegrationI18n['zh-TW'],
+  ...thirdPartyIntegrationI18n['zh-TW'],
   ...guestIntegrationsI18n['zh-TW'],
   ...extensionsSettingsI18n['zh-TW'],
   'settings.page.integrations.title': '整合',
-  'settings.page.integrations.description': '連接 GitHub 和 Linear，讓 OpenChamber 可以處理你的 issue 和 pull request。',
+  'settings.page.integrations.description': '連接 OpenChamber 所使用的服務和訂閱。',
   'settings.agents.page.field.steps': '最大步數',
   'settings.agents.page.field.stepsTooltip': '代理在一輪中最多可以執行多少個工具步驟。',
   'settings.agents.page.field.clearStepsAria': '清除最大步數',

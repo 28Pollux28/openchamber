@@ -1,6 +1,7 @@
 import { extensionsSettingsI18n } from './extensions.settings.i18n';
 import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
+import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
 export const settingsDict = {
   'settings.themeImport.selectAll': 'Alle auswählen',
   'settings.themeImport.deselectAll': 'Auswahl aufheben',
@@ -2295,10 +2296,11 @@ export const settingsDict = {
   'settings.openchamber.visual.option.themeMode.dark.description': 'Immer dunkles Erscheinungsbild verwenden',
   'chat.message.userText.collapseAria': 'Benutzernachricht einklappen',
   ...linearIntegrationI18n.de,
+  ...thirdPartyIntegrationI18n.de,
   ...guestIntegrationsI18n.de,
   ...extensionsSettingsI18n.de,
   'settings.page.integrations.title': 'Integrationen',
-  'settings.page.integrations.description': 'Verbinde GitHub und Linear, damit OpenChamber mit deinen Issues und Pull Requests arbeiten kann.',
+  'settings.page.integrations.description': 'Verbinde die Dienste und Abonnements, mit denen OpenChamber arbeitet.',
   'settings.agents.page.field.steps': 'Max. Schritte',
   'settings.agents.page.field.stepsTooltip': 'Wie viele Tool-Schritte der Agent in einem Zug machen darf, bevor er stoppen muss.',
   'settings.agents.page.field.clearStepsAria': 'Max. Schritte löschen',

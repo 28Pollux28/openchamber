@@ -163,8 +163,10 @@ export const ProvidersPage: React.FC = () => {
   const setConnectRequested = useUIStore((state) => state.setSettingsProvidersConnectRequested);
   const classificationRequested = useUIStore((state) => state.settingsProvidersClassificationRequested);
   const setClassificationRequested = useUIStore((state) => state.setSettingsProvidersClassificationRequested);
+  const openRequested = useUIStore((state) => state.settingsProvidersOpenRequested);
+  const setOpenRequested = useUIStore((state) => state.setSettingsProvidersOpenRequested);
   const [selectedProviderId, setSelectedProvider] = React.useState(() => (
-    connectRequested ? ADD_PROVIDER_ID : classificationRequested ? CLASSIFICATION_PAGE_ID : ''
+    connectRequested ? ADD_PROVIDER_ID : classificationRequested ? CLASSIFICATION_PAGE_ID : openRequested ?? ''
   ));
   React.useEffect(() => {
     if (!connectRequested) return;
@@ -176,6 +178,11 @@ export const ProvidersPage: React.FC = () => {
     setSelectedProvider(CLASSIFICATION_PAGE_ID);
     setClassificationRequested(false);
   }, [classificationRequested, setClassificationRequested]);
+  React.useEffect(() => {
+    if (!openRequested) return;
+    setSelectedProvider(openRequested);
+    setOpenRequested(null);
+  }, [openRequested, setOpenRequested]);
   const getModelMetadata = useConfigStore((state) => state.getModelMetadata);
   const hiddenModels = useUIStore((state) => state.hiddenModels);
   const toggleHiddenModel = useUIStore((state) => state.toggleHiddenModel);

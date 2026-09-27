@@ -1,6 +1,7 @@
 import { extensionsSettingsI18n } from './extensions.settings.i18n';
 import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
+import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
 export const settingsDict = {
   'settings.themeImport.selectAll': 'Seleccionar todo',
   'settings.themeImport.deselectAll': 'Deseleccionar todo',
@@ -2304,10 +2305,11 @@ export const settingsDict = {
   "settings.openchamber.visual.option.enterToSend.enter.label": "Enviar con Intro",
   "settings.openchamber.visual.option.enterToSend.modifier.label": "Enviar con Ctrl/Cmd+Intro",
   ...linearIntegrationI18n.es,
+  ...thirdPartyIntegrationI18n.es,
   ...guestIntegrationsI18n.es,
   ...extensionsSettingsI18n.es,
   'settings.page.integrations.title': 'Integraciones',
-  'settings.page.integrations.description': 'Conecta GitHub y Linear para que OpenChamber pueda trabajar con tus issues y pull requests.',
+  'settings.page.integrations.description': 'Conecta los servicios y suscripciones con los que trabaja OpenChamber.',
   'settings.agents.page.field.steps': 'Pasos máximos',
   'settings.agents.page.field.stepsTooltip': 'Cuántos pasos de herramienta puede dar el agente en un turno antes de detenerse.',
   'settings.agents.page.field.clearStepsAria': 'Borrar pasos máximos',

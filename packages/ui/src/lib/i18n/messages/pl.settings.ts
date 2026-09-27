@@ -1,6 +1,7 @@
 import { extensionsSettingsI18n } from './extensions.settings.i18n';
 import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
+import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
 export const settingsDict = {
   'settings.themeImport.selectAll': 'Zaznacz wszystkie',
   'settings.themeImport.deselectAll': 'Odznacz wszystkie',
@@ -2297,10 +2298,11 @@ export const settingsDict = {
   'settings.openchamber.visual.option.enterToSend.enter.label': 'Wyślij klawiszem Enter',
   'settings.openchamber.visual.option.enterToSend.modifier.label': 'Wyślij klawiszami Ctrl/Cmd+Enter',
   ...linearIntegrationI18n.pl,
+  ...thirdPartyIntegrationI18n.pl,
   ...guestIntegrationsI18n.pl,
   ...extensionsSettingsI18n.pl,
   'settings.page.integrations.title': 'Integracje',
-  'settings.page.integrations.description': 'Połącz GitHub i Linear, aby OpenChamber mógł pracować z Twoimi issue i pull requestami.',
+  'settings.page.integrations.description': 'Połącz usługi i subskrypcje, z którymi pracuje OpenChamber.',
   'settings.appearance.language.select': 'Select language',
   'settings.openchamber.visual.field.mobileKeyboardModeAria': 'Mobile keyboard behavior',
   'settings.openchamber.visual.field.selectMobileKeyboardModePlaceholder': 'Select keyboard behavior',

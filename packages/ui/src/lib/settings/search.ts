@@ -1223,6 +1223,22 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
+    id: 'integrations.third-party',
+    page: 'integrations',
+    titleKey: 'settings.integrations.thirdParty.title',
+    descriptionKey: 'settings.integrations.thirdParty.info',
+    keywords: ['plugin', 'provider', 'install', 'update', 'remove', 'subscription'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'integrations.third-party.opencode-claude',
+    page: 'integrations',
+    titleKey: 'settings.integrations.thirdParty.opencodeClaude.name',
+    descriptionKey: 'settings.integrations.thirdParty.opencodeClaude.description',
+    keywords: ['claude', 'anthropic', 'claude code', 'pro', 'max', 'agent sdk', '@openchamber/opencode-claude'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
     id: 'integrations.guests',
     page: 'integrations',
     titleKey: 'settings.integrations.guests.title',
