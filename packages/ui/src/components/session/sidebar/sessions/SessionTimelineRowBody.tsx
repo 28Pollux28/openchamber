@@ -31,8 +31,8 @@ type Props = {
   prBadge: React.ReactNode;
   zombieIndicator: React.ReactNode;
   badges: React.ReactNode;
-  /** Jev's "looks done" check: it sits right before the time, where the hover
-      Done action appears, so the hint and the action share one spot. */
+  /** Jev's "looks done" check: it sits in the time cluster, where the hover
+      Done action appears, left of the status dot so the dot stays by the time. */
   doneHint?: React.ReactNode;
   /** Provider of the session's model; its logo closes the third line. */
   providerId?: string | null;
@@ -100,8 +100,8 @@ export const SessionTimelineRowBody: React.FC<Props> = ({
     {compact ? badges : null}
     {directoryIndicator}
     {pinnedMarker}
-    {statusDot}
     {doneHint}
+    {statusDot}
     <span className="typography-micro leading-none text-muted-foreground/50 tabular-nums">{timeSlot}</span>
   </span>;
   if (compact) {
