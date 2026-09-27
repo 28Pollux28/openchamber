@@ -1053,7 +1053,6 @@ export const settingsDict = {
   "settings.openchamber.spaces.field.enabled": "Дозволити агентам працювати в ізольованих просторах",
   "settings.openchamber.spaces.field.enabledAria": "Дозволити агентам працювати в ізольованих просторах",
   "settings.openchamber.spaces.field.enabledInfo": "Ізольований простір — це контейнер із копією проєкту, де агент працює без доступу до вашого комп’ютера, інших проєктів і ключів. Коли він закінчить, ви застосуєте його роботу до проєкту або відкинете її. Потрібен Docker на цьому комп’ютері; першого разу завантажується образ розміром близько 1,6 ГБ.",
-  "settings.openchamber.spaces.field.enabledRestart": "Набуде чинності після перезапуску OpenChamber.",
   "settings.openchamber.tools.title": "Інструменти OpenChamber",
   "settings.openchamber.tools.field.agentControlTool": "Інструмент керування для агентів",
   "settings.openchamber.tools.field.agentControlToolAria": "Увімкнути інструмент керування для агентів",

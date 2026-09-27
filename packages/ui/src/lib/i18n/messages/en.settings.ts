@@ -1085,7 +1085,6 @@ export const settingsDict = {
   'settings.openchamber.spaces.field.enabled': 'Let agents work in isolated spaces',
   'settings.openchamber.spaces.field.enabledAria': 'Let agents work in isolated spaces',
   'settings.openchamber.spaces.field.enabledInfo': 'An isolated space is a container with a copy of the project, where the agent works without reaching your machine, your other projects, or your keys. When it is done, you apply its work to your project or discard it. Needs Docker on this computer and downloads an image of about 1.6 GB the first time.',
-  'settings.openchamber.spaces.field.enabledRestart': 'Takes effect after OpenChamber restarts.',
   'settings.openchamber.tools.title': 'OpenChamber Tools',
   'settings.openchamber.tools.field.agentControlTool': 'Agent control tool',
   'settings.openchamber.tools.field.agentControlToolAria': 'Enable the agent control tool',

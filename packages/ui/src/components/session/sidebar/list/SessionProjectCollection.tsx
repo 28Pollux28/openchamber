@@ -36,7 +36,7 @@ import { useSidebarGroupStatus } from './useSidebarGroupStatus';
 import { getSessionFolderOwnerKey, getSessionFolderScopes } from '../sessions/sessionFolderIdentity';
 import { SessionRowOrderProvider } from '../sessions/sessionRowOrder';
 import { canRequestNativeDirectoryAccess } from '@/lib/desktop';
-import { useSpacesStore, type SpaceMark } from '@/lib/spaces/spaces-store';
+import { useSidebarSpaces, type SpaceMark } from '@/lib/spaces/spaces-store';
 
 const PR_NO_PR_RETRY_MS = 5 * 60_000;
 
@@ -140,8 +140,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
   const { getOrderedGroups, setGroupOrderByProject, toggleGroup, toggleProject } = projectViewActions;
   const collection = useSessionProjectCollection({ knownDirectories: topology.knownDirectories, isVSCode: topology.isVSCode, isVisible: true });
   const authoritativeProjects = useGlobalSyncStore((state) => state.projects);
-  const spaces = useSpacesStore((state) => state.spaces);
-  const spaceList = React.useMemo(() => Array.from(spaces.values()), [spaces]);
+  const spaceList = useSidebarSpaces();
   // Recent and Timeline rows label a space session with the space's name where a worktree session shows its branch.
   const spaceLabelById = React.useMemo(() => new Map(spaceList.map((space) => [space.id, space.name])), [spaceList]);
   const spacesByProject = React.useMemo(() => {

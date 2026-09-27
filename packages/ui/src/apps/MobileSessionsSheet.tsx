@@ -44,7 +44,8 @@ import { getDescendantIds, partitionSidebarSessions } from '@/components/session
 import { sortProjectsByOrder } from '@/components/session/sidebar/list/projectSort';
 import { collectSessionSubtreeIds, runSessionSubtreeAction, type SessionSubtreeAction } from '@/components/session/sidebar/sessions/sessionSubtreeActions';
 import { createSessionOwnershipIndex } from '@/components/session/sidebar/sessions/sessionOwnership';
-import { useSpacesStore, type SpaceMark } from '@/lib/spaces/spaces-store';
+import { useSidebarSpaces, type SpaceMark } from '@/lib/spaces/spaces-store';
+import { SpaceGroupStatus } from '@/components/session/spaces/SpaceGroupStatus';
 import { resolveSidebarSessionLocations } from '@/components/session/sidebar/recent/sessionLocation';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useI18n } from '@/lib/i18n';
@@ -868,8 +869,8 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     () => partitionSidebarSessions(sessions, false),
     [sessions],
   );
-  const spaces = useSpacesStore((state) => state.spaces);
-  const spaceList = React.useMemo(() => Array.from(spaces.values()), [spaces]);
+  const spaceList = useSidebarSpaces();
+  const spaces = React.useMemo(() => new Map(spaceList.map((space) => [space.id, space])), [spaceList]);
   const spaceLabelById = React.useMemo(
     () => new Map(spaceList.map((space) => [space.id, space.name || t('sessions.sidebar.grouping.spaceUnnamed')])),
     [spaceList, t],
@@ -944,6 +945,10 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     for (const node of nodes) {
       ensureBucket(node, node.project.path, null);
       for (const worktree of node.project.worktrees) ensureBucket(node, worktree.path, worktree);
+      // A space is a bucket before it has a session, as on desktop, so a new one shows at once.
+      for (const space of spaceList) {
+        if (space.directory && normalizePath(space.projectDirectory) === normalizePath(node.project.path)) ensureBucket(node, space.directory, null, space);
+      }
     }
 
     for (const session of projectSessions) {
@@ -972,7 +977,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     }
 
     return nodes;
-  }, [activeProjectId, pinnedSessionIds, projectSessions, projectsMeta, sessionOrderRanks, sessionOwnership, spaces, t]);
+  }, [activeProjectId, pinnedSessionIds, projectSessions, projectsMeta, sessionOrderRanks, sessionOwnership, spaceList, spaces, t]);
 
   const normalizedDirectory = normalizePath(currentDirectory);
 
@@ -1871,6 +1876,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
                                       </span>
                                     </button>
                                     </MobileSwipeActionsRow>
+                                    {bucket.space ? <SpaceGroupStatus spaceId={bucket.space.id} className="px-3 pb-1 pl-9" /> : null}
                                     {worktreeExpanded
                                       ? renderBucketSessions(`${node.project.id}::${bucket.key}`, bucket, PROJECT_SESSION_INDENT)
                                       : null}
