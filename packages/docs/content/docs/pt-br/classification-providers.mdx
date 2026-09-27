@@ -22,7 +22,7 @@ Sem provedor, a rede de segurança e o Auto ficam ocultos, e as sessões só vã
 
 ## Configuração
 
-Abra **Configurações → Provedores → Provedores de classificação** e escolha para onde vão as solicitações ao Jev. Há três opções.
+Abra **Configurações → Provedores → Provedores de classificação** e escolha para onde vão as solicitações ao Jev. Há cinco opções.
 
 ### Promoção do OpenCode Zen
 
@@ -39,6 +39,20 @@ Usa a chave de API do Zen salva no OpenCode, paga com o seu saldo do Zen.
 
 Entrar com uma conta do OpenCode não basta. Para o Jev, o Zen só aceita uma chave de API.
 
+### Chave do OpenRouter
+
+Usa a chave de API do OpenRouter salva no OpenCode, cobrada da sua conta OpenRouter. Se você já usa modelos do OpenRouter no OpenCode, não há nada para configurar. Uma chave na variável de ambiente `OPENROUTER_API_KEY` também funciona. Se houver as duas, vale a chave salva no OpenCode.
+
+1. Abra **Configurações → Provedores** e adicione uma chave de API ao provedor **OpenRouter**.
+2. Volte para **Provedores de classificação** e escolha **Chave do OpenRouter**.
+
+### Chave do Vercel AI Gateway
+
+Usa a chave de API do AI Gateway salva no OpenCode, cobrada da sua conta Vercel. Uma chave na variável de ambiente `AI_GATEWAY_API_KEY` também funciona. Se houver as duas, vale a chave salva no OpenCode.
+
+1. Abra **Configurações → Provedores** e adicione uma chave de API ao provedor **Vercel AI Gateway**.
+2. Volte para **Provedores de classificação** e escolha **Chave do Vercel AI Gateway**.
+
 ### Chave de API da TypeSafe
 
 Sua própria chave e sua própria cota da TypeSafe.
@@ -52,7 +66,7 @@ Assim que um provedor funciona, o cartão em **Configurações → Provedores** 
 
 ## Quando a sua escolha para de funcionar
 
-Se o provedor escolhido não puder ser usado (a promoção acabou, uma chave foi removida), o OpenChamber recorre ao primeiro que funcionar, suas próprias chaves primeiro: chave da TypeSafe, depois chave do Zen, depois a promoção. A página mostra qual está em uso agora.
+Se o provedor escolhido não puder ser usado (a promoção acabou, uma chave foi removida), o OpenChamber recorre ao primeiro que funcionar, suas próprias chaves primeiro: chave da TypeSafe, depois OpenRouter, depois Vercel AI Gateway, depois chave do Zen, depois a promoção. A página mostra qual está em uso agora.
 
 Se o Jev estiver lento ou falhar em uma solicitação, nada quebra. Cada função tem uma resposta segura para esse caso:
 
@@ -65,7 +79,7 @@ Se o Jev estiver lento ou falhar em uma solicitação, nada quebra. Cada funçã
 
 O Jev recebe trechos curtos da sua conversa: sua última mensagem e, como contexto, até três turnos anteriores, cortados nas primeiras centenas de caracteres. Para a rede de segurança, ele também recebe a ação verificada, do jeito que o OpenCode a descreve: o comando que o agente quer executar, ou o arquivo e a mudança em uma edição. Ele nunca recebe arquivos inteiros nem imagens.
 
-As solicitações vão do servidor do OpenChamber direto para o OpenCode Zen ou para a TypeSafe, conforme a sua escolha.
+As solicitações vão do servidor do OpenChamber direto para o OpenCode Zen, o OpenRouter, o Vercel AI Gateway ou a TypeSafe, conforme a sua escolha.
 
 ## Onde funciona
 
@@ -73,5 +87,5 @@ O Jev roda no servidor do OpenChamber, então funciona no app desktop, no app we
 
 ## Relacionado
 
-- [Provedores, modelos e agentes](/pt-br/providers/): onde fica a chave do OpenCode Zen
+- [Provedores, modelos e agentes](/pt-br/providers/): onde ficam as chaves do OpenCode Zen, do OpenRouter e do Vercel AI Gateway
 - [Segurança](/pt-br/security/): como o OpenChamber lida com chaves e acesso

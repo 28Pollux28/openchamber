@@ -23,7 +23,8 @@ Auto. There is no env gate — the feature shipped dark behind
   for routing and for the safety net, history excerpt limits.
 - `classifier.js` — the classification providers: `resolveClassifier` (the
   user's pick, what is usable, and the source that actually answers) and
-  `classifierEndpoint` (where a request for a source goes).
+  `classifierEndpoint` (where a request for a source goes), and
+  `legacyClassifier` (the view older clients parse).
 - `store.js` — `routing.json` (only deviations from the built-ins),
   `routing-auth.json` (the TypeSafe key alone, mode 0600) and
   `classification.json` (the classification provider pick) in the OpenChamber
@@ -101,13 +102,32 @@ Classification providers:
   An OpenCode account sign-in is an OAuth credential, and zen rejects it as a
   key ("Invalid API key", checked 2026-09-27), so it does not count. The paid
   call itself is not verified live yet.
+- `openrouter`: `openrouter.ai/api/v1/systemone` as `jev-latest` (OpenRouter's
+  `~typesafe/jev-latest` alias) with the OpenRouter API key saved in OpenCode
+  (entry `openrouter`, type `api`), billed to that OpenRouter account.
+- `vercel`: `ai-gateway.vercel.sh/typesafe/v1/systemone` as `typesafe-ai/jev`
+  with the Vercel AI Gateway API key saved in OpenCode (entry `vercel`, type
+  `api`). Both gateways implement TypeSafe's request and response shapes, so
+  `jev.js` is the same for every source. Both answer 401 without a key
+  (checked 2026-09-27); a paid call is not verified live yet.
 - `typesafe`: `api.typesafe.ai/v1/systemone` as `jev-latest` with the key saved
   in `routing-auth.json`. Saving a key also picks it.
 
 Without a stored pick the default is `typesafe` when a key is saved (it always
 won before the pick existed) and `zen-promo` otherwise. A pick that cannot be
 used falls back to the first usable source, own keys first (`typesafe`,
-`zen-key`, `zen-promo`); none usable means no Jev.
+`openrouter`, `vercel`, `zen-key`, `zen-promo`); none usable means no Jev.
+The OpenCode keys are read on every request, so a key added or removed in
+OpenCode counts from the next request on.
+
+OpenRouter and Vercel also count a key in `OPENROUTER_API_KEY` /
+`AI_GATEWAY_API_KEY` (`readOpenCodeKeys`), because OpenCode connects those
+providers from the variable live and never stores it (v2 `integration.ts`
+`resolveConnections`). A key saved in OpenCode wins. The server's
+`process.env` already carries the login-shell snapshot and a managed OpenCode
+is spawned from it, so both see the same variable; an external OpenCode
+started elsewhere may not, and then the variable simply is not seen. Zen has
+no variable.
 
 Every zen call is tagged `x-opencode-client: openchamber`. Dax approved the
 free use in Slack on 2026-09-22 on terms the code and the copy keep together:
@@ -128,8 +148,13 @@ send), `openchamber:routing.permission-held`,
 directory so the UI can raise the permission toast for a held request.
 
 `/api/routing` keeps `jevSource` (`typesafe` or `zen-free`) for clients from
-before the classifier pick and adds `jevAvailable` and `classifier`
-(`selected`, `effective`, `sources`).
+before the classifier pick and adds `jevAvailable`, `classifier` and
+`classification` (both `selected`, `effective`, `sources`). `classification`
+is the full picture. `classifier` is what v2.0.2 clients parse: their schema
+knows only `zen-promo`, `zen-key` and `typesafe` and rejects the whole state
+on any other id, so it lists only those and is null while OpenRouter or
+Vercel is picked or answering (`legacyClassifier`). Current clients read
+`classification` and drop source ids they do not know.
 
 ## UI
 

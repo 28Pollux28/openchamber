@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createRoutingRuntime, requestTextOf } from './runtime.js';
+import { createRoutingRuntime, readOpenCodeKeys, requestTextOf } from './runtime.js';
 import { resolveEffectiveConfig } from './store.js';
 import { excerptHead, excerptHeadTail, turnsToHistory } from './history.js';
 import { createJevClient, decidePermission, decideRouting } from './jev.js';
@@ -19,7 +19,7 @@ const readyConfig = () => {
   return config;
 };
 
-const makeRuntime = ({ config = readyConfig(), token = 'key', classifierSource = null, zenKey = null, zenPromotionActive = true, answers, askError } = {}) => {
+const makeRuntime = ({ config = readyConfig(), token = 'key', classifierSource = null, providerKeys = {}, zenPromotionActive = true, answers, askError } = {}) => {
   const events = [];
   const store = {
     readConfig: vi.fn(async () => config),
@@ -38,7 +38,7 @@ const makeRuntime = ({ config = readyConfig(), token = 'key', classifierSource =
     broadcastGlobalUiEvent: (event) => events.push(event),
     store,
     jev,
-    readZenKey: () => zenKey,
+    readProviderKeys: () => ({ zenKey: null, openrouterKey: null, vercelKey: null, ...providerKeys }),
     zenPromotionActive,
   });
   return { runtime, store, jev, events };
@@ -169,6 +169,20 @@ describe('jev endpoint', () => {
     expect(free.headers['x-opencode-client']).toBe('openchamber');
     expect(free.body.model).toBe('jev-1.13-free');
   });
+
+  it('sends the OpenCode-saved OpenRouter and Vercel keys to their System One routes, without the zen header', async () => {
+    const openrouter = await capture('openrouter', { openrouterKey: 'or-secret' });
+    expect(openrouter.url).toBe('https://openrouter.ai/api/v1/systemone');
+    expect(openrouter.headers.authorization).toBe('Bearer or-secret');
+    expect(openrouter.headers['x-opencode-client']).toBeUndefined();
+    expect(openrouter.body.model).toBe('jev-latest');
+
+    const vercel = await capture('vercel', { vercelKey: 'gw-secret' });
+    expect(vercel.url).toBe('https://ai-gateway.vercel.sh/typesafe/v1/systemone');
+    expect(vercel.headers.authorization).toBe('Bearer gw-secret');
+    expect(vercel.headers['x-opencode-client']).toBeUndefined();
+    expect(vercel.body.model).toBe('typesafe-ai/jev');
+  });
 });
 
 describe('resolveClassifier', () => {
@@ -181,6 +195,32 @@ describe('resolveClassifier', () => {
     expect(resolveClassifier({ selected: 'zen-promo', typesafeKey: null, zenKey: 'z', zenPromotionActive: false }).effective).toBe('zen-key');
     expect(resolveClassifier({ selected: 'typesafe', typesafeKey: null, zenKey: null, zenPromotionActive: true }).effective).toBe('zen-promo');
     expect(resolveClassifier({ selected: 'zen-promo', typesafeKey: null, zenKey: null, zenPromotionActive: false }).effective).toBeNull();
+    expect(resolveClassifier({ selected: 'zen-promo', typesafeKey: null, zenKey: 'z', vercelKey: 'v', zenPromotionActive: false }).effective).toBe('vercel');
+    expect(resolveClassifier({ selected: 'vercel', typesafeKey: null, openrouterKey: 'o', zenPromotionActive: true }).effective).toBe('openrouter');
+  });
+
+  it('keeps a usable OpenRouter or Vercel pick', () => {
+    expect(resolveClassifier({ selected: 'openrouter', typesafeKey: 'k', openrouterKey: 'o', zenPromotionActive: true }).effective).toBe('openrouter');
+    expect(resolveClassifier({ selected: 'vercel', vercelKey: 'v', zenPromotionActive: true }).effective).toBe('vercel');
+  });
+});
+
+describe('readOpenCodeKeys', () => {
+  const env = { OPENROUTER_API_KEY: 'or-env', AI_GATEWAY_API_KEY: ' gw-env ' };
+
+  it('prefers a key saved in OpenCode and falls back to the variable OpenCode reads', () => {
+    const readAuth = () => ({
+      opencode: { type: 'api', key: 'zen' },
+      openrouter: { type: 'api', key: 'or-saved' },
+      vercel: { type: 'oauth', access: 'a', refresh: 'r', expires: 0 },
+    });
+    expect(readOpenCodeKeys({ readAuth, env })).toEqual({ zenKey: 'zen', openrouterKey: 'or-saved', vercelKey: 'gw-env' });
+  });
+
+  it('keeps the variables when the credential store cannot be read, and ignores blank ones', () => {
+    const readAuth = () => { throw new Error('locked'); };
+    expect(readOpenCodeKeys({ readAuth, env })).toEqual({ zenKey: null, openrouterKey: 'or-env', vercelKey: 'gw-env' });
+    expect(readOpenCodeKeys({ readAuth: () => ({}), env: { OPENROUTER_API_KEY: '  ' } })).toEqual({ zenKey: null, openrouterKey: null, vercelKey: null });
   });
 });
 
@@ -252,7 +292,9 @@ describe('classifier pick', () => {
     const { runtime, store } = makeRuntime({ answers: {} });
     await runtime.setClassifierSource('zen-key');
     expect(store.writeClassifierSource).toHaveBeenCalledWith('zen-key');
-    await expect(runtime.setClassifierSource('vercel')).rejects.toMatchObject({ status: 400 });
+    await runtime.setClassifierSource('openrouter');
+    expect(store.writeClassifierSource).toHaveBeenCalledWith('openrouter');
+    await expect(runtime.setClassifierSource('cloudflare')).rejects.toMatchObject({ status: 400 });
   });
 
   it('picks TypeSafe when a key is saved', async () => {
@@ -276,5 +318,16 @@ describe('describe', () => {
     const one = readyConfig();
     one.categories = one.categories.map((c, i) => ({ ...c, enabled: i === 0 }));
     expect((await makeRuntime({ config: one, answers: {} }).runtime.describe()).autoReady).toBe(false);
+  });
+
+  it('keeps `classifier` parseable for v2.0.2 clients and puts the full picture in `classification`', async () => {
+    const zen = await makeRuntime({ token: null, answers: {} }).runtime.describe();
+    expect(zen.classifier.sources.map((s) => s.id)).toEqual(['zen-promo', 'zen-key', 'typesafe']);
+    expect(zen.classification.sources.map((s) => s.id)).toEqual(['zen-promo', 'zen-key', 'openrouter', 'vercel', 'typesafe']);
+
+    const routed = await makeRuntime({ classifierSource: 'openrouter', providerKeys: { openrouterKey: 'o' }, answers: {} }).runtime.describe();
+    expect(routed.classifier).toBeNull();
+    expect(routed.classification).toMatchObject({ selected: 'openrouter', effective: 'openrouter' });
+    expect(routed.jevAvailable).toBe(true);
   });
 });

@@ -324,7 +324,9 @@ export const ProvidersPage: React.FC = () => {
   );
 
   React.useEffect(() => {
-    if (selectedProviderId !== ADD_PROVIDER_ID) {
+    // A candidate requested from Classification providers arrives before the
+    // list does; judge it only once there is a list to judge it against.
+    if (selectedProviderId !== ADD_PROVIDER_ID || availableLoading || availableProviders.length === 0) {
       return;
     }
 
@@ -335,7 +337,7 @@ export const ProvidersPage: React.FC = () => {
     ) {
       setCandidateProviderId('');
     }
-  }, [selectedProviderId, candidateProviderId, unconnectedProviders]);
+  }, [selectedProviderId, candidateProviderId, unconnectedProviders, availableLoading, availableProviders.length]);
 
   React.useEffect(() => {
     if (selectedProviderId === ADD_PROVIDER_ID) {
@@ -655,8 +657,19 @@ export const ProvidersPage: React.FC = () => {
   const backButton = <SettingsBackButton label={t('settings.providers.page.back')} onClick={backToGrid} />;
 
 
+  // A classification source that needs a key links to the provider holding it:
+  // its own page when OpenCode already lists it, the connect form otherwise.
+  const openProviderForKey = (providerId: string) => {
+    if (providers.some((provider) => provider.id === providerId)) {
+      setSelectedProvider(providerId);
+      return;
+    }
+    setCandidateProviderId(providerId);
+    setSelectedProvider(ADD_PROVIDER_ID);
+  };
+
   if (selectedProviderId === CLASSIFICATION_PAGE_ID) {
-    return <ClassificationProvidersPage titleLeading={backButton} />;
+    return <ClassificationProvidersPage titleLeading={backButton} onOpenProvider={openProviderForKey} />;
   }
 
   if (isAddMode) {

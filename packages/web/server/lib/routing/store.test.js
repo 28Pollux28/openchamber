@@ -100,7 +100,7 @@ describe('routing store', () => {
     expect(await store.readClassifierSource()).toBeNull();
     await store.writeClassifierSource('zen-key');
     expect(await store.readClassifierSource()).toBe('zen-key');
-    await fs.writeFile(path.join(dir, 'classification.json'), '{"version":1,"source":"vercel"}');
+    await fs.writeFile(path.join(dir, 'classification.json'), '{"version":1,"source":"cloudflare"}');
     expect(await store.readClassifierSource()).toBeNull();
   });
 });

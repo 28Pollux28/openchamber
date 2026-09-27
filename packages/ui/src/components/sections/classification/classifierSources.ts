@@ -7,6 +7,8 @@ export const useClassifierSourceName = (source: ClassifierSource | null): string
   const { t } = useI18n();
   if (source === 'zen-promo') return t('settings.classification.source.zenPromo.name');
   if (source === 'zen-key') return t('settings.classification.source.zenKey.name');
+  if (source === 'openrouter') return t('settings.classification.source.openrouter.name');
+  if (source === 'vercel') return t('settings.classification.source.vercel.name');
   if (source === 'typesafe') return t('settings.classification.source.typesafe.name');
   return null;
 };
