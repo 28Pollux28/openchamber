@@ -1522,7 +1522,7 @@ export const settingsDict = {
   "settings.providers.page.custom.error.required": "Обов’язково",
   "settings.providers.page.custom.error.duplicate": "Дублікат",
   "settings.providers.page.custom.error.apiKey.required": "Потрібен API-ключ або {env:VAR_NAME}",
-  "settings.providers.page.custom.authFailure.configAfterAuth": "Облікові дані збережено, але конфігурацію провайдера — ні. Виправте помилку й спробуйте знову або від’єднайте, щоб очистити часткове збереження.",
+  "settings.providers.page.custom.authFailure.keyAfterConfig": "Провайдера збережено, але його API-ключ — ні. Збережіть ще раз, щоб повторити спробу з ключем, або від’єднайте, щоб видалити провайдера.",
 
 
   "settings.providers.page.auth.title": "Аутентифікація",

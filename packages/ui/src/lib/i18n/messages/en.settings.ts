@@ -1550,7 +1550,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': 'Required',
   'settings.providers.page.custom.error.duplicate': 'Duplicate',
   'settings.providers.page.custom.error.apiKey.required': 'API key or {env:VAR_NAME} is required',
-  'settings.providers.page.custom.authFailure.configAfterAuth': 'Credentials were saved, but the provider config was not. Fix the error and try again, or disconnect to clear the partial save.',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': 'The provider was saved, but its API key was not. Save again to retry the key, or disconnect to remove the provider.',
   'settings.providers.page.auth.title': 'Authentication',
   'settings.providers.page.auth.loadingMethods': 'Loading authentication methods...',
   'settings.providers.page.auth.apiKeyLabel': 'API Key',

@@ -1522,7 +1522,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': '必填',
   'settings.providers.page.custom.error.duplicate': '重复',
   'settings.providers.page.custom.error.apiKey.required': '需要 API 密钥或 {env:VAR_NAME}',
-  'settings.providers.page.custom.authFailure.configAfterAuth': '凭据已保存，但提供商配置未保存。请修复错误后重试，或断开连接以清除部分保存。',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': '提供商已保存，但其 API 密钥未保存。请再次保存以重试密钥，或断开连接以移除该提供商。',
 
 
   'settings.providers.page.auth.title': '认证',

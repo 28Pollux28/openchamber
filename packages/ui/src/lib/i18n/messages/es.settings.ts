@@ -1522,7 +1522,7 @@ export const settingsDict = {
   "settings.providers.page.custom.error.required": "Obligatorio",
   "settings.providers.page.custom.error.duplicate": "Duplicado",
   "settings.providers.page.custom.error.apiKey.required": "Se requiere una clave API o {env:VAR_NAME}",
-  "settings.providers.page.custom.authFailure.configAfterAuth": "Las credenciales se guardaron, pero no la configuración del proveedor. Corrige el error e inténtalo de nuevo, o desconéctalo para eliminar el guardado parcial.",
+  "settings.providers.page.custom.authFailure.keyAfterConfig": "El proveedor se guardó, pero su clave de API no. Guarda de nuevo para reintentar la clave o desconéctalo para eliminar el proveedor.",
 
 
   "settings.providers.page.auth.title": "Autenticación",

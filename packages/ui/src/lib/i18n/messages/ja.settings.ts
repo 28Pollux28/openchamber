@@ -1555,7 +1555,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': '必須',
   'settings.providers.page.custom.error.duplicate': '重複',
   'settings.providers.page.custom.error.apiKey.required': 'API キーまたは {env:VAR_NAME} が必要です',
-  'settings.providers.page.custom.authFailure.configAfterAuth': '認証情報は保存されましたが、プロバイダー設定は保存されませんでした。エラーを修正して再試行するか、切断して不完全な保存を削除してください。',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': 'プロバイダーは保存されましたが、API キーは保存されませんでした。もう一度保存してキーを再試行するか、切断してプロバイダーを削除してください。',
 
 
   'settings.providers.page.auth.title': '認証',

@@ -51,6 +51,7 @@ import { ProviderOAuthMethods } from './ProviderOAuthMethods';
 import {
   buildIntegrationKeyRequest,
   buildProviderUpsertRequest,
+  storeKeyAfterConfigWrite,
   CUSTOM_PROVIDER_ID,
   isConfigDefinedCustomProvider,
   providerToEditFormState,
@@ -508,13 +509,9 @@ export const ProvidersPage: React.FC = () => {
     setCustomAuthFailureHint(null);
 
     try {
-      // Auth first so a failed key write cannot leave an orphan config that
-      // blocks create validation, and so PUT can pass hasStoredAuth for literal keys.
+      // Config first: OpenCode registers a custom provider's key method only
+      // once the provider is in its config, so the key follows the write.
       const keyRequest = buildIntegrationKeyRequest(plan);
-      if (keyRequest) {
-        await opencodeClient.getSdkClient().integration.connect.key(keyRequest);
-      }
-
       const upsertBody = buildProviderUpsertRequest(plan, {
         // Create defaults to user. Edit must rewrite the winning config layer
         // (custom > project > user) so project/custom providers are not copied
@@ -533,10 +530,15 @@ export const ProvidersPage: React.FC = () => {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        if (keyRequest) {
-          setCustomAuthFailureHint(t('settings.providers.page.custom.authFailure.configAfterAuth'));
-        }
         throw new Error(payload?.error || t('settings.providers.page.toast.customProviderSaveFailed'));
+      }
+      if (keyRequest) {
+        try {
+          await storeKeyAfterConfigWrite(() => opencodeClient.getSdkClient().integration.connect.key(keyRequest));
+        } catch (error) {
+          setCustomAuthFailureHint(t('settings.providers.page.custom.authFailure.keyAfterConfig'));
+          throw error;
+        }
       }
 
       toast.success(t('settings.providers.page.toast.customProviderSaved', { provider: plan.name }));

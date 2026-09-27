@@ -1427,7 +1427,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': '必填',
   'settings.providers.page.custom.error.duplicate': '重複',
   'settings.providers.page.custom.error.apiKey.required': '需要 API 金鑰或 {env:VAR_NAME}',
-  'settings.providers.page.custom.authFailure.configAfterAuth': '憑證已儲存，但提供者設定未儲存。請修正錯誤後再試，或中斷連線以清除部分儲存。',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': '提供者已儲存，但其 API 金鑰未儲存。請再次儲存以重試金鑰，或中斷連線以移除該提供者。',
 
 
   'settings.providers.page.auth.title': '驗證',
