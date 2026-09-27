@@ -114,8 +114,8 @@ type ZhipuaiLimit = {
 };
 
 type ZhipuaiPayload = {
-  code?: number;
-  msg?: string;
+  code?: number | null;
+  msg?: string | null;
   success?: boolean;
   data?: {
     limits?: ZhipuaiLimit[];
@@ -154,11 +154,10 @@ const resolveZhipuaiUsedPercent = (limit: ZhipuaiLimit): number | null => {
 // (`{code, msg, success: false}`); a missing envelope is treated as legacy success.
 const zhipuaiEnvelopeError = (payload: ZhipuaiPayload): string | null => {
   const code = payload?.code;
-  if (payload?.success !== false && !(code !== undefined && code !== 200)) {
+  if (payload?.success !== false && !(code !== undefined && code !== null && code !== 200)) {
     return null;
   }
-  const msg = payload?.msg?.trim();
-  return msg ? msg : `API error: ${code ?? 'unknown'}`;
+  return asNonEmptyString(payload?.msg) ?? `API error: ${code ?? 'unknown'}`;
 };
 
 type WaferPayload = {
