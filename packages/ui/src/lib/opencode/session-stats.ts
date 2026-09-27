@@ -145,16 +145,33 @@ const toUsageStats = (info: SessionStatsInfo): UsageStats => ({
   })),
 })
 
-export async function fetchUsageStats(query: UsageStatsQuery, signal?: AbortSignal): Promise<UsageStats> {
+const requestStats = async (query: UsageStatsQuery, tools: "none" | "detail", signal?: AbortSignal): Promise<SessionStatsInfo> => {
   try {
-    const info = await opencodeClient.getSdkClient().session.stats(
-      { from: query.from, to: query.to, project: query.projectID, timezone: query.timezone, tools: "detail" },
+    return await opencodeClient.getSdkClient().session.stats(
+      { from: query.from, to: query.to, project: query.projectID, timezone: query.timezone, tools },
       { signal },
     )
-    return toUsageStats(info)
   } catch (error) {
     throw normalizeOpencodeError("session.stats", error)
   }
+}
+
+/**
+ * The report without tool calls: `tools: "none"` keeps OpenCode from scanning
+ * every tool call in the range, a cost that grows with history. The server
+ * defaults to `summary`, so the mode is always sent.
+ */
+export async function fetchUsageStats(query: UsageStatsQuery, signal?: AbortSignal): Promise<UsageStats> {
+  return toUsageStats(await requestStats(query, "none", signal))
+}
+
+/**
+ * Tool calls for a report, on request. There is no tools-only mode: the route
+ * recomputes the whole report and only `tools` is kept. Pass the loaded
+ * report's `range` so the numbers cover the same window as the page.
+ */
+export async function fetchUsageTools(query: UsageStatsQuery, signal?: AbortSignal): Promise<UsageTools> {
+  return toTools((await requestStats(query, "detail", signal)).tools)
 }
 
 /** The OpenCode project id a directory belongs to, for the `project` filter. */

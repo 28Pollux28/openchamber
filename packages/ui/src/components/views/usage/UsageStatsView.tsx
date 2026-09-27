@@ -31,7 +31,7 @@ import {
   type TokenSegmentKey,
   type UsageRange,
 } from './usageStatsModel';
-import { selectUsageStatsEntry, useUsageStatsStore } from './usageStatsStore';
+import { selectUsageStatsEntry, selectUsageToolsEntry, useUsageStatsStore, type UsageToolsEntry } from './usageStatsStore';
 
 /** Select value for the unfiltered report; project values are OpenChamber project ids. */
 const ALL_PROJECTS = '__all__';
@@ -74,7 +74,19 @@ function useUsageStats(range: UsageRange, projectDirectory: string | null) {
   }, [load, request, entry]);
 
   const refresh = React.useCallback(() => void load(request, { force: true }), [load, request]);
-  return { entry, refresh };
+
+  // Tool calls load on request; once asked for, every report shown in this
+  // app session fetches its own, including a cached one switched back to.
+  const toolsEntry = useUsageStatsStore((store) => selectUsageToolsEntry(store, request));
+  const toolsRequested = useUsageStatsStore((store) => store.toolsRequested);
+  const loadTools = useUsageStatsStore((store) => store.loadTools);
+  const hasReport = Boolean(entry?.stats);
+  React.useEffect(() => {
+    if (toolsRequested && hasReport) void loadTools(request);
+  }, [hasReport, loadTools, request, toolsRequested]);
+  const requestTools = React.useCallback(() => void loadTools(request, { force: true }), [loadTools, request]);
+
+  return { entry, refresh, tools: { entry: toolsEntry, load: requestTools } };
 }
 
 export function UsageStatsView({ className }: { className?: string }): React.ReactNode {
@@ -86,7 +98,7 @@ export function UsageStatsView({ className }: { className?: string }): React.Rea
   const [projectChoice, setProjectChoice] = React.useState<string>(ALL_PROJECTS);
   // A project removed from the list while chosen falls back to all projects.
   const selectedProject = projects.find((project) => project.id === projectChoice) ?? null;
-  const { entry, refresh } = useUsageStats(range, selectedProject?.path ?? null);
+  const { entry, refresh, tools } = useUsageStats(range, selectedProject?.path ?? null);
   const timeFormatPreference = useUIStore((store) => store.timeFormatPreference);
   const stats = entry?.stats ?? null;
   const loading = entry?.loading ?? true;
@@ -99,6 +111,10 @@ export function UsageStatsView({ className }: { className?: string }): React.Rea
       percent: new Intl.NumberFormat(intlLocale, { style: 'percent', maximumFractionDigits: 1 }),
       cost: new Intl.NumberFormat(intlLocale, { style: 'currency', currency: 'USD', maximumFractionDigits: 2 }),
       day: new Intl.DateTimeFormat(intlLocale, { month: 'short', day: 'numeric', year: 'numeric' }),
+      milliseconds: new Intl.NumberFormat(intlLocale, { style: 'unit', unit: 'millisecond', unitDisplay: 'short', maximumFractionDigits: 0 }),
+      seconds: new Intl.NumberFormat(intlLocale, { style: 'unit', unit: 'second', unitDisplay: 'short', maximumFractionDigits: 1 }),
+      wholeSeconds: new Intl.NumberFormat(intlLocale, { style: 'unit', unit: 'second', unitDisplay: 'short', maximumFractionDigits: 0 }),
+      minutes: new Intl.NumberFormat(intlLocale, { style: 'unit', unit: 'minute', unitDisplay: 'short', maximumFractionDigits: 0 }),
     };
   }, [intlLocale]);
 
@@ -166,7 +182,7 @@ export function UsageStatsView({ className }: { className?: string }): React.Rea
               <p className="typography-micro text-muted-foreground">{t('usageStats.empty.description')}</p>
             </div>
           ) : (
-            <UsageReport stats={stats} formats={formats} />
+            <UsageReport stats={stats} formats={formats} tools={tools} />
           )
         ) : loading ? (
           <div className="flex items-center justify-center gap-2 py-16 text-muted-foreground" role="status">
@@ -200,9 +216,15 @@ type Formats = {
   percent: Intl.NumberFormat;
   cost: Intl.NumberFormat;
   day: Intl.DateTimeFormat;
+  milliseconds: Intl.NumberFormat;
+  seconds: Intl.NumberFormat;
+  wholeSeconds: Intl.NumberFormat;
+  minutes: Intl.NumberFormat;
 };
 
-function UsageReport({ stats, formats }: { stats: UsageStats; formats: Formats }): React.ReactNode {
+type ToolsState = { entry: UsageToolsEntry | undefined; load: () => void };
+
+function UsageReport({ stats, formats, tools }: { stats: UsageStats; formats: Formats; tools: ToolsState }): React.ReactNode {
   const { t } = useI18n();
   const cache = stats.tokens.cacheRead + stats.tokens.cacheWrite;
   return (
@@ -236,7 +258,7 @@ function UsageReport({ stats, formats }: { stats: UsageStats; formats: Formats }
 
       <EfficiencyTiles stats={stats} formats={formats} />
 
-      <ToolsSection stats={stats} formats={formats} />
+      <ToolsSection state={tools} formats={formats} />
     </>
   );
 }
@@ -436,20 +458,47 @@ function EfficiencyTiles({ stats, formats }: { stats: UsageStats; formats: Forma
   );
 }
 
-/** Median tool-call duration in compact clock form: 340 ms, 2.4 s, 1 m 5 s. */
+/** Median tool-call duration in the locale's short units: 340 ms, 2.4 s, 1 min 5 s. */
 function formatDuration(ms: number, formats: Formats): string {
-  if (ms < 1000) return `${formats.integer.format(Math.round(ms))} ms`;
+  if (ms < 1000) return formats.milliseconds.format(Math.round(ms));
   const seconds = ms / 1000;
-  if (seconds < 60) return `${formats.decimal.format(seconds)} s`;
-  const minutes = Math.floor(seconds / 60);
-  return `${formats.integer.format(minutes)} m ${formats.integer.format(Math.round(seconds % 60))} s`;
+  if (seconds < 60) return formats.seconds.format(seconds);
+  return `${formats.minutes.format(Math.floor(seconds / 60))} ${formats.wholeSeconds.format(Math.round(seconds % 60))}`;
 }
 
-/** Tool-call totals, plus the per-tool rows when the request asked for detail. */
-function ToolsSection({ stats, formats }: { stats: UsageStats; formats: Formats }): React.ReactNode {
+/**
+ * Tool-call totals and per-tool rows, loaded on request (see
+ * `usageStatsStore.ts`). A failed read shows the error with a retry and never
+ * reads as zero calls.
+ */
+function ToolsSection({ state, formats }: { state: ToolsState; formats: Formats }): React.ReactNode {
   const { t } = useI18n();
-  const tools = stats.tools;
-  if (tools.mode === 'none' || tools.totals.calls === 0) return null;
+  const tools = state.entry?.tools ?? null;
+  if (!tools || tools.mode === 'none') {
+    const loading = state.entry?.loading ?? false;
+    const error = state.entry?.error ?? null;
+    return (
+      <Section title={t('usageStats.tools.title')} caption={t('usageStats.tools.caption')}>
+        {error && !loading ? (
+          <div className="flex flex-col items-start gap-2" role="alert">
+            <p className="typography-micro text-foreground">{t('usageStats.tools.loadFailed')}</p>
+            <p className="max-w-md break-words typography-micro text-muted-foreground">{error}</p>
+            <Button type="button" variant="outline" size="sm" onClick={state.load}>
+              {t('usageStats.error.retry')}
+            </Button>
+          </div>
+        ) : (
+          <div>
+            <Button type="button" variant="outline" size="sm" onClick={state.load} disabled={loading} aria-busy={loading}>
+              {loading ? <Icon name="loader-4" className="size-4 animate-spin" /> : null}
+              {t('usageStats.tools.load')}
+            </Button>
+          </div>
+        )}
+      </Section>
+    );
+  }
+  // Asked for and answered: zero calls is a real result, shown as such.
   const successRate = toolSuccessRate(tools.totals);
   // OpenCode returns detail rows sorted by calls; keep the page light past a toolbox.
   const rows = tools.mode === 'detail' ? tools.usage.filter((tool) => tool.calls > 0).slice(0, 8) : [];
