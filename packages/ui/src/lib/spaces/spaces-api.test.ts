@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { createSpace, listSpaces, readSpacesSwitch, SpacesRequestError } from './spaces-api';
+import { createSpace, listSpaces, openSpaceDomain, readSpaceJournal, readSpacesSwitch, SpacesRequestError } from './spaces-api';
 
 const ID = 'a1b2c3d4e5f6';
 const originalFetch = globalThis.fetch;
@@ -75,5 +75,25 @@ describe('spaces-api', () => {
     expect(seen[0]?.method).toBe('POST');
     expect(new URL(seen[0]?.url ?? '').pathname).toBe('/api/openchamber/spaces');
     expect(await seen[0]?.json()).toEqual({ projectDirectory: '/home/me/app', name: 'Fix login', start: 'clean', network: { mode: 'open', domains: [] } });
+  });
+});
+
+describe('the journal and opened domains', () => {
+  test('opens a domain with a POST that names it, and answers the network as it now is', async () => {
+    const seen = answer(200, JSON.stringify({ network: { mode: 'allowlist', domains: ['registry.npmjs.org'] } }));
+    expect(await openSpaceDomain(ID, 'registry.npmjs.org')).toEqual({ mode: 'allowlist', domains: ['registry.npmjs.org'] });
+    expect(seen[0].method).toBe('POST');
+    expect(new URL(seen[0].url).pathname).toBe(`/api/openchamber/spaces/${ID}/network/domains`);
+    expect(await seen[0].json()).toEqual({ domain: 'registry.npmjs.org' });
+  });
+
+  test('reads the journal, and a journal without records is an error, never an empty one', async () => {
+    const journal = { records: [{ at: '2026-09-27T10:00:00.000Z', listener: 'corridor', host: 'registry.npmjs.org', port: 443, decision: 'deny:not-on-allowlist' }], dropped: 0, since: '2026-09-27T09:00:00.000Z' };
+    answer(200, JSON.stringify(journal));
+    expect(await readSpaceJournal(ID)).toEqual(journal);
+    answer(200, JSON.stringify({ dropped: 0, since: 'x' }));
+    expect(await readSpaceJournal(ID).catch((error: Error) => error)).toMatchObject({ code: 'space_answer_malformed' });
+    answer(409, JSON.stringify({ code: 'space_not_running', message: 'stopped' }));
+    expect(await readSpaceJournal(ID).catch((error: Error) => error)).toBeInstanceOf(SpacesRequestError);
   });
 });

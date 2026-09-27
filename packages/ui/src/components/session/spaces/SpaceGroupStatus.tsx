@@ -1,8 +1,9 @@
 /**
- * The status line under an isolated space's group in the sidebar while it is being made (DESIGN.md,
- * user journey step 2): the step the host announced, the model access this window is giving, a
- * failed creation with the way to remove it, or access that could not be given. Nothing once the
- * space is ready and its access given; the group then behaves like any other.
+ * The status line under an isolated space's group in the sidebar: while it is being made (DESIGN.md,
+ * user journey step 2) the step the host announced, the model access this window is giving, a
+ * failed creation with the way to remove it, or access that could not be given; once it runs, what
+ * access it lacks (step 4), read from the gatekeeper through the journey list, with the way to the
+ * grant dialog. Nothing when the space runs with its access; the group then behaves like any other.
  */
 
 import React from 'react';
@@ -12,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useI18n, type I18nKey } from '@/lib/i18n';
 import { removeSpace, type SpaceCreationStep } from '@/lib/spaces/spaces-api';
+import { spaceAccessNoticeOf } from '@/lib/spaces/space-access';
 import { refreshSpacesJourney, useSpacesStore } from '@/lib/spaces/spaces-store';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { failureOfError, spaceFailureText } from './spaceFailureText';
@@ -35,6 +37,12 @@ export const SpaceGroupStatus: React.FC<{ spaceId: string; className?: string }>
   const entry = useSpacesStore((state) => state.journey?.get(spaceId));
   const access = useSpacesStore((state) => state.creationAccess.get(spaceId));
   const catalog = useConfigStore((state) => state.providers);
+  const providerName = (providerId: string) => catalog.find((provider) => provider.id === providerId)?.name ?? providerId;
+  const grantButton = (providerId: string | null = null) => (
+    <Button variant="outline" size="xs" className="self-start" onClick={() => useSpacesStore.getState().openAccessDialog(spaceId, providerId)}>
+      {t('spaces.group.access.give')}
+    </Button>
+  );
   const [removing, setRemoving] = React.useState(false);
   const [removeError, setRemoveError] = React.useState<string | null>(null);
 
@@ -85,17 +93,38 @@ export const SpaceGroupStatus: React.FC<{ spaceId: string; className?: string }>
 
   if (access?.kind === 'failed') {
     return (
-      <div className={cn('flex flex-col gap-0.5', className)}>
+      <div className={cn('flex flex-col gap-1', className)}>
         {access.failures.map((failure) => (
           <Line key={failure.provider} icon="alert" tone="warning">
-            {t('spaces.group.accessMissing', {
-              provider: catalog.find((provider) => provider.id === failure.provider)?.name ?? failure.provider,
-              reason: spaceFailureText(t, failure),
-            })}
+            {t('spaces.group.accessMissing', { provider: providerName(failure.provider), reason: spaceFailureText(t, failure) })}
           </Line>
         ))}
+        {grantButton(access.failures[0]?.provider ?? null)}
       </div>
     );
+  }
+
+  const notice = spaceAccessNoticeOf(entry);
+  if (notice?.kind === 'needs_again') {
+    return (
+      <div className={cn('flex flex-col gap-1', className)}>
+        {notice.providers.map((providerId) => (
+          <Line key={providerId} icon="alert" tone="warning">{t('spaces.group.access.needsAgain', { provider: providerName(providerId) })}</Line>
+        ))}
+        {grantButton(notice.providers[0])}
+      </div>
+    );
+  }
+  if (notice?.kind === 'no_model') {
+    return (
+      <div className={cn('flex flex-col gap-1', className)}>
+        <Line icon="alert" tone="warning">{t('spaces.group.access.noModel')}</Line>
+        {grantButton()}
+      </div>
+    );
+  }
+  if (notice?.kind === 'unknown') {
+    return <div className={className}><Line icon="alert" tone="muted">{t('spaces.group.access.unknown')}</Line></div>;
   }
 
   return null;

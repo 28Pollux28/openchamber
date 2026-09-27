@@ -21,19 +21,18 @@ import { getGitStatus } from '@/lib/gitApi';
 import { generateBranchSlug } from '@/lib/git/branchNameGenerator';
 import { useI18n } from '@/lib/i18n';
 import { SPACE_MODEL_PROVIDERS } from '@/lib/spaces/model-access';
+import { isDomainName } from '@/lib/spaces/space-access';
 import { listSpacePlaces, type SpaceFailure, type SpacePlace, type SpaceStart } from '@/lib/spaces/spaces-api';
 import { startSpaceCreation, type SpaceModelAccess } from '@/lib/spaces/space-creation';
 import { useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { failureOfError, spaceFailureText } from './spaceFailureText';
-
-// The allowlist's rule for a name, the server's own (`space-records.js`): labels of letters,
-// digits and hyphens, with a real last label.
-const DOMAIN_PATTERN = /^(?=.{1,253}$)(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z][a-z0-9-]{0,61}[a-z0-9]$/;
+import { ModelKeySource } from './ModelKeySource';
+import { isKeySourceComplete, modelGrantOf, useSpaceModelProviders, type KeySourceChoice } from './spaceModelKeys';
 
 type PlaceState = { kind: 'checking' } | { kind: 'ready'; place: Extract<SpacePlace, { available: true }> } | { kind: 'unavailable'; failure: SpaceFailure };
 type ChangesState = { kind: 'loading' } | { kind: 'ready'; files: string[] } | { kind: 'unknown' };
-type AccessChoice = { selected: boolean; source: 'env' | 'typed'; envName: string; value: string };
+type AccessChoice = KeySourceChoice & { selected: boolean };
 
 type NewSpaceDialogProps = {
   open: boolean;
@@ -79,8 +78,6 @@ const useChanges = (open: boolean, directory: string): ChangesState => {
 export const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({ open, onOpenChange, project }) => {
   const { t } = useI18n();
   const isMobile = useUIStore((state) => state.isMobile);
-  const catalog = useConfigStore((state) => state.providers);
-  const currentProviderId = useConfigStore((state) => state.currentProviderId);
   const place = usePlace(open);
   const changes = useChanges(open, project.path);
 
@@ -95,13 +92,7 @@ export const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({ open, onOpenChan
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
 
-  // The providers of the host's catalog a space can be given a key for; the composer's is offered first.
-  const providers = React.useMemo(() => SPACE_MODEL_PROVIDERS
-    .flatMap((known) => {
-      const entry = catalog.find((provider) => provider.id === known.id);
-      return entry ? [{ ...known, name: entry.name }] : [];
-    })
-    .sort((a, b) => Number(b.id === currentProviderId) - Number(a.id === currentProviderId)), [catalog, currentProviderId]);
+  const providers = useSpaceModelProviders();
 
   React.useEffect(() => {
     if (!open) return;
@@ -130,17 +121,14 @@ export const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({ open, onOpenChan
   // A choice the place turned out not to support falls back to the one it does.
   const effectiveMode = mode === 'allowlist' && !canRestrict ? 'open' : mode ?? (canRestrict ? 'allowlist' : 'open');
   const chosenAccess = providers.filter((provider) => access[provider.id]?.selected);
-  const accessIncomplete = chosenAccess.some((provider) => {
-    const choice = access[provider.id];
-    return choice.source === 'env' ? !/^[A-Za-z_][A-Za-z0-9_]*$/.test(choice.envName.trim()) : choice.value.trim() === '';
-  });
+  const accessIncomplete = chosenAccess.some((provider) => !isKeySourceComplete(access[provider.id]));
   const canCreate = place.kind === 'ready' && name.trim() !== '' && changes.kind !== 'loading' && !accessIncomplete && !submitting;
 
   const addDomain = () => {
     const candidates = domainInput.split(/[\s,]+/).map((value) => value.trim().toLowerCase()).filter(Boolean);
     if (candidates.length === 0) return;
-    const invalid = candidates.filter((value) => !DOMAIN_PATTERN.test(value));
-    setDomains((current) => Array.from(new Set([...current, ...candidates.filter((value) => DOMAIN_PATTERN.test(value))])));
+    const invalid = candidates.filter((value) => !isDomainName(value));
+    setDomains((current) => Array.from(new Set([...current, ...candidates.filter((value) => isDomainName(value))])));
     setDomainInput(invalid.join(' '));
     setDomainError(invalid.length > 0);
   };
@@ -153,22 +141,13 @@ export const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({ open, onOpenChan
     if (!canCreate) return;
     setSubmitting(true);
     setSubmitError(null);
-    const grants: SpaceModelAccess[] = chosenAccess.map((provider) => {
-      const choice = access[provider.id];
-      return {
-        kind: 'model',
-        provider: provider.id,
-        upstream: provider.upstream,
-        secret: choice.source === 'env' ? { kind: 'env', name: choice.envName.trim() } : { kind: 'typed', value: choice.value.trim() },
-      };
-    });
+    const grants: SpaceModelAccess[] = chosenAccess.map((provider) => modelGrantOf(provider, access[provider.id]));
     try {
       await startSpaceCreation({
         projectId: project.id,
         request: { projectDirectory: project.path, name: name.trim(), start: effectiveStart, network: { mode: effectiveMode, domains: effectiveMode === 'allowlist' ? domains : [] } },
         access: grants,
         refusalMessage: t('spaces.create.queueRefused'),
-        modelRefusal: (providerId) => t('spaces.draft.modelNotGranted', { provider: useConfigStore.getState().providers.find((provider) => provider.id === providerId)?.name ?? providerId }),
       });
       onOpenChange(false);
     } catch (error) {
@@ -286,21 +265,8 @@ export const NewSpaceDialog: React.FC<NewSpaceDialogProps> = ({ open, onOpenChan
                   <span className="typography-micro text-muted-foreground">{t('spaces.create.access.gradeUsesWithoutSeeing')}</span>
                 </label>
                 {choice.selected ? (
-                  <div className="space-y-1.5 pl-6">
-                    {option(choice.source === 'env', () => updateAccess(provider.id, { source: 'env' }), t('spaces.create.access.fromEnv'))}
-                    {choice.source === 'env' ? (
-                      <div className="pl-6">
-                        <Input value={choice.envName} onChange={(event) => updateAccess(provider.id, { envName: event.target.value })} className="h-9 max-w-sm font-mono" aria-label={t('spaces.create.access.envNameAria', { provider: provider.name })} />
-                        <p className="mt-1 typography-meta text-muted-foreground">{t('spaces.create.access.envComesBack')}</p>
-                      </div>
-                    ) : null}
-                    {option(choice.source === 'typed', () => updateAccess(provider.id, { source: 'typed' }), t('spaces.create.access.typed'))}
-                    {choice.source === 'typed' ? (
-                      <div className="pl-6">
-                        <Input type="password" autoComplete="off" value={choice.value} onChange={(event) => updateAccess(provider.id, { value: event.target.value })} className="h-9 max-w-sm" aria-label={t('spaces.create.access.keyAria', { provider: provider.name })} />
-                        <p className="mt-1 typography-meta text-status-warning">{t('spaces.create.access.typedNotKept')}</p>
-                      </div>
-                    ) : null}
+                  <div className="pl-6">
+                    <ModelKeySource providerName={provider.name} choice={choice} onChange={(change) => updateAccess(provider.id, change)} />
                   </div>
                 ) : null}
               </div>

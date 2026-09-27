@@ -5,6 +5,8 @@ import { failureOfError, spaceFailureText } from '@/components/session/spaces/sp
 import { useI18n } from '@/lib/i18n';
 import { reportSettingsSaveState } from '@/lib/persistence';
 import { readSpacesSwitch, setSpacesSwitch, type SpacesSwitchChange } from '@/lib/spaces/spaces-api';
+import { resetSpaceCreationRequests } from '@/lib/spaces/space-creation';
+import { resetSpaceModelAccess } from '@/lib/spaces/space-model-access';
 import { refreshSpacesJourney, useSpacesStore } from '@/lib/spaces/spaces-store';
 import { useUIStore } from '@/stores/useUIStore';
 import { SETTINGS_OPTION_STACK_CLASS, SettingsCheckboxRow, SettingsSection } from '../shared/SettingsSection';
@@ -48,7 +50,11 @@ export const IsolatedSpacesSettings: React.FC = () => {
       setOutcome(answer.stillRunning.length > 0 ? answer : null);
       reportSettingsSaveState('saved');
       if (answer.enabled) void refreshSpacesJourney().catch(() => undefined);
-      else useSpacesStore.getState().forgetForSwitchOff();
+      else {
+        useSpacesStore.getState().forgetForSwitchOff();
+        resetSpaceModelAccess();
+        resetSpaceCreationRequests();
+      }
     } catch (failure) {
       reportSettingsSaveState('error');
       if (!(failure instanceof Error)) throw failure;

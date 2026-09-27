@@ -118,3 +118,43 @@ describe('the journey list and creation progress', () => {
     expect(useSpacesStore.getState().journey?.get(ID)?.name).toBe('One');
   });
 });
+
+describe('the grant dialog and access given through it', () => {
+  beforeEach(() => useSpacesStore.getState().resetForRuntimeSwitch());
+
+  test('a provider given in the dialog leaves the failures of the creation', () => {
+    const failure = (provider: string) => ({ provider, code: 'secret_source_missing', message: 'not set' });
+    useSpacesStore.getState().noteCreationAccess(ID, { kind: 'failed', failures: [failure('openai'), failure('anthropic')] });
+    useSpacesStore.getState().noteProviderGranted(ID, 'openai');
+    expect(useSpacesStore.getState().creationAccess.get(ID)).toEqual({ kind: 'failed', failures: [failure('anthropic')] });
+    useSpacesStore.getState().noteProviderGranted(ID, 'anthropic');
+    expect(useSpacesStore.getState().creationAccess.has(ID)).toBe(false);
+  });
+
+  test('a grant just given survives a read of the list that began before it', () => {
+    const grant = { kind: 'model' as const, id: 'openai', provider: 'openai', upstream: 'https://api.openai.com/v1', source: { kind: 'typed' as const }, url: 'http://gatekeeper:8080/model/openai' };
+    const running: SpaceEntry = {
+      id: ID, name: 'One', projectDirectory: '/home/me/app', directory: `/spaces/${ID}/app`, state: 'running', step: null,
+      failure: null, network: { mode: 'allowlist', domains: [] }, grants: [], access: 'needs_access', needsAccess: ['openai'],
+    };
+    useSpacesStore.getState().applyJourney([running], 0);
+    const before = useSpacesStore.getState().progressRevision;
+    useSpacesStore.getState().noteGrantGiven(ID, grant);
+    expect(useSpacesStore.getState().journey?.get(ID)).toMatchObject({ grants: [grant], needsAccess: [] });
+    // The older read answers last, without the grant: the grant stays.
+    useSpacesStore.getState().applyJourney([running], before);
+    expect(useSpacesStore.getState().journey?.get(ID)?.grants).toEqual([grant]);
+    // A read that began after it is the host's word again.
+    useSpacesStore.getState().applyJourney([{ ...running, needsAccess: [] }], useSpacesStore.getState().progressRevision);
+    expect(useSpacesStore.getState().journey?.get(ID)?.grants).toEqual([]);
+  });
+
+  test('opens on a space and a provider, and a runtime switch closes it', () => {
+    useSpacesStore.getState().openAccessDialog(ID, 'openai');
+    expect(useSpacesStore.getState().accessDialog).toEqual({ spaceId: ID, providerId: 'openai' });
+    useSpacesStore.getState().openAccessDialog(ID);
+    expect(useSpacesStore.getState().accessDialog).toEqual({ spaceId: ID, providerId: null });
+    useSpacesStore.getState().resetForRuntimeSwitch();
+    expect(useSpacesStore.getState().accessDialog).toBeNull();
+  });
+});
