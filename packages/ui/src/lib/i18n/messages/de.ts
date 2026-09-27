@@ -172,6 +172,7 @@ export const dict = {
   'mobile.sessions.viewMode.projects': 'Gruppiert',
   'mobile.sessions.viewMode.timeline': 'Zeitleiste',
   'mobile.sessions.section.chats': 'Chats',
+  'mobile.sessions.section.recent': 'Zuletzt',
   'mobile.sessions.empty.noProjectsTitle': 'Noch keine Projekte',
   'mobile.sessions.empty.noProjectsDescription': 'Füge ein Projekt hinzu, um mit deinem Code zu chatten.',
   'mobile.sessions.empty.noSessionsTitle': 'Noch keine Sitzungen',

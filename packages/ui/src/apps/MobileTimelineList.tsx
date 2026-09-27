@@ -13,7 +13,7 @@ import { useHasSessionActivityDuration } from '@/sync/session-activity-timing';
 
 import { MobileProjectIcon, type MobileProjectIconProject } from './MobileProjectIcon';
 import { MobileSessionRenameForm } from './MobileSessionRenameForm';
-import { MobileSessionRowActions, MobileSwipeActionsRow, ROW_ACTIONS_WIDTH, ROW_ACTIONS_WITH_WORK_WIDTH } from './MobileSessionSwipe';
+import { MobileSessionRowActions, MobileSwipeActionsRow, ROW_ACTION_SLOT_WIDTH, ROW_ACTIONS_WIDTH } from './MobileSessionSwipe';
 import { isSessionInWork } from '@/lib/sessionWorkMetadata';
 import { formatRelativeShort, getSessionTimestamp } from './mobileSessionFields';
 
@@ -42,6 +42,8 @@ export type TimelineRowHandlers = {
   onCancelRename: () => void;
   /** Track / Done; absent while the feature is off. */
   onToggleWork?: (session: Session, inWork: boolean) => void;
+  isPinned: (session: Session) => boolean;
+  onTogglePin: (session: Session) => void;
 };
 
 const TIMELINE_ROW_INDENT = 12;
@@ -58,7 +60,7 @@ const MobileTimelineRow: React.FC<{
   const { session, project, branch } = entry;
   const title = session.title?.trim() || t('mobile.sessions.untitled');
   const time = formatRelativeShort(getSessionTimestamp(session));
-  const aiRename = useSessionAiRenameAction(session.id, session.directory, revealed);
+  const aiRename = useSessionAiRenameAction(session.id, session.directory, revealed || renaming);
 
   // Live indicators, same conventions as the grouped rows: busy/retry →
   // info dot; unseen activity on a non-active row → success dot.
@@ -70,10 +72,13 @@ const MobileTimelineRow: React.FC<{
   const onToggleWork = handlers.onToggleWork;
   const inWork = isSessionInWork(session);
   const work = onToggleWork ? { inWork, onToggle: () => onToggleWork(session, inWork) } : undefined;
+  const pinned = handlers.isPinned(session);
+  const pin = { pinned, onToggle: () => handlers.onTogglePin(session) };
 
   return (
     <MobileSwipeActionsRow
-      actionsWidth={work ? ROW_ACTIONS_WITH_WORK_WIDTH : ROW_ACTIONS_WIDTH}
+      // Every timeline row is top-level, so Pin is always there.
+      actionsWidth={ROW_ACTIONS_WIDTH + ROW_ACTION_SLOT_WIDTH + (work ? ROW_ACTION_SLOT_WIDTH : 0)}
       revealed={revealed}
       onRevealedChange={(next) => handlers.onRevealedChange(session.id, next)}
       dataActiveSession={active}
@@ -86,13 +91,13 @@ const MobileTimelineRow: React.FC<{
           title={title}
           revealed={revealed}
           confirmingDelete={confirmingDelete}
-          aiRename={aiRename}
           onArchive={() => handlers.onArchive(session)}
           onRequestDelete={() => handlers.onRequestDelete(session.id)}
           onConfirmDelete={() => handlers.onConfirmDelete(session)}
           onRequestRename={() => handlers.onRequestRename(session.id)}
           onRevealedChange={(next) => handlers.onRevealedChange(session.id, next)}
           work={work}
+          pin={pin}
         />
       )}
     >
@@ -104,6 +109,9 @@ const MobileTimelineRow: React.FC<{
               <span className="block min-w-0 flex-1 truncate typography-micro text-muted-foreground">
                 {project.label}
               </span>
+              {pinned ? (
+                <Icon name="pushpin" className="size-3 shrink-0 text-muted-foreground" aria-label={t('sessions.sidebar.session.status.pinned')} />
+              ) : null}
               {aiRename.pending ? (
                 <Icon name="loader-4" className="size-3 shrink-0 animate-spin text-primary" aria-label={t('sessions.aiRename.generating')} />
               ) : isStreaming || showUnreadDot ? (
@@ -124,6 +132,7 @@ const MobileTimelineRow: React.FC<{
               <MobileSessionRenameForm
                 initialTitle={title}
                 indent={0}
+                aiRename={aiRename}
                 // One title line tall; the save/cancel controls shrink to fit it.
                 className="h-[1lh] pr-0 typography-ui-label [&_button]:size-6 [&_button>svg]:size-3.5"
                 onSubmit={(next) => handlers.onSubmitRename(session.id, next)}

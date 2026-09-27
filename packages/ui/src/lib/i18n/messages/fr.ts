@@ -3117,6 +3117,7 @@ export const dict = {
   'mobile.sessions.viewMode.projects': 'Groupé',
   'mobile.sessions.viewMode.timeline': 'Chronologie',
   'mobile.sessions.section.chats': 'Discussions',
+  'mobile.sessions.section.recent': 'Récents',
   'mobile.sessions.empty.noProjectsTitle': 'Aucun projet pour le moment',
   'mobile.sessions.empty.noProjectsDescription': 'Ajoutez un projet pour commencer à discuter avec votre code.',
   'mobile.sessions.empty.noSessionsTitle': 'Aucune session pour le moment',

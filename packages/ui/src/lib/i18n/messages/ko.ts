@@ -208,6 +208,7 @@ export const dict: Record<I18nKey, string> = {
   'mobile.sessions.viewMode.projects': '그룹 보기',
   'mobile.sessions.viewMode.timeline': '타임라인',
   'mobile.sessions.section.chats': '채팅',
+  'mobile.sessions.section.recent': '최근',
   'mobile.sessions.empty.noProjectsTitle': '프로젝트 없음',
   'mobile.sessions.empty.noProjectsDescription': '코드와 채팅을 시작하려면 프로젝트를 추가하세요.',
   'mobile.sessions.empty.noSessionsTitle': '세션 없음',

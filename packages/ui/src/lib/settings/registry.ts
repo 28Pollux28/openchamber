@@ -314,7 +314,9 @@ export const SETTINGS_REGISTRY = {
   sidebarViewMode: field({ scope: 'profile', perSurface: true, parse: parseOneOf(['projects', 'timeline']), ui: sessionDisplayField('sidebarViewMode') }),
   sidebarProjectSortOrder: field({ scope: 'profile', parse: parseOneOf(['manual', 'a-z', 'z-a', 'date-added', 'recent']), ui: sessionDisplayField('projectSortOrder') }),
   sidebarWorktreeSortOrder: field({ scope: 'profile', parse: parseOneOf(['recent', 'manual', 'a-z']), ui: sessionDisplayField('worktreeSortOrder') }),
-  sidebarShowRecentSection: field({ scope: 'profile', parse: parseBoolean, ui: sessionDisplayField('showRecentSection') }),
+  // Per surface: Recent turned on in the desktop sidebar must not fill the
+  // phone's drawer, and the phone's choice must not change the desktop.
+  sidebarShowRecentSection: field({ scope: 'profile', perSurface: true, parse: parseBoolean, ui: sessionDisplayField('showRecentSection') }),
 
   // ── Work status ──
   workStatusSectionOrder: field({

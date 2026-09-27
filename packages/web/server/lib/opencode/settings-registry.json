@@ -240,7 +240,8 @@
       "scope": "profile"
     },
     "sidebarShowRecentSection": {
-      "scope": "profile"
+      "scope": "profile",
+      "perSurface": true
     },
     "workStatusSectionOrder": {
       "scope": "profile"

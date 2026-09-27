@@ -193,6 +193,7 @@ export const dict = {
   'mobile.sessions.viewMode.projects': 'Gruplu',
   'mobile.sessions.viewMode.timeline': 'Zaman çizelgesi',
   'mobile.sessions.section.chats': 'Sohbetler',
+  'mobile.sessions.section.recent': 'Son kullanılanlar',
   'mobile.sessions.empty.noProjectsTitle': 'Henüz proje yok',
   'mobile.sessions.empty.noProjectsDescription': 'Kodunuzla sohbet etmeye başlamak için bir proje ekleyin.',
   'mobile.sessions.empty.noSessionsTitle': 'Henüz session yok',

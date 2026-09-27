@@ -79,7 +79,15 @@ their shared managed root for folders and never expose worktree actions. Project
 display can be all projects or one selected project. The mobile sessions sheet
 (`apps/MobileSessionsSheet.tsx`) partitions the same way through
 `partitionSidebarSessions` and lists Chats as a collapsible section above the
-project tree, with no Recent projection. VS Code excludes worktrees and managed
+project tree. In the grouped view its display panel offers the same Recent
+toggle (`sidebarShowRecentSection`, per surface, so the phone and the desktop
+choose separately): a collapsible section under In work with the desktop's
+membership (`useRecentSessionCollection`), subsessions kept for expansion,
+compact rows labelled "project · branch" through `resolveSidebarSessionLocations`
+with the desktop Recent policy (live root branch included, a branch equal to
+the project label hidden; the branch map is held while the drawer closes),
+seven rows before Show more. The
+timeline never shows Recent. VS Code excludes worktrees and managed
 Chats, while retaining its workspace-scoped grouped list and inline archived
 buckets.
 
@@ -163,8 +171,13 @@ same hint as a top row (`components/chat/SessionDoneHintRow.tsx`). The
 whole-row tooltip in the projects view shows the current recap. The mobile
 sheet (`apps/MobileSessionsSheet.tsx`) mirrors it: an "In work" section under
 Chats takes the sessions in work with their subsessions out of the project
-buckets and the timeline, and Track / Done is a fifth swipe action on
-top-level rows (`ROW_ACTIONS_WITH_WORK_WIDTH`). Row memoization
+buckets and the timeline, and Track / Done is a swipe action on top-level
+rows. Mobile swipe actions run left to right by how often they are used on a
+phone, because a short drag exposes the leftmost first: archive, pin (top-level
+rows), Track / Done (top-level rows, feature on), delete, rename; AI rename sits
+inside the rename editor. Top-level rows also show a pin marker beside the
+time; pins are the same device-local `useSessionPinnedStore` the desktop menu
+writes, so a pin set on one device does not appear on another. Row memoization
 compares `metadata` by reference and `time.idle`, so metadata-only changes
 (work, goal, recap) re-render the row.
 

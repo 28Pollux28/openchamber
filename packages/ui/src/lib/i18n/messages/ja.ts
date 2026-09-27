@@ -208,6 +208,7 @@ export const dict: Record<I18nKey, string> = {
   'mobile.sessions.viewMode.projects': 'グループ表示',
   'mobile.sessions.viewMode.timeline': 'タイムライン',
   'mobile.sessions.section.chats': 'チャット',
+  'mobile.sessions.section.recent': '最近',
   'mobile.sessions.empty.noProjectsTitle': 'まだプロジェクトがありません',
   'mobile.sessions.empty.noProjectsDescription': 'プロジェクトを追加してコードとチャットを始めましょう。',
   'mobile.sessions.empty.noSessionsTitle': 'まだセッションがありません',
