@@ -1494,7 +1494,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': 'Erforderlich',
   'settings.providers.page.custom.error.duplicate': 'Duplikat',
   'settings.providers.page.custom.error.apiKey.required': 'API-Schlüssel oder {env:VAR_NAME} ist erforderlich',
-  'settings.providers.page.custom.authFailure.configAfterAuth': 'Anmeldedaten wurden gespeichert, aber die Anbieterkonfiguration nicht. Beheben Sie den Fehler und versuchen Sie es erneut, oder trennen Sie die Verbindung, um den teilweisen Speichervorgang zu löschen.',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': 'Der Anbieter wurde gespeichert, sein API-Schlüssel jedoch nicht. Speichern Sie erneut, um den Schlüssel noch einmal zu versuchen, oder trennen Sie die Verbindung, um den Anbieter zu entfernen.',
   'settings.providers.page.auth.title': 'Authentifizierung',
   'settings.providers.page.auth.loadingMethods': 'Lade Authentifizierungsmethoden...',
   'settings.providers.page.auth.apiKeyLabel': 'API-Schlüssel',

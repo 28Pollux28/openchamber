@@ -37,7 +37,8 @@ import { useI18n } from '@/lib/i18n';
 import { subscribeOpenchamberEvents } from '@/lib/openchamberEvents';
 import { runtimeFetch } from '@/lib/runtime-fetch';
 import { getRuntimeApiBaseUrl, getRuntimeKey, subscribeRuntimeEndpointChanged, switchRuntimeEndpoint, MOBILE_DISCONNECTED_RUNTIME_KEY } from '@/lib/runtime-switch';
-import { refreshGlobalSessions, resolveGlobalSessionDirectory } from '@/stores/useGlobalSessionsStore';
+import { refreshGlobalSessions, resolveGlobalSessionDirectory, useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
+import { useAuthoritativeSessionCleanup } from '@/components/session/sidebar/list/useAuthoritativeSessionCleanup';
 import { clearLastActiveSession, readLastActiveSession } from '@/sync/last-session-cache';
 import { cn } from '@/lib/utils';
 import { useConfigStore } from '@/stores/useConfigStore';
@@ -697,6 +698,17 @@ function MobileAppContent({ apis }: MobileAppProps) {
   const refreshLinearAuthStatus = useLinearAuthStore((state) => state.refreshStatus);
   const setPlanModeEnabled = useFeatureFlagsStore((state) => state.setPlanModeEnabled);
   const projects = useProjectsStore((state) => state.projects);
+  // The mobile shell has no layout-level session list sync, so a lost
+  // `session.deleted` is reconciled here from the same complete global
+  // active+archived snapshots, refreshed whenever the sessions sheet opens.
+  const globalActiveSessions = useGlobalSessionsStore((state) => state.activeSessions);
+  const globalArchivedSessions = useGlobalSessionsStore((state) => state.archivedSessions);
+  const hasAuthoritativeGlobalSessions = useGlobalSessionsStore((state) => state.status === 'ready');
+  const cleanupSessions = React.useMemo(
+    () => [...globalActiveSessions, ...globalArchivedSessions],
+    [globalActiveSessions, globalArchivedSessions],
+  );
+  useAuthoritativeSessionCleanup({ hasAuthoritativeGlobalSessions, sessions: cleanupSessions });
   const [connectionEpoch, setConnectionEpoch] = React.useState(0);
   const [runtimeEndpointEpoch, setRuntimeEndpointEpoch] = React.useState(0);
   const [showConnectionRecovery, setShowConnectionRecovery] = React.useState(false);

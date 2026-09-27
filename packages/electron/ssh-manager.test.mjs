@@ -341,7 +341,7 @@ printf '4321\\n'`);
     });
     expect(settings.desktopHosts).toEqual([{ id: 'ssh-1', label: 'SSH Host', url: localUrl, apiUrl: localUrl, clientToken: 'ssh-client-token' }]);
   });
-  test('finds the newest nvm npm that the SSH login shell does not have on PATH', async () => {
+  test.skipIf(process.platform === 'win32')('finds the newest nvm npm that the SSH login shell does not have on PATH', async () => {
     const home = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-ssh-nvm-'));
     const executable = (file, script) => {
       fs.mkdirSync(path.dirname(file), { recursive: true });

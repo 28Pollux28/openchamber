@@ -201,11 +201,23 @@ const unwrapTaskResultEnvelope = (output: string): string => {
     return resultBlock[1];
 };
 
+// OpenCode 2's subagent tool wraps a completed result the same way, without
+// an inner result block (issue #4066):
+//   <subagent sessionID="ses_…" state="completed">
+//   …result Markdown…
+//   </subagent>
+// Only an output that is exactly one such envelope is unwrapped.
+const SUBAGENT_ENVELOPE_PATTERN = /^\s*<subagent(?:\s[^>]*)?>\r?\n([\s\S]*?)\r?\n<\/subagent>\s*$/i;
+
+const unwrapSubagentEnvelope = (output: string): string => {
+    return output.match(SUBAGENT_ENVELOPE_PATTERN)?.[1] ?? output;
+};
+
 // The task tool renders its output through the markdown parser instead of the
 // shared tool-output path, so it needs the same size guard as
 // `getToolOutputText` (issue #2265): an unbounded single string reaching the
 // parser can exhaust V8's Zone allocator and crash the renderer.
 export const prepareTaskToolOutput = (output: string | undefined): string => {
     if (!output) return '';
-    return capToolOutputText(stripTaskMetadataFromOutput(unwrapTaskResultEnvelope(output)));
+    return capToolOutputText(stripTaskMetadataFromOutput(unwrapSubagentEnvelope(unwrapTaskResultEnvelope(output))));
 };

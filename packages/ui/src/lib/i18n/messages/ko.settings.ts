@@ -1522,7 +1522,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': '필수',
   'settings.providers.page.custom.error.duplicate': '중복',
   'settings.providers.page.custom.error.apiKey.required': 'API 키 또는 {env:VAR_NAME}이(가) 필요합니다',
-  'settings.providers.page.custom.authFailure.configAfterAuth': '자격 증명은 저장되었지만 공급자 구성은 저장되지 않았습니다. 오류를 수정한 뒤 다시 시도하거나, 연결을 해제하여 부분 저장을 지우세요.',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': '공급자는 저장되었지만 API 키는 저장되지 않았습니다. 다시 저장하여 키를 재시도하거나, 연결을 해제하여 공급자를 제거하세요.',
 
 
   'settings.providers.page.auth.title': '인증',

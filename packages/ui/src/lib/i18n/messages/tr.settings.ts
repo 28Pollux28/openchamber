@@ -1474,7 +1474,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': 'Zorunlu',
   'settings.providers.page.custom.error.duplicate': 'Yinelenen',
   'settings.providers.page.custom.error.apiKey.required': 'API anahtarı veya {env:VAR_NAME} gerekli',
-  'settings.providers.page.custom.authFailure.configAfterAuth': 'Kimlik bilgileri kaydedildi ancak provider yapılandırması kaydedilmedi. Hatayı düzeltip yeniden deneyin ya da kısmi kaydı temizlemek için bağlantıyı kesin.',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': 'Provider kaydedildi ancak API anahtarı kaydedilmedi. Anahtarı yeniden denemek için tekrar kaydedin veya provider’ı kaldırmak için bağlantıyı kesin.',
   'settings.providers.page.auth.title': 'Kimlik doğrulama',
   'settings.providers.page.auth.loadingMethods': 'Kimlik doğrulama yöntemleri yükleniyor...',
   'settings.providers.page.auth.apiKeyLabel': 'API Anahtarı',

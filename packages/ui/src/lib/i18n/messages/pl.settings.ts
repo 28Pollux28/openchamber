@@ -1600,7 +1600,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': 'Wymagane',
   'settings.providers.page.custom.error.duplicate': 'Duplikat',
   'settings.providers.page.custom.error.apiKey.required': 'Wymagany jest klucz API lub {env:VAR_NAME}',
-  'settings.providers.page.custom.authFailure.configAfterAuth': 'Poświadczenia zostały zapisane, ale konfiguracja dostawcy nie. Napraw błąd i spróbuj ponownie albo rozłącz, aby usunąć częściowy zapis.',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': 'Dostawca został zapisany, ale jego klucz API nie. Zapisz ponownie, aby ponowić zapis klucza, lub rozłącz, aby usunąć dostawcę.',
 
 
   'settings.providers.page.connect.noProvidersFound': 'Nie znaleziono dostawców',

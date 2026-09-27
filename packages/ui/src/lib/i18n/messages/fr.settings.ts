@@ -1440,7 +1440,7 @@ export const settingsDict = {
   'settings.providers.page.custom.error.required': 'Obligatoire',
   'settings.providers.page.custom.error.duplicate': 'Doublon',
   'settings.providers.page.custom.error.apiKey.required': 'Une clé API ou {env:VAR_NAME} est requise',
-  'settings.providers.page.custom.authFailure.configAfterAuth': 'Les identifiants ont été enregistrés, mais pas la configuration du fournisseur. Corrigez l\'erreur et réessayez, ou déconnectez pour effacer l\'enregistrement partiel.',
+  'settings.providers.page.custom.authFailure.keyAfterConfig': 'Le fournisseur a été enregistré, mais pas sa clé API. Enregistrez à nouveau pour réessayer la clé, ou déconnectez-le pour supprimer le fournisseur.',
 
 
   'settings.providers.page.auth.title': 'Authentification',
