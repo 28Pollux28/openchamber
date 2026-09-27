@@ -19,7 +19,7 @@ import { SessionSwitcherDropdown } from '@/components/session/SessionSwitcherDro
 import { SessionsTabTitle } from '@/components/session/SessionsTabTitle';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSessionDisplayStore } from '@/stores/useSessionDisplayStore';
-import { getVSCodeBootstrapWorkspaceFolder } from '@/lib/vscodeBootstrap';
+import { getVSCodeBootstrapConfig, getVSCodeBootstrapWorkspaceFolder } from '@/lib/vscodeBootstrap';
 import { cn } from '@/lib/utils';
 import {
   DropdownMenu,
@@ -104,6 +104,10 @@ export const VSCodeLayout: React.FC = () => {
     }
     return null;
   }, []);
+
+  // The "Run on several models" command opens a new-session tab whose draft
+  // starts in parallel mode.
+  const initialParallelComposer = React.useMemo<boolean>(() => getVSCodeBootstrapConfig()?.initialComposer === 'parallel', []);
 
   const bootstrapWorkspaceFolder = React.useMemo<string | null>(() => {
     return getVSCodeBootstrapWorkspaceFolder();
@@ -472,6 +476,7 @@ export const VSCodeLayout: React.FC = () => {
     if (!initialSessionId) {
       hasAppliedInitialSession.current = true;
       openNewSessionDraft({ automatic: true, directoryOverride: bootstrapWorkspaceFolder });
+      if (initialParallelComposer) useUIStore.getState().requestParallelComposer();
       return;
     }
 
@@ -481,7 +486,7 @@ export const VSCodeLayout: React.FC = () => {
 
     hasAppliedInitialSession.current = true;
     void useSessionUIStore.getState().setCurrentSession(initialSessionId);
-  }, [bootstrapWorkspaceFolder, connectionStatus, hasInitializedOnce, initialSessionExists, initialSessionId, openNewSessionDraft, viewMode]);
+  }, [bootstrapWorkspaceFolder, connectionStatus, hasInitializedOnce, initialParallelComposer, initialSessionExists, initialSessionId, openNewSessionDraft, viewMode]);
 
   // Track container width for responsive settings layout
   React.useEffect(() => {
@@ -558,7 +563,8 @@ export const VSCodeLayout: React.FC = () => {
     <>
       <div ref={containerRef} className="h-full w-full bg-background text-foreground flex flex-col">
       {viewMode === 'editor' ? (
-        // Editor mode: just chat, no sidebar
+        // Editor mode: just chat, no sidebar. A run launched here opens its
+        // overview over the chat, as in the other layouts.
         <div className="flex flex-col h-full">
           <VSCodeHeader
             title={activeSessionTitle || t('vscodeLayout.title.chat')}
@@ -567,10 +573,11 @@ export const VSCodeLayout: React.FC = () => {
             showRateLimits
             enableSessionSwitcher
           />
-          <div className="flex-1 overflow-hidden">
+          <div className="relative flex-1 overflow-hidden">
             <ErrorBoundary>
-              <ChatView />
+              <ChatView active={!runOverviewKey} />
             </ErrorBoundary>
+            <ErrorBoundary><RunOverview /></ErrorBoundary>
           </div>
         </div>
       ) : currentView === 'settings' ? (
@@ -683,7 +690,6 @@ interface VSCodeHeaderProps {
   onArchiveAll?: () => void;
   onNewSession?: () => void;
   onSettings?: () => void;
-  onAgentManager?: () => void;
   showMcp?: boolean;
   showContextUsage?: boolean;
   showRateLimits?: boolean;
@@ -691,7 +697,7 @@ interface VSCodeHeaderProps {
 }
 
 
-const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, onArchiveAll, onNewSession, onSettings, onAgentManager, showMcp, showContextUsage, showRateLimits, enableSessionSwitcher }) => {
+const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, onArchiveAll, onNewSession, onSettings, showMcp, showContextUsage, showRateLimits, enableSessionSwitcher }) => {
   const { t } = useI18n();
   const showArchivedSessions = useSessionDisplayStore((state) => state.showArchivedSessions);
   const toggleArchivedSessions = useSessionDisplayStore((state) => state.toggleArchivedSessions);
@@ -824,15 +830,6 @@ const VSCodeHeader: React.FC<VSCodeHeaderProps> = ({ title, showBack, onBack, on
           aria-label={t('vscodeLayout.actions.newSessionAria')}
         >
           <Icon name="add" className="h-5 w-5" />
-        </button>
-      )}
-      {onAgentManager && (
-        <button
-          onClick={onAgentManager}
-          className="inline-flex h-9 w-9 items-center justify-center p-2 text-muted-foreground hover:text-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          aria-label={t('vscodeLayout.actions.openAgentManagerAria')}
-        >
-          <Icon name="robot-2" className="h-5 w-5" />
         </button>
       )}
       {showMcp && (
