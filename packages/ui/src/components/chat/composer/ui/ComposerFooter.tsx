@@ -76,6 +76,10 @@ export interface ComposerFooterProps {
     isBtw?: boolean;
     modelSessionId?: string | null;
     btwSelection: BtwSelection;
+    /** Offers "Run on several models" in the model picker (desktop). */
+    onRunInParallel?: () => void;
+    /** Set while the composer is in "Run in parallel" mode: the primary action launches the run. */
+    parallelRun?: { runCount: number; launching: boolean; onLaunch: () => void } | null;
 }
 
 export function ComposerFooter(props: ComposerFooterProps) {
@@ -123,6 +127,8 @@ export function ComposerFooter(props: ComposerFooterProps) {
         isBtw = false,
         modelSessionId,
         btwSelection,
+        onRunInParallel,
+        parallelRun = null,
     } = props;
 
     return (
@@ -255,7 +261,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                         {!isBtw ? <SessionGoalObjectiveCounter length={messageLength} /> : null}
                     </div>
                     <div className={cn('flex items-center flex-1 justify-end', footerGapClass, 'md:gap-x-3')}>
-                        {isBtw ? <ModelControls className="flex-1 min-w-0 justify-end" sessionId={modelSessionId ?? null} selection={btwSelection} /> : <MemoModelControls className={cn('flex-1 min-w-0 justify-end')} />}
+                        {parallelRun ? <div className="flex-1" /> : isBtw ? <ModelControls className="flex-1 min-w-0 justify-end" sessionId={modelSessionId ?? null} selection={btwSelection} /> : <MemoModelControls className={cn('flex-1 min-w-0 justify-end')} onRunInParallel={onRunInParallel} />}
                         {!isBtw ? <MemoComposerDictation
                             radius={chatInputRadius}
                             isMobile={isMobile}
@@ -268,7 +274,26 @@ export function ComposerFooter(props: ComposerFooterProps) {
                             onStart={onDictationStart}
                             onContentHeightChange={onDictationContentHeightChange}
                         /> : null}
-                        <ComposerActionButtons
+                        {parallelRun ? (
+                            // Parallel mode keeps the ordinary send button: the strip above
+                            // already shows how many runs start, and submitting the form
+                            // launches them (ChatInput routes the submit to the run).
+                            <ComposerActionButtons
+                                isMobile={isMobile}
+                                footerIconButtonClass={footerIconButtonClass}
+                                sendIconSizeClass={sendIconSizeClass}
+                                stopIconSizeClass={stopIconSizeClass}
+                                canSend={canSend && parallelRun.runCount >= 2 && !parallelRun.launching}
+                                canAbort={false}
+                                hasContent={hasContent}
+                                currentSessionId={currentSessionId}
+                                newSessionDraftOpen={newSessionDraftOpen}
+                                onPrimaryAction={parallelRun.onLaunch}
+                                onQueueMessage={onQueueMessage}
+                                onAbort={onAbort}
+                                sendLabel={t('chat.parallel.runAria', { count: parallelRun.runCount })}
+                            />
+                        ) : <ComposerActionButtons
                             isMobile={isMobile}
                             footerIconButtonClass={footerIconButtonClass}
                             sendIconSizeClass={sendIconSizeClass}
@@ -281,7 +306,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                             onPrimaryAction={onPrimaryAction}
                             onQueueMessage={onQueueMessage}
                             onAbort={onAbort}
-                        />
+                        />}
                     </div>
                 </>
             )}

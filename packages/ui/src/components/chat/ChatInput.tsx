@@ -8,6 +8,10 @@ import { useAutoReviewStore } from '@/stores/useAutoReviewStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useSelectionStore } from '@/sync/selection-store';
 import { prepareLocalAttachments, useInputStore, type SyntheticContextPart } from '@/sync/input-store';
+import { useProjectsStore } from '@/stores/useProjectsStore';
+import { openParallelComposer } from '@/lib/multirun/openParallelComposer';
+import { useParallelComposer } from './composer/parallel/useParallelComposer';
+import { ParallelComposerStrip } from './composer/parallel/ParallelComposerStrip';
 import {
     ACCEPTED_ATTACHMENT_EXTENSIONS,
     ATTACHMENT_ACCEPT,
@@ -1219,6 +1223,30 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         }
     }, [isBtwActive, pendingInputText, consumePendingInputText]);
 
+    const parallel = useParallelComposer({
+        enabled: !isMobile && !isBtwActive,
+        draftOpen: newSessionDraftOpen && newSessionDraft?.target !== 'chat',
+        draftProjectId: newSessionDraft?.selectedProjectId ?? null,
+        message,
+        setMessage,
+    });
+    const parallelProjectId = newSessionDraft?.selectedProjectId ?? null;
+    const parallelProject = useProjectsStore(React.useCallback((state) => {
+        const project = state.projects.find((entry) => entry.id === (parallelProjectId ?? state.activeProjectId));
+        return project ? `${project.id}\n${project.path}` : null;
+    }, [parallelProjectId]));
+    const parallelProjectRef = React.useMemo(() => {
+        if (!parallelProject) return null;
+        const [id, path] = parallelProject.split('\n');
+        return { id, path };
+    }, [parallelProject]);
+    const enterParallel = parallel.enter;
+    const handleRunInParallel = React.useCallback(() => {
+        // The picker offers it everywhere; a run always starts from a new-session draft.
+        if (newSessionDraftOpen && newSessionDraft?.target !== 'chat') enterParallel();
+        else openParallelComposer(messageRef.current);
+    }, [enterParallel, newSessionDraft?.target, newSessionDraftOpen]);
+
     const hasContent = message.trim().length > 0 || attachedFiles.length > 0 || hasDrafts;
     const hasQueuedMessages = !isBtwActive && queuedMessages.length > 0;
     const preparingBtwSend = useBtwStore((state) => Boolean(currentSessionId && state.byParent[currentSessionId]?.pendingSend));
@@ -1499,6 +1527,11 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         // inert while it is open.
         if (isMobileCommentOpen()) return;
         if (isBtwActive && currentSessionId && (btwPanel.creating || useBtwStore.getState().byParent[currentSessionId]?.pendingSend)) return;
+        // "Run in parallel" launches the run instead of sending a message.
+        if (parallel.isActive && !options?.queuedOnly) {
+            if (parallel.runCount >= 2) void parallel.launch();
+            return;
+        }
         const submitRuntimeKey = getRuntimeKey();
         const queuedOnly = options?.queuedOnly ?? false;
         const queuedMessageId = options?.queuedMessageId;
@@ -3923,6 +3956,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         text area + footer exactly. */}
                     <div className={cn('relative flex flex-col', isComposerExpanded && 'flex-1 min-h-0')}>
                     <div className={cn("overflow-hidden", isComposerExpanded && 'flex flex-1 min-h-0 flex-col')}>
+                        {parallel.isActive ? <ParallelComposerStrip parallel={parallel} project={parallelProjectRef} /> : null}
                         {composerTopRows}
                         {isMobile && isBtwActive ? (
                             <div className="scrollbar-none relative z-10 flex items-center gap-x-2 overflow-x-auto px-3 pb-0.5 pt-1.5">
@@ -4051,6 +4085,12 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         isBtw={isBtwActive}
                         modelSessionId={btwComposerSessionId}
                         btwSelection={effectiveBtwSelection}
+                        onRunInParallel={!isMobile && !isBtwActive ? handleRunInParallel : undefined}
+                        parallelRun={parallel.isActive ? {
+                            runCount: parallel.runCount,
+                            launching: parallel.isLaunching,
+                            onLaunch: () => { void parallel.launch(); },
+                        } : null}
                     />
                     {mobileModelAgentRow}
                     </div>

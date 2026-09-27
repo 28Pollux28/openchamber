@@ -55,6 +55,19 @@ export const ZEN_JEV_PROMOTION_ACTIVE = true;
  */
 export const ZEN_JEV_PAID_MODEL = 'jev-1.13';
 
+/**
+ * OpenRouter and Vercel AI Gateway serve TypeSafe's System One API under their
+ * own base URLs and bill the call to the account behind the key the user saved
+ * for that provider in OpenCode. OpenRouter maps the bare `jev-latest` onto its
+ * `~typesafe/jev-latest` alias; AI Gateway knows Jev only as `typesafe-ai/jev`.
+ * Both answer 401 without a key (checked 2026-09-27); a paid call is not
+ * verified live yet.
+ */
+export const OPENROUTER_JEV_API_URL = 'https://openrouter.ai/api/v1/systemone';
+export const OPENROUTER_JEV_MODEL = 'jev-latest';
+export const VERCEL_JEV_API_URL = 'https://ai-gateway.vercel.sh/typesafe/v1/systemone';
+export const VERCEL_JEV_MODEL = 'typesafe-ai/jev';
+
 /** Per-attempt timeout; the lab measured 250–700 ms warm, ~1 s on a cold TLS handshake. */
 export const JEV_TIMEOUT_MS = 4000;
 

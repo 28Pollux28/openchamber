@@ -22,7 +22,7 @@ Jev는 코드를 쓰지도, 채팅에 답하지도 않습니다. 판정만 돌�
 
 ## 설정하기
 
-**설정 → 프로바이더 → 분류 제공자**를 열고 Jev 요청을 어디로 보낼지 고릅니다. 선택지는 세 가지입니다.
+**설정 → 프로바이더 → 분류 제공자**를 열고 Jev 요청을 어디로 보낼지 고릅니다. 선택지는 다섯 가지입니다.
 
 ### OpenCode Zen 프로모션
 
@@ -39,6 +39,20 @@ OpenCode에 저장된 Zen API 키를 사용하며, 요금은 Zen 잔액에서 �
 
 OpenCode 계정으로 로그인하는 것만으로는 부족합니다. Zen은 Jev에 대해 API 키만 받습니다.
 
+### OpenRouter 키
+
+OpenCode에 저장된 OpenRouter API 키를 사용하며, 요금은 OpenRouter 계정으로 청구됩니다. OpenCode에서 이미 OpenRouter 모델을 쓰고 있다면 따로 설정할 것이 없습니다. 환경 변수 `OPENROUTER_API_KEY`에 있는 키도 쓸 수 있습니다. 둘 다 있으면 OpenCode에 저장된 키가 우선합니다.
+
+1. **설정 → 프로바이더**를 열고 **OpenRouter** 프로바이더에 API 키를 추가합니다.
+2. **분류 제공자**로 돌아와 **OpenRouter 키**를 고릅니다.
+
+### Vercel AI Gateway 키
+
+OpenCode에 저장된 AI Gateway API 키를 사용하며, 요금은 Vercel 계정으로 청구됩니다. 환경 변수 `AI_GATEWAY_API_KEY`에 있는 키도 쓸 수 있습니다. 둘 다 있으면 OpenCode에 저장된 키가 우선합니다.
+
+1. **설정 → 프로바이더**를 열고 **Vercel AI Gateway** 프로바이더에 API 키를 추가합니다.
+2. **분류 제공자**로 돌아와 **Vercel AI Gateway 키**를 고릅니다.
+
 ### TypeSafe API 키
 
 직접 발급받은 TypeSafe 키와 할당량을 씁니다.
@@ -52,7 +66,7 @@ OpenCode 계정으로 로그인하는 것만으로는 부족합니다. Zen은 Je
 
 ## 선택한 제공자가 동작하지 않을 때
 
-선택한 제공자를 쓸 수 없으면(프로모션 종료, 키 삭제) OpenChamber는 동작하는 첫 번째 제공자로 넘어갑니다. 직접 등록한 키가 먼저이며, TypeSafe 키, Zen 키, 프로모션 순입니다. 지금 어떤 것을 쓰는지는 페이지에 표시됩니다.
+선택한 제공자를 쓸 수 없으면(프로모션 종료, 키 삭제) OpenChamber는 동작하는 첫 번째 제공자로 넘어갑니다. 직접 등록한 키가 먼저이며, TypeSafe 키, OpenRouter, Vercel AI Gateway, Zen 키, 프로모션 순입니다. 지금 어떤 것을 쓰는지는 페이지에 표시됩니다.
 
 Jev가 한 번의 요청에서 느리거나 실패해도 망가지는 것은 없습니다. 기능마다 이런 경우를 위한 안전한 동작이 있습니다.
 
@@ -65,7 +79,7 @@ Jev가 한 번의 요청에서 느리거나 실패해도 망가지는 것은 없
 
 Jev는 대화의 짧은 발췌만 받습니다. 가장 최근 메시지와, 맥락을 위한 직전 최대 세 턴이며, 각각 앞부분 수백 자로 잘립니다. 안전망의 경우 확인 중인 작업도 OpenCode가 설명한 그대로 받습니다. 에이전트가 실행하려는 명령, 편집이라면 파일과 변경 내용입니다. 파일 전체나 이미지는 받지 않습니다.
 
-요청은 선택에 따라 OpenChamber 서버에서 OpenCode Zen 또는 TypeSafe로 바로 갑니다.
+요청은 선택에 따라 OpenChamber 서버에서 OpenCode Zen, OpenRouter, Vercel AI Gateway 또는 TypeSafe로 바로 갑니다.
 
 ## 사용할 수 있는 곳
 
@@ -73,5 +87,5 @@ Jev는 OpenChamber 서버에서 동작하므로 데스크톱 앱, 웹 앱, 그�
 
 ## 관련 문서
 
-- [공급자, 모델, 에이전트](/ko/providers/): OpenCode Zen 키가 있는 곳
+- [공급자, 모델, 에이전트](/ko/providers/): OpenCode Zen, OpenRouter, Vercel AI Gateway 키가 있는 곳
 - [보안](/ko/security/): OpenChamber가 키와 접근을 다루는 방식

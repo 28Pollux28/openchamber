@@ -25,7 +25,23 @@ const CLASSIFICATION_DOCS_URL = 'https://docs.openchamber.dev/classification-pro
 
 interface ClassificationProvidersPageProps {
   titleLeading: React.ReactNode;
+  /** Opens the OpenCode provider whose API key a source reads. */
+  onOpenProvider: (providerId: string) => void;
 }
+
+/**
+ * The "missing key" line with a link to the provider that holds the key. The
+ * option row selects on click and swallows Enter and Space, so the link keeps
+ * its events to itself.
+ */
+const MissingKeyDescription: React.FC<{ text: string; linkLabel: string; onOpen: () => void }> = ({ text, linkLabel, onOpen }) => (
+  <>
+    {text}{' '}
+    <span onClick={(event) => event.stopPropagation()} onKeyDown={(event) => event.stopPropagation()}>
+      <SettingsInlineLink onClick={onOpen}>{linkLabel}</SettingsInlineLink>
+    </span>
+  </>
+);
 
 /**
  * Settings → Providers → Classification providers: where Jev requests go, for
@@ -33,7 +49,7 @@ interface ClassificationProvidersPageProps {
  * so it has its own page instead of the provider detail view. The server owns
  * the pick and the TypeSafe key (`packages/web/server/lib/routing`).
  */
-export const ClassificationProvidersPage: React.FC<ClassificationProvidersPageProps> = ({ titleLeading }) => {
+export const ClassificationProvidersPage: React.FC<ClassificationProvidersPageProps> = ({ titleLeading, onOpenProvider }) => {
   const { t } = useI18n();
   const available = useRoutingStore((state) => state.available);
   const loaded = useRoutingStore((state) => state.loaded);
@@ -104,6 +120,8 @@ export const ClassificationProvidersPage: React.FC<ClassificationProvidersPagePr
 
   const promoUsable = usable('zen-promo');
   const zenKeyUsable = usable('zen-key');
+  const openrouterUsable = usable('openrouter');
+  const vercelUsable = usable('vercel');
 
   return (
     <SettingsPageLayout
@@ -156,7 +174,43 @@ export const ClassificationProvidersPage: React.FC<ClassificationProvidersPagePr
                 label={t('settings.classification.source.zenKey.name')}
                 description={zenKeyUsable
                   ? t('settings.classification.source.zenKey.description')
-                  : t('settings.classification.source.zenKey.missing')}
+                  : (
+                    <MissingKeyDescription
+                      text={t('settings.classification.source.zenKey.missing')}
+                      linkLabel={t('settings.classification.source.openProvider', { provider: 'OpenCode Zen' })}
+                      onOpen={() => onOpenProvider('opencode')}
+                    />
+                  )}
+              />
+              <SettingsRadioOption
+                selected={classifier.selected === 'openrouter'}
+                onSelect={() => void pick('openrouter')}
+                disabled={!openrouterUsable}
+                label={t('settings.classification.source.openrouter.name')}
+                description={openrouterUsable
+                  ? t('settings.classification.source.openrouter.description')
+                  : (
+                    <MissingKeyDescription
+                      text={t('settings.classification.source.openrouter.missing')}
+                      linkLabel={t('settings.classification.source.openProvider', { provider: 'OpenRouter' })}
+                      onOpen={() => onOpenProvider('openrouter')}
+                    />
+                  )}
+              />
+              <SettingsRadioOption
+                selected={classifier.selected === 'vercel'}
+                onSelect={() => void pick('vercel')}
+                disabled={!vercelUsable}
+                label={t('settings.classification.source.vercel.name')}
+                description={vercelUsable
+                  ? t('settings.classification.source.vercel.description')
+                  : (
+                    <MissingKeyDescription
+                      text={t('settings.classification.source.vercel.missing')}
+                      linkLabel={t('settings.classification.source.openProvider', { provider: 'Vercel AI Gateway' })}
+                      onOpen={() => onOpenProvider('vercel')}
+                    />
+                  )}
               />
               <SettingsRadioOption
                 selected={classifier.selected === 'typesafe'}

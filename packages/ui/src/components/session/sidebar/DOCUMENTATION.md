@@ -133,10 +133,35 @@ the header and mobile list. Enter explicitly submits the owning form on
 keydown; Escape cancels. IME composition keys keep their text-input behavior,
 and held Enter does not submit repeatedly.
 
-Run fusion eligibility comes from `lib/multirun/identity.ts`, with title parsing
-only for unmarked legacy sessions. Row memoization compares those same semantics
-so metadata-only membership changes update the menu. See
-`lib/multirun/DOCUMENTATION.md` for source selection and fork rules.
+## Multi-run rows
+
+A multi-run (`lib/multirun/runs.ts`, two or more active members) renders as one
+`run` row instead of one row per lane. `SessionProjectCollection` builds the
+run index from the active root sessions and hands it to the row model; grouping
+only receives `runKeyBySessionId`, kept referentially stable while membership is
+unchanged so ordinary session updates do not invalidate project sections.
+
+- Grouping lists every member under the project root, so a lane's worktree
+  does not form its own group while it belongs to a run. After "Keep" the
+  survivor is no longer a run member and falls back into its worktree group.
+- The row model collapses members into one entry at the first member's
+  position (`collapseRunEntries`) in every container: project groups, folders,
+  Recent, Work and Timeline. A run spends one slot of a reveal limit.
+- The run row is not a session: it never enters selection or the selection
+  pool. Expanded (`runExpansionKey`, same `expandedParents` store) it lists its
+  lanes as session rows one level deeper; search forces it open. In Timeline
+  it never expands and renders through `SessionTimelineRowBody` like the
+  session rows around it (project and time, title, lane count and model
+  logos); the overview lists the lanes.
+- Its activity indicator aggregates the lanes through
+  `CollapsedSessionActivityIndicator`. Clicking it opens the run overview
+  (`useUIStore.runOverviewKey`); a lane's context menu offers the same.
+
+The mobile sheet does not use the row model: `MobileSessionsSheet` builds the
+same index, moves members to the project root bucket and renders one
+`MobileRunRow` per run that opens the overview. Row memoization compares
+membership semantics (`sameMultiRunIdentity`, including the run title) so
+metadata-only changes update rows. See `lib/multirun/DOCUMENTATION.md`.
 
 ## In work
 

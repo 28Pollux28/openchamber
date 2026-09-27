@@ -9,6 +9,7 @@ import { normalizeFolderRoots, selectFolderIdsForProjection, selectFolderRootNod
 import { getSessionFolderIdentityKey, getSessionFolderOwnerKey, getSessionFolderScopes, isArchivedFolderScope } from './sessions/sessionFolderIdentity';
 import type { SessionRowOrderEntry } from './sessions/sessionRowOrder';
 import { countSessionTreeQueryMatches } from './recent/activitySections';
+import { EMPTY_MULTI_RUN_INDEX, type MultiRunIndex, type MultiRunSummary } from '@/lib/multirun/runs';
 
 export type SessionSidebarActivityItem = {
   node: SessionNode;
@@ -50,6 +51,10 @@ export type SessionSidebarRow =
   | (RowBase & { kind: 'group-header'; group: SessionGroup; groupKey: string; projectId: string | null; collapsed: boolean; forceExpanded: boolean; allSessions: readonly Session[] })
   | (RowBase & { kind: 'folder-header'; group: SessionGroup; folder: SessionFolder; displayName: string; scopeKey: string; scopeDirectory: string | null; ownerKey: string | null; nodes: readonly SessionNode[]; activityNodes: readonly SessionNode[]; projectId: string | null; archived: boolean; collapsed: boolean; forceExpanded: boolean; deleteSessions: readonly Session[]; subFolderCount: number; dropEnabled: boolean })
   | (RowBase & { kind: 'session'; node: SessionNode; depth: number; projectId: string | null; groupDirectory: string | null; ownerKey: string | null; selectionScopeKey: string | null; archived: boolean; renderContext: SessionSidebarRenderContext; secondaryMeta: SessionSidebarActivityItem['secondaryMeta'] })
+  // A multi-run: one derived parent row over its member sessions. It is not a
+  // session, so it never enters selection, and its lanes render as session
+  // rows one level deeper when it is expanded.
+  | (RowBase & { kind: 'run'; run: MultiRunSummary; laneNodes: readonly SessionNode[]; projectId: string | null; projectLabel: string | null; groupDirectory: string | null; renderContext: SessionSidebarRenderContext; expansionKey: string; expanded: boolean; forceExpanded: boolean })
   | (RowBase & { kind: 'empty'; emptyKind: 'sidebar' | 'search' | 'group' | 'archived'; group?: SessionGroup; projectId?: string | null })
   | (RowBase & { kind: 'status'; status: SessionSidebarGroupStatus; group: SessionGroup; groupKey: string })
   | (RowBase & { kind: 'show-control'; control: 'more' | 'fewer'; containerKey: string; currentCount: number; increment: number });
@@ -121,6 +126,49 @@ export type SessionSidebarRowModelArgs = {
   showOnlyMainWorkspace: boolean;
   hideDirectoryControls: boolean;
   sessionBatchSize?: number;
+  /** Active multi-runs; their member sessions collapse into one run row per container. */
+  runIndex?: MultiRunIndex;
+};
+
+type RunEntry = { run: MultiRunSummary; lanes: SessionNode[] };
+type SidebarEntry = SessionNode | RunEntry;
+
+const isRunEntry = (entry: SidebarEntry): entry is RunEntry => 'run' in entry;
+
+export const runExpansionKey = (renderContext: SessionSidebarRenderContext, runKey: string): string => (
+  `${renderContext}:active:run:${runKey}`
+);
+
+/**
+ * Replaces the member sessions of each run with one entry at the position of
+ * its first member (entries arrive in display order). Archived lists never
+ * collapse: archived sessions are not run members.
+ */
+const collapseRunEntries = (nodes: readonly SessionNode[], runIndex: MultiRunIndex, archived: boolean): SidebarEntry[] => {
+  if (archived || runIndex.runKeyBySessionId.size === 0) return [...nodes];
+  const entries: SidebarEntry[] = [];
+  const byRun = new Map<string, RunEntry>();
+  for (const node of nodes) {
+    const runKey = runIndex.runKeyBySessionId.get(node.session.id);
+    const run = runKey ? runIndex.runs.get(runKey) : undefined;
+    if (!run) {
+      entries.push(node);
+      continue;
+    }
+    const existing = byRun.get(run.key);
+    if (existing) {
+      existing.lanes.push(node);
+      continue;
+    }
+    const entry: RunEntry = { run, lanes: [node] };
+    byRun.set(run.key, entry);
+    entries.push(entry);
+  }
+  for (const entry of byRun.values()) {
+    const order = new Map(entry.run.memberIds.map((id, index) => [id, index]));
+    entry.lanes.sort((left, right) => (order.get(left.session.id) ?? 0) - (order.get(right.session.id) ?? 0));
+  }
+  return entries;
 };
 
 /**
@@ -255,7 +303,7 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
   const push = (row: SessionSidebarRow): void => {
     rows.push(Object.freeze(row));
   };
-  const appendSessions = (options: {
+  type AppendOptions = {
     nodes: readonly SessionNode[];
     containerKey: string;
     projectId: string | null;
@@ -268,8 +316,39 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
     getSecondaryMeta?: SessionSidebarActivityItem['getSecondaryMeta'];
     indexedNodes?: IndexedSessionNodes;
     selectionPoolOffset?: number;
-  }): void => {
-    const stack = [...options.nodes].reverse().map((node) => ({ node, depth: 0, directory: options.groupDirectory }));
+  };
+  const runIndex = args.runIndex ?? EMPTY_MULTI_RUN_INDEX;
+  const appendRun = (entry: RunEntry, options: AppendOptions): void => {
+    const expansionKey = runExpansionKey(options.renderContext, entry.run.key);
+    // Timeline rows never expand; the overview lists the lanes.
+    const expanded = options.renderContext !== 'timeline' && (search || args.expandedParents.has(expansionKey));
+    const firstLaneId = entry.lanes[0]?.session.id;
+    const meta = firstLaneId && options.getSecondaryMeta ? options.getSecondaryMeta(firstLaneId) : options.secondaryMeta;
+    push({
+      kind: 'run',
+      key: keyFor(`${options.containerKey}:run:${entry.run.key}`),
+      estimateSize: options.renderContext === 'timeline' ? TIMELINE_SESSION_ESTIMATE : SESSION_ESTIMATE,
+      run: entry.run,
+      laneNodes: Object.freeze([...entry.lanes]),
+      projectId: options.projectId,
+      projectLabel: meta?.projectLabel ?? null,
+      groupDirectory: options.groupDirectory,
+      renderContext: options.renderContext,
+      expansionKey,
+      expanded,
+      forceExpanded: search,
+    });
+    if (!expanded) return;
+    appendTrees(entry.lanes, 1, options);
+  };
+  const appendSessions = (options: AppendOptions): void => {
+    for (const entry of collapseRunEntries(options.nodes, runIndex, options.archived)) {
+      if (isRunEntry(entry)) appendRun(entry, options);
+      else appendTrees([entry], 0, options);
+    }
+  };
+  const appendTrees = (nodes: readonly SessionNode[], baseDepth: number, options: AppendOptions): void => {
+    const stack = [...nodes].reverse().map((node) => ({ node, depth: baseDepth, directory: options.groupDirectory }));
     while (stack.length > 0) {
       const current = stack.pop();
       if (!current) continue;
@@ -448,20 +527,23 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
     const requested = Math.max(initialLimit, args.visibleCountByContainer.get(groupKey) ?? initialLimit);
     // Pinned sessions are the user's own always-on shortlist: they stay
     // visible whatever the reveal limit is, and they do not spend it.
-    const isPinnedNode = (node: SessionNode): boolean => limits?.pinnedAlwaysVisible === true
-      && isSessionPinned(pinned, node.session.directory ?? group.directory, node.session.id);
-    const limitedNodes = ungrouped.filter((node) => !isPinnedNode(node));
+    const isPinnedNode = (entry: SidebarEntry): boolean => !isRunEntry(entry) && limits?.pinnedAlwaysVisible === true
+      && isSessionPinned(pinned, entry.session.directory ?? group.directory, entry.session.id);
+    // A run spends one slot of the reveal limit, whatever its lane count.
+    const ungroupedEntries = collapseRunEntries(ungrouped, runIndex, group.isArchivedBucket === true);
+    const limitedNodes = ungroupedEntries.filter((entry) => !isPinnedNode(entry));
     let budget = requested;
-    const visibleUngrouped = group.isArchivedBucket || search
-      ? ungrouped
-      : ungrouped.filter((node) => {
-        if (isPinnedNode(node)) return true;
+    const visibleEntries = group.isArchivedBucket || search
+      ? ungroupedEntries
+      : ungroupedEntries.filter((entry) => {
+        if (isPinnedNode(entry)) return true;
         if (budget <= 0) return false;
         budget -= 1;
         return true;
       });
+    const visibleUngrouped = visibleEntries.flatMap((entry) => isRunEntry(entry) ? entry.lanes : [entry]);
     appendSessions({ nodes: visibleUngrouped, containerKey: groupKey, projectId, groupDirectory: group.directory, ownerKey, selectionScopeKey: ownerKey, archived: group.isArchivedBucket === true, renderContext: limits?.renderContext ?? 'project', indexedNodes: indexed, selectionPoolOffset });
-    const remaining = ungrouped.length - visibleUngrouped.length;
+    const remaining = ungroupedEntries.length - visibleEntries.length;
     const limitedVisibleCount = requested - budget;
     if (!search && !group.isArchivedBucket && remaining > 0) {
       push({ kind: 'show-control', key: `${groupKey}:more`, estimateSize: STATUS_ESTIMATE, control: 'more', containerKey: groupKey, currentCount: limitedVisibleCount, increment });
@@ -488,6 +570,44 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
 
   const timelineMode = args.viewMode === 'timeline';
 
+  type ActivityRunEntry = { run: MultiRunSummary; items: SessionSidebarActivityItem[] };
+  type ActivityEntry = SessionSidebarActivityItem | ActivityRunEntry;
+  const isActivityRunEntry = (entry: ActivityEntry): entry is ActivityRunEntry => 'run' in entry;
+  const collapseActivityItems = (items: readonly SessionSidebarActivityItem[]): ActivityEntry[] => {
+    const entries = collapseRunEntries(items.map((item) => item.node), runIndex, false);
+    const itemByNode = new Map(items.map((item) => [item.node, item]));
+    return entries.flatMap((entry): ActivityEntry[] => {
+      if (!isRunEntry(entry)) {
+        const item = itemByNode.get(entry);
+        return item ? [item] : [];
+      }
+      return [{ run: entry.run, items: entry.lanes.flatMap((lane) => itemByNode.get(lane) ?? []) }];
+    });
+  };
+  const appendActivityRun = (
+    entry: ActivityRunEntry,
+    containerKey: string,
+    renderContext: SessionSidebarRenderContext,
+    scoped: boolean,
+  ): void => {
+    const first = entry.items[0];
+    if (!first) return;
+    const lanes = entry.items.map((item) => item.node);
+    const indexed = indexNodes(lanes);
+    const selectionPoolOffset = selectionDescendantIds.length;
+    selectionDescendantIds.push(...indexed.preorderIds);
+    const ownerKey = getSessionFolderOwnerKey(first.projectId, first.groupDirectory);
+    const metaById = new Map(entry.items.map((item) => [
+      item.node.session.id,
+      item.getSecondaryMeta ? item.getSecondaryMeta(item.node.session.id) : item.secondaryMeta,
+    ]));
+    appendRun({ run: entry.run, lanes }, {
+      nodes: lanes, containerKey, projectId: first.projectId, groupDirectory: first.groupDirectory,
+      ownerKey, selectionScopeKey: scoped ? ownerKey : null, archived: false, renderContext,
+      getSecondaryMeta: (sessionId) => metaById.get(sessionId) ?? null, indexedNodes: indexed, selectionPoolOffset,
+    });
+  };
+
   const appendActivityItems = (
     items: readonly SessionSidebarActivityItem[],
     containerKey: string,
@@ -495,7 +615,13 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
     scoped: boolean,
     countMatches: (item: SessionSidebarActivityItem) => number = () => 1,
   ): void => {
-    for (const item of items) {
+    for (const entry of collapseActivityItems(items)) {
+      if (isActivityRunEntry(entry)) {
+        appendActivityRun(entry, containerKey, renderContext, scoped);
+        if (search) searchMatchCount += entry.items.reduce((total, item) => total + countMatches(item), 0);
+        continue;
+      }
+      const item = entry;
       const indexed = indexNodes([item.node]);
       const selectionPoolOffset = selectionDescendantIds.length;
       selectionDescendantIds.push(...indexed.preorderIds);
@@ -547,17 +673,24 @@ export const buildSessionSidebarRowModel = (args: SessionSidebarRowModelArgs): S
       const containerKey = `activity:${section.key}`;
       const initialLimit = 7;
       const requested = Math.max(initialLimit, args.visibleCountByContainer.get(containerKey) ?? initialLimit);
-      const visibleItems = search ? section.items : section.items.slice(0, requested);
-      for (const item of visibleItems) {
+      const sectionEntries = collapseActivityItems(section.items);
+      const visibleItems = search ? sectionEntries : sectionEntries.slice(0, requested);
+      for (const entry of visibleItems) {
+        if (isActivityRunEntry(entry)) {
+          appendActivityRun(entry, containerKey, 'recent', true);
+          if (search) searchMatchCount += entry.items.length;
+          continue;
+        }
+        const item = entry;
         const indexed = indexNodes([item.node]);
         const selectionPoolOffset = selectionDescendantIds.length;
         selectionDescendantIds.push(...indexed.preorderIds);
         appendSessions({ nodes: [item.node], containerKey, projectId: item.projectId, groupDirectory: item.groupDirectory, ownerKey: getSessionFolderOwnerKey(item.projectId, item.groupDirectory), selectionScopeKey: getSessionFolderOwnerKey(item.projectId, item.groupDirectory), archived: false, renderContext: 'recent', secondaryMeta: item.secondaryMeta, getSecondaryMeta: item.getSecondaryMeta, indexedNodes: indexed, selectionPoolOffset });
         if (search) searchMatchCount += 1;
       }
-      const remaining = section.items.length - visibleItems.length;
+      const remaining = sectionEntries.length - visibleItems.length;
       if (!search && remaining > 0) push({ kind: 'show-control', key: `${containerKey}:more`, estimateSize: STATUS_ESTIMATE, control: 'more', containerKey, currentCount: visibleItems.length, increment: 7 });
-      else if (!search && section.items.length > initialLimit) push({ kind: 'show-control', key: `${containerKey}:fewer`, estimateSize: STATUS_ESTIMATE, control: 'fewer', containerKey, currentCount: visibleItems.length, increment: 7 });
+      else if (!search && sectionEntries.length > initialLimit) push({ kind: 'show-control', key: `${containerKey}:fewer`, estimateSize: STATUS_ESTIMATE, control: 'fewer', containerKey, currentCount: visibleItems.length, increment: 7 });
     }
   }
 

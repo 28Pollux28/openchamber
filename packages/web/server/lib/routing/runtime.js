@@ -17,9 +17,9 @@ import { z } from 'zod';
 import { AUTO_MODEL_REF, BUILTIN_CATEGORIES, ZEN_JEV_PROMOTION_ACTIVE, isAutoModel } from './defaults.js';
 import { createRoutingStore, parseEffectiveConfig } from './store.js';
 import { buildPermissionRequest, buildRoutingRequest, createJevClient, decidePermission, decideRouting } from './jev.js';
-import { CLASSIFIER_SOURCES, classifierEndpoint, resolveClassifier } from './classifier.js';
+import { CLASSIFIER_SOURCES, classifierEndpoint, legacyClassifier, resolveClassifier } from './classifier.js';
 import { loadRoutingHistory } from './history.js';
-import { getProviderAuth } from '../opencode/auth.js';
+import { readAuthFile } from '../opencode/auth.js';
 
 const HISTORY_TIMEOUT_MS = 2500;
 /** A held permission is remembered so reconnect reconciliation does not re-ask Jev. */
@@ -55,18 +55,35 @@ const toModelRef = (model, variant) => {
 };
 
 /**
- * A Zen API key the user saved in OpenCode. An OpenCode account sign-in is an
- * OAuth credential, which Zen rejects as a key, so only `api` entries count.
+ * The API keys the user saved in OpenCode for the providers that serve Jev. An
+ * OpenCode account sign-in is an OAuth credential, which Zen rejects as a key,
+ * so only `api` entries count.
  */
-const zenApiKeySchema = z.object({ type: z.literal('api'), key: z.string().min(1) });
+const apiKeySchema = z.object({ type: z.literal('api'), key: z.string().min(1) });
+const envKeySchema = z.string().trim().min(1);
 
-const readOpenCodeZenKey = () => {
+/**
+ * OpenCode also connects OpenRouter and AI Gateway from these variables, read
+ * live and never stored in its database. A managed OpenCode inherits this
+ * server's environment, so the same variable is the same key. A saved key
+ * wins over the variable; Zen has no variable.
+ */
+const PROVIDER_ENV_KEYS = { openrouter: 'OPENROUTER_API_KEY', vercel: 'AI_GATEWAY_API_KEY' };
+
+export const readOpenCodeKeys = ({ readAuth = readAuthFile, env = process.env } = {}) => {
+  let auth = {};
   try {
-    const auth = zenApiKeySchema.safeParse(getProviderAuth('opencode'));
-    return auth.success ? auth.data.key : null;
+    auth = readAuth();
   } catch {
-    return null;
+    // An unreadable credential store still leaves the environment.
   }
+  const saved = (providerId) => apiKeySchema.safeParse(auth[providerId]).data?.key ?? null;
+  const fromEnv = (providerId) => envKeySchema.safeParse(env[PROVIDER_ENV_KEYS[providerId]]).data ?? null;
+  return {
+    zenKey: saved('opencode'),
+    openrouterKey: saved('openrouter') ?? fromEnv('openrouter'),
+    vercelKey: saved('vercel') ?? fromEnv('vercel'),
+  };
 };
 
 export function createRoutingRuntime({
@@ -77,7 +94,7 @@ export function createRoutingRuntime({
   fetchImpl = fetch,
   store = createRoutingStore({ dataDir }),
   jev = createJevClient({ fetchImpl }),
-  readZenKey = readOpenCodeZenKey,
+  readProviderKeys = () => readOpenCodeKeys(),
   zenPromotionActive = ZEN_JEV_PROMOTION_ACTIVE,
   now = Date.now,
 }) {
@@ -104,9 +121,9 @@ export function createRoutingRuntime({
   /** Which classification provider answers now, and where its requests go (null endpoint: no Jev). */
   const resolveAccess = async () => {
     const [typesafeKey, selected] = await Promise.all([store.readToken(), store.readClassifierSource()]);
-    const zenKey = readZenKey();
-    const classifier = resolveClassifier({ selected, typesafeKey, zenKey, zenPromotionActive });
-    const endpoint = classifier.effective ? classifierEndpoint(classifier.effective, { typesafeKey, zenKey }) : null;
+    const keys = { typesafeKey, ...readProviderKeys() };
+    const classifier = resolveClassifier({ selected, ...keys, zenPromotionActive });
+    const endpoint = classifier.effective ? classifierEndpoint(classifier.effective, keys) : null;
     return { classifier, endpoint, tokenPresent: Boolean(typesafeKey) };
   };
 
@@ -119,14 +136,16 @@ export function createRoutingRuntime({
     // `available` stays in the payload for the client: a runtime without an
     // OpenChamber server (VS Code) answers 404 and reads it as false.
     // `jevSource` is the two-value field clients from before the classifier
-    // pick parse; `classifier` is the full picture.
+    // pick parse, `classifier` what v2.0.2 clients parse, and `classification`
+    // the full picture.
     return {
       available: true,
       autoReady,
       jevAvailable,
       tokenPresent: access.tokenPresent,
       jevSource: access.classifier.effective === 'typesafe' ? 'typesafe' : 'zen-free',
-      classifier: access.classifier,
+      classifier: legacyClassifier(access.classifier),
+      classification: access.classifier,
       config,
       builtins: BUILTIN_CATEGORIES,
     };

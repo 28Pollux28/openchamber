@@ -22,7 +22,7 @@ Ohne Anbieter sind das Sicherheitsnetz und Auto ausgeblendet, und Sitzungen komm
 
 ## Einrichtung
 
-Öffne **Einstellungen → Anbieter → Klassifizierungsanbieter** und wähle, wohin Anfragen an Jev gehen. Es gibt drei Möglichkeiten.
+Öffne **Einstellungen → Anbieter → Klassifizierungsanbieter** und wähle, wohin Anfragen an Jev gehen. Es gibt fünf Möglichkeiten.
 
 ### OpenCode-Zen-Aktion
 
@@ -39,6 +39,20 @@ Nutzt den in OpenCode gespeicherten Zen-API-Schlüssel und rechnet über dein Ze
 
 Die Anmeldung mit einem OpenCode-Konto reicht nicht. Für Jev akzeptiert Zen nur einen API-Schlüssel.
 
+### OpenRouter-Schlüssel
+
+Nutzt den in OpenCode gespeicherten OpenRouter-API-Schlüssel und rechnet über dein OpenRouter-Konto ab. Wenn du OpenRouter-Modelle in OpenCode schon nutzt, musst du nichts einrichten. Ein Schlüssel in der Umgebungsvariable `OPENROUTER_API_KEY` funktioniert auch. Gibt es beide, gewinnt der in OpenCode gespeicherte.
+
+1. Öffne **Einstellungen → Anbieter** und füge dem Anbieter **OpenRouter** einen API-Schlüssel hinzu.
+2. Geh zurück zu **Klassifizierungsanbieter** und wähle **OpenRouter-Schlüssel**.
+
+### Vercel-AI-Gateway-Schlüssel
+
+Nutzt den in OpenCode gespeicherten AI-Gateway-API-Schlüssel und rechnet über dein Vercel-Konto ab. Ein Schlüssel in der Umgebungsvariable `AI_GATEWAY_API_KEY` funktioniert auch. Gibt es beide, gewinnt der in OpenCode gespeicherte.
+
+1. Öffne **Einstellungen → Anbieter** und füge dem Anbieter **Vercel AI Gateway** einen API-Schlüssel hinzu.
+2. Geh zurück zu **Klassifizierungsanbieter** und wähle **Vercel-AI-Gateway-Schlüssel**.
+
 ### TypeSafe-API-Schlüssel
 
 Dein eigener TypeSafe-Schlüssel und dein eigenes Kontingent.
@@ -52,7 +66,7 @@ Sobald ein Anbieter funktioniert, zeigt die Karte unter **Einstellungen → Anbi
 
 ## Wenn deine Wahl nicht mehr funktioniert
 
-Lässt sich der gewählte Anbieter nicht nutzen (die Aktion ist vorbei, ein Schlüssel wurde entfernt), weicht OpenChamber auf den ersten aus, der funktioniert, deine eigenen Schlüssel zuerst: TypeSafe-Schlüssel, dann Zen-Schlüssel, dann die Aktion. Die Seite zeigt, welcher gerade benutzt wird.
+Lässt sich der gewählte Anbieter nicht nutzen (die Aktion ist vorbei, ein Schlüssel wurde entfernt), weicht OpenChamber auf den ersten aus, der funktioniert, deine eigenen Schlüssel zuerst: TypeSafe-Schlüssel, dann OpenRouter, dann Vercel AI Gateway, dann Zen-Schlüssel, dann die Aktion. Die Seite zeigt, welcher gerade benutzt wird.
 
 Ist Jev bei einer einzelnen Anfrage langsam oder schlägt fehl, geht nichts kaputt. Jede Funktion hat für diesen Fall eine sichere Antwort:
 
@@ -65,7 +79,7 @@ Ist Jev bei einer einzelnen Anfrage langsam oder schlägt fehl, geht nichts kapu
 
 Jev bekommt kurze Auszüge deiner Unterhaltung: deine letzte Nachricht und als Kontext bis zu drei vorherige Züge, gekürzt auf ihre ersten paar hundert Zeichen. Für das Sicherheitsnetz bekommt es außerdem die geprüfte Aktion, so wie OpenCode sie beschreibt: den Befehl, den der Agent ausführen will, oder die Datei und die Änderung bei einer Bearbeitung. Ganze Dateien oder Bilder bekommt es nie.
 
-Anfragen gehen vom OpenChamber-Server direkt an OpenCode Zen oder TypeSafe, je nach deiner Wahl.
+Anfragen gehen vom OpenChamber-Server direkt an OpenCode Zen, OpenRouter, Vercel AI Gateway oder TypeSafe, je nach deiner Wahl.
 
 ## Wo es funktioniert
 
@@ -73,5 +87,5 @@ Jev läuft im OpenChamber-Server, also in der Desktop-App, in der Web-App und au
 
 ## Verwandt
 
-- [Anbieter, Modelle und Agenten](/de/providers/): wo der OpenCode-Zen-Schlüssel liegt
+- [Anbieter, Modelle und Agenten](/de/providers/): wo die Schlüssel für OpenCode Zen, OpenRouter und Vercel AI Gateway liegen
 - [Sicherheit](/de/security/): wie OpenChamber mit Schlüsseln und Zugriff umgeht

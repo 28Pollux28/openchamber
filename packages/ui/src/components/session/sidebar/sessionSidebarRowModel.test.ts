@@ -2,7 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import type { Session } from '@/lib/opencode/model';
 import type { SessionGroup, SessionNode } from './types';
 import type { ProjectSection } from './projects/sessionProjectRender';
-import { buildSessionSidebarRowModel, countSessionSearchMatches, resolveSessionSidebarStickyHeader, type SessionSidebarActivityItem, type SessionSidebarRowModelArgs } from './sessionSidebarRowModel';
+import { buildSessionSidebarRowModel, countSessionSearchMatches, resolveSessionSidebarStickyHeader, runExpansionKey, type SessionSidebarActivityItem, type SessionSidebarRowModelArgs } from './sessionSidebarRowModel';
+import { buildMultiRunIndex } from '@/lib/multirun/runs';
+import { withMultiRunMembership } from '@/lib/multirun/identity';
 import { getPinnedSessionKey } from '@/stores/useSessionPinnedStore';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { deriveRecentActivitySections } from './recent/activitySections';
@@ -416,6 +418,57 @@ describe('buildSessionSidebarRowModel', () => {
     input.viewMode = 'timeline';
 
     expect(buildSessionSidebarRowModel(input).rows).toMatchObject([{ kind: 'empty', emptyKind: 'sidebar' }]);
+  });
+
+  describe('multi-run rows', () => {
+    const runMember = (id: string): Session => ({
+      ...session(id),
+      metadata: withMultiRunMembership({}, {
+        version: 1, sessionID: id, group: { kind: 'id', id: '9f512893-6e63-4e49-a534-5de733ca103e' },
+        groupSlug: 'fix-auth', role: 'run', providerID: 'anthropic', modelID: 'claude', title: 'Fix auth',
+      }),
+    });
+    const runIndex = buildMultiRunIndex([runMember('lane-1'), runMember('lane-2')], () => '/repo');
+    const runKey = [...runIndex.runs.keys()][0] ?? '';
+
+    test('lanes collapse into one run row at the first lane, outside selection', () => {
+      const input = args([project([group([node('lane-1'), node('other'), node('lane-2')])])]);
+      input.runIndex = runIndex;
+      const model = buildSessionSidebarRowModel(input);
+      const listed = model.rows.flatMap((row) => (row.kind === 'run' ? [`run:${row.run.title}`] : row.kind === 'session' ? [row.node.session.id] : []));
+
+      expect(listed).toEqual(['run:Fix auth', 'other']);
+      expect(model.selectionEntries.map((entry) => entry.id)).toEqual(['other']);
+    });
+
+    test('an expanded run lists its lanes one level deeper', () => {
+      const input = args([project([group([node('lane-1'), node('lane-2')])])]);
+      input.runIndex = runIndex;
+      input.expandedParents = new Set([runExpansionKey('project', runKey)]);
+      const rows = buildSessionSidebarRowModel(input).rows.filter((row) => row.kind === 'run' || row.kind === 'session');
+
+      expect(rows.map((row) => (row.kind === 'session' ? `${row.node.session.id}@${row.depth}` : row.kind))).toEqual(['run', 'lane-1@1', 'lane-2@1']);
+    });
+
+    test('a run spends one slot of the reveal limit', () => {
+      const nodes = [node('lane-1'), node('lane-2'), ...Array.from({ length: 5 }, (_, index) => node(`s${index}`))];
+      const input = args([project([group(nodes)])]);
+      input.runIndex = runIndex;
+      const model = buildSessionSidebarRowModel(input);
+
+      expect(model.rows.filter((row) => row.kind === 'run')).toHaveLength(1);
+      expect(model.rows.filter((row) => row.kind === 'session')).toHaveLength(4);
+    });
+
+    test('timeline items collapse into one run row', () => {
+      const input = args([]);
+      input.viewMode = 'timeline';
+      input.runIndex = runIndex;
+      input.timelineItems = [timelineItem('lane-1'), timelineItem('a'), timelineItem('lane-2')];
+      const rows = buildSessionSidebarRowModel(input).rows.filter((row) => row.kind === 'run' || row.kind === 'session');
+
+      expect(rows.map((row) => (row.kind === 'session' ? row.node.session.id : row.kind))).toEqual(['run', 'a']);
+    });
   });
 
   test('retains current session authority when presentation filters the row out', () => {

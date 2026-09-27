@@ -21,7 +21,8 @@ import { ArchiveView } from '@/components/views/ArchiveView';
 import { WorktreesView } from '@/components/views/WorktreesView';
 import { UsageStatsView } from '@/components/views/usage/UsageStatsView';
 import { DiffWorkerProvider } from '@/contexts/DiffWorkerProvider';
-import { MultiRunLauncher } from '@/components/multirun';
+import { RunOverview } from '@/components/multirun/RunOverview';
+import { RunAutoFusion } from '@/lib/multirun/autoFusion';
 
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
@@ -62,9 +63,7 @@ export const MainLayout: React.FC = () => {
             setSettingsWindowMounted(true);
         }
     }, [isSettingsDialogOpen]);
-    const isMultiRunLauncherOpen = useUIStore((state) => state.isMultiRunLauncherOpen);
-    const setMultiRunLauncherOpen = useUIStore((state) => state.setMultiRunLauncherOpen);
-    const multiRunLauncherPrefillPrompt = useUIStore((state) => state.multiRunLauncherPrefillPrompt);
+    const isRunOverviewOpen = useUIStore((state) => state.runOverviewKey !== null);
     const isScheduledTasksPageOpen = useUIStore((state) => state.isScheduledTasksDialogOpen);
     const isArchivePageOpen = useUIStore((state) => state.isArchivePageOpen);
     const isUsageStatsPageOpen = useUIStore((state) => state.isUsageStatsPageOpen);
@@ -79,7 +78,7 @@ export const MainLayout: React.FC = () => {
     // Any full-page surface replacing the chat area. While open, the chat is
     // fully hidden (not just covered) so none of its floating chrome bleeds
     // through, and selecting a session or draft anywhere closes the surface.
-    const isSurfacePageOpen = isScheduledTasksPageOpen || isArchivePageOpen || isUsageStatsPageOpen || Boolean(worktreesPageProjectId) || isMultiRunLauncherOpen || Boolean(guestPage);
+    const isSurfacePageOpen = isScheduledTasksPageOpen || isArchivePageOpen || isUsageStatsPageOpen || Boolean(worktreesPageProjectId) || isRunOverviewOpen || Boolean(guestPage);
 
     React.useEffect(() => {
         const closeSurfacePages = () => useUIStore.getState().closeMainSurfaces();
@@ -115,6 +114,7 @@ export const MainLayout: React.FC = () => {
                 <CommandPalette />
                 <HelpDialog />
                 <OpenCodeStatusDialog />
+                <RunAutoFusion />
                 <SessionDialogs />
                 {isolatedSpacesEnabled ? <SpaceAccessDialog /> : null}
 
@@ -145,20 +145,7 @@ export const MainLayout: React.FC = () => {
                                             <div className={cn('absolute inset-0', isSurfacePageOpen && 'invisible')}>
                                                 <ErrorBoundary><ChatView active={!isSettingsDialogOpen && !isSurfacePageOpen} /></ErrorBoundary>
                                             </div>
-                                            {isMultiRunLauncherOpen && (
-                                                <div className="absolute inset-0 z-10 bg-background">
-                                                    <ErrorBoundary>
-                                                        {/* isWindowed: the app Header already shows the surface
-                                                            title, so skip the launcher's own title bar. */}
-                                                        <MultiRunLauncher
-                                                            isWindowed
-                                                            initialPrompt={multiRunLauncherPrefillPrompt}
-                                                            onCreated={() => setMultiRunLauncherOpen(false)}
-                                                            onCancel={() => setMultiRunLauncherOpen(false)}
-                                                        />
-                                                    </ErrorBoundary>
-                                                </div>
-                                            )}
+                                            <ErrorBoundary><RunOverview /></ErrorBoundary>
                                             <ErrorBoundary><ScheduledTasksDialog /></ErrorBoundary>
                                             <ErrorBoundary><ArchiveView /></ErrorBoundary>
                                             {isUsageStatsPageOpen && (

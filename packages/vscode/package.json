@@ -87,7 +87,7 @@
         "command": "openchamber.openAgentManager",
         "category": "OpenChamber",
         "title": "%command.openAgentManager.title%",
-        "icon": "$(circuit-board)"
+        "icon": "$(repo-forked)"
       },
       {
         "command": "openchamber.openActiveSessionInEditor",

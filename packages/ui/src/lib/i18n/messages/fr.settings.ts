@@ -1,6 +1,7 @@
 import { extensionsSettingsI18n } from './extensions.settings.i18n';
 import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
+import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
 export const settingsDict = {
   'settings.themeImport.selectAll': 'Tout sélectionner',
   'settings.themeImport.deselectAll': 'Tout désélectionner',
@@ -2304,10 +2305,11 @@ export const settingsDict = {
   'settings.openchamber.visual.option.enterToSend.enter.label': 'Envoyer avec Entrée',
   'settings.openchamber.visual.option.enterToSend.modifier.label': 'Envoyer avec Ctrl/Cmd+Entrée',
   ...linearIntegrationI18n.fr,
+  ...thirdPartyIntegrationI18n.fr,
   ...guestIntegrationsI18n.fr,
   ...extensionsSettingsI18n.fr,
   'settings.page.integrations.title': 'Intégrations',
-  'settings.page.integrations.description': 'Connectez GitHub et Linear pour qu’OpenChamber puisse travailler avec vos issues et pull requests.',
+  'settings.page.integrations.description': 'Connectez les services et abonnements avec lesquels OpenChamber travaille.',
   'settings.agents.page.field.steps': 'Étapes max',
   'settings.agents.page.field.stepsTooltip': 'Combien d\'étapes d\'outils l\'agent peut effectuer en un tour avant de devoir s\'arrêter.',
   'settings.agents.page.field.clearStepsAria': 'Effacer les étapes max',
@@ -2341,4 +2343,5 @@ export const settingsDict = {
   'settings.mcp.page.advanced.oauthMetadataUrlHint': 'Le document de métadonnées du serveur d\'autorisation OAuth ou OpenID Connect. À renseigner quand le serveur MCP ne publie pas de métadonnées de ressource protégée nommant son serveur d\'autorisation.',
   'settings.mcp.page.advanced.oauthMetadataUrlPlaceholder': 'https://example.com/.well-known/oauth-authorization-server',
   'settings.mcp.page.advanced.oauthMetadataUrlInvalid': 'Saisissez une adresse http:// ou https:// complète.',
+  'settings.magicPrompts.page.block.codeFusionInstructions': 'Instructions de fusion de code',
 } as const;

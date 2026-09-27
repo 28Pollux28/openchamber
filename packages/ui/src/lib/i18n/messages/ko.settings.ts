@@ -1,6 +1,7 @@
 import { extensionsSettingsI18n } from './extensions.settings.i18n';
 import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
+import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
 export const settingsDict = {
   'settings.themeImport.selectAll': '모두 선택',
   'settings.themeImport.deselectAll': '모두 선택 해제',
@@ -2304,10 +2305,11 @@ export const settingsDict = {
   'settings.openchamber.visual.option.enterToSend.enter.label': 'Enter로 전송',
   'settings.openchamber.visual.option.enterToSend.modifier.label': 'Ctrl/Cmd+Enter로 전송',
   ...linearIntegrationI18n.ko,
+  ...thirdPartyIntegrationI18n.ko,
   ...guestIntegrationsI18n.ko,
   ...extensionsSettingsI18n.ko,
   'settings.page.integrations.title': '통합',
-  'settings.page.integrations.description': 'GitHub와 Linear를 연결하면 OpenChamber가 이슈와 풀 리퀘스트를 다룰 수 있습니다.',
+  'settings.page.integrations.description': 'OpenChamber와 함께 쓰는 서비스와 구독을 연결합니다.',
   'settings.agents.page.field.steps': '최대 단계 수',
   'settings.agents.page.field.stepsTooltip': '에이전트가 한 턴에서 수행할 수 있는 도구 단계 수입니다.',
   'settings.agents.page.field.clearStepsAria': '최대 단계 수 지우기',
@@ -2341,4 +2343,5 @@ export const settingsDict = {
   'settings.mcp.page.advanced.oauthMetadataUrlHint': 'OAuth 또는 OpenID Connect 인증 서버 메타데이터 문서입니다. MCP 서버가 인증 서버를 명시하는 보호 리소스 메타데이터를 게시하지 않을 때 설정하세요.',
   'settings.mcp.page.advanced.oauthMetadataUrlPlaceholder': 'https://example.com/.well-known/oauth-authorization-server',
   'settings.mcp.page.advanced.oauthMetadataUrlInvalid': 'http:// 또는 https://로 시작하는 전체 주소를 입력하세요.',
+  'settings.magicPrompts.page.block.codeFusionInstructions': '코드 fusion 지침',
 } as const;

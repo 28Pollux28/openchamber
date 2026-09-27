@@ -22,7 +22,7 @@ Bez dostawcy siatka bezpieczeństwa i Auto są ukryte, a sesje trafiają do toku
 
 ## Konfiguracja
 
-Otwórz **Ustawienia → Dostawcy → Dostawcy klasyfikacji** i wybierz, dokąd trafiają zapytania do Jev. Są trzy możliwości.
+Otwórz **Ustawienia → Dostawcy → Dostawcy klasyfikacji** i wybierz, dokąd trafiają zapytania do Jev. Jest pięć możliwości.
 
 ### Promocja OpenCode Zen
 
@@ -39,6 +39,20 @@ Korzysta z klucza API Zen zapisanego w OpenCode, a opłaty idą z Twojego salda 
 
 Samo zalogowanie się kontem OpenCode nie wystarczy. Do Jev Zen przyjmuje tylko klucz API.
 
+### Klucz OpenRouter
+
+Korzysta z klucza API OpenRouter zapisanego w OpenCode, a opłaty idą z Twojego konta OpenRouter. Jeśli już używasz modeli OpenRouter w OpenCode, nie trzeba niczego ustawiać. Klucz w zmiennej środowiskowej `OPENROUTER_API_KEY` też działa. Jeśli są oba, wygrywa klucz zapisany w OpenCode.
+
+1. Otwórz **Ustawienia → Dostawcy** i dodaj klucz API do dostawcy **OpenRouter**.
+2. Wróć do **Dostawcy klasyfikacji** i wybierz **Klucz OpenRouter**.
+
+### Klucz Vercel AI Gateway
+
+Korzysta z klucza API AI Gateway zapisanego w OpenCode, a opłaty idą z Twojego konta Vercel. Klucz w zmiennej środowiskowej `AI_GATEWAY_API_KEY` też działa. Jeśli są oba, wygrywa klucz zapisany w OpenCode.
+
+1. Otwórz **Ustawienia → Dostawcy** i dodaj klucz API do dostawcy **Vercel AI Gateway**.
+2. Wróć do **Dostawcy klasyfikacji** i wybierz **Klucz Vercel AI Gateway**.
+
 ### Klucz API TypeSafe
 
 Twój własny klucz i limit TypeSafe.
@@ -52,7 +66,7 @@ Gdy dostawca zacznie działać, karta w **Ustawienia → Dostawcy** pokaże **Go
 
 ## Kiedy Twój wybór przestaje działać
 
-Jeśli z wybranego dostawcy nie da się skorzystać (promocja się skończyła, klucz usunięto), OpenChamber przechodzi na pierwszego działającego, najpierw na Twoje własne klucze: klucz TypeSafe, potem klucz Zen, potem promocję. Strona pokazuje, którego używa w tej chwili.
+Jeśli z wybranego dostawcy nie da się skorzystać (promocja się skończyła, klucz usunięto), OpenChamber przechodzi na pierwszego działającego, najpierw na Twoje własne klucze: klucz TypeSafe, potem OpenRouter, potem Vercel AI Gateway, potem klucz Zen, potem promocję. Strona pokazuje, którego używa w tej chwili.
 
 Jeśli Jev odpowiada wolno albo zawodzi przy pojedynczym zapytaniu, nic się nie psuje. Każda funkcja ma na ten wypadek bezpieczną odpowiedź:
 
@@ -65,7 +79,7 @@ Jeśli Jev odpowiada wolno albo zawodzi przy pojedynczym zapytaniu, nic się nie
 
 Jev dostaje krótkie fragmenty Twojej rozmowy: Twoją ostatnią wiadomość i, jako kontekst, do trzech poprzednich tur, przyciętych do kilkuset pierwszych znaków. Dla siatki bezpieczeństwa dostaje też sprawdzane działanie w takiej postaci, w jakiej opisuje je OpenCode: polecenie, które agent chce uruchomić, albo plik i zmianę przy edycji. Nigdy nie dostaje całych plików ani obrazów.
 
-Zapytania idą z serwera OpenChamber prosto do OpenCode Zen albo do TypeSafe, zależnie od Twojego wyboru.
+Zapytania idą z serwera OpenChamber prosto do OpenCode Zen, OpenRouter, Vercel AI Gateway albo TypeSafe, zależnie od Twojego wyboru.
 
 ## Gdzie to działa
 
@@ -73,5 +87,5 @@ Jev działa na serwerze OpenChamber, więc jest dostępny w aplikacji desktopowe
 
 ## Powiązane
 
-- [Dostawcy, modele i agenci](/pl/providers/): gdzie jest klucz OpenCode Zen
+- [Dostawcy, modele i agenci](/pl/providers/): gdzie są klucze OpenCode Zen, OpenRouter i Vercel AI Gateway
 - [Bezpieczeństwo](/pl/security/): jak OpenChamber obchodzi się z kluczami i dostępem
