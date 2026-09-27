@@ -1823,6 +1823,24 @@ describe('removeWorktree', () => {
       }
     }
   });
+
+  it('prunes the metadata a half-finished removal left behind', async () => {
+    if (!canRunGit()) return;
+
+    const repo = createTempDir();
+    const worktree = path.join(createTempDir(), 'half-removed');
+    runGit(repo, ['init', '-b', 'main']);
+    runGit(repo, ['config', 'user.email', 'test@example.com']);
+    runGit(repo, ['config', 'user.name', 'Test User']);
+    runGit(repo, ['commit', '--allow-empty', '-m', 'Initial commit']);
+    runGit(repo, ['worktree', 'add', '-b', 'half', worktree]);
+    // What a Windows lock leaves: git deleted these files, then stopped.
+    const metadata = path.join(repo, '.git', 'worktrees', 'half-removed');
+    for (const name of ['gitdir', 'HEAD', 'index']) fs.rmSync(path.join(metadata, name), { force: true });
+
+    await expect(removeWorktree(repo, { directory: worktree })).resolves.toBe(true);
+    expect(fs.existsSync(metadata)).toBe(false);
+  });
 });
 
 // ---------------------------------------------------------------------------
