@@ -13,7 +13,8 @@ import { useHasSessionActivityDuration } from '@/sync/session-activity-timing';
 
 import { MobileProjectIcon, type MobileProjectIconProject } from './MobileProjectIcon';
 import { MobileSessionRenameForm } from './MobileSessionRenameForm';
-import { MobileSessionRowActions, MobileSwipeActionsRow, ROW_ACTIONS_WIDTH } from './MobileSessionSwipe';
+import { MobileSessionRowActions, MobileSwipeActionsRow, ROW_ACTIONS_WIDTH, ROW_ACTIONS_WITH_WORK_WIDTH } from './MobileSessionSwipe';
+import { isSessionInWork } from '@/lib/sessionWorkMetadata';
 import { formatRelativeShort, getSessionTimestamp } from './mobileSessionFields';
 
 export type TimelineProject = MobileProjectIconProject & { label: string };
@@ -39,6 +40,8 @@ export type TimelineRowHandlers = {
   onRequestRename: (sessionId: string) => void;
   onSubmitRename: (sessionId: string, title: string) => void;
   onCancelRename: () => void;
+  /** Track / Done; absent while the feature is off. */
+  onToggleWork?: (session: Session, inWork: boolean) => void;
 };
 
 const TIMELINE_ROW_INDENT = 12;
@@ -64,10 +67,13 @@ const MobileTimelineRow: React.FC<{
   const showUnreadDot = !isStreaming && unseenCount > 0 && !active;
   const hasActivityDuration = useHasSessionActivityDuration(session.id, isStreaming);
   const showActivityDuration = (isStreaming || showUnreadDot) && hasActivityDuration;
+  const onToggleWork = handlers.onToggleWork;
+  const inWork = isSessionInWork(session);
+  const work = onToggleWork ? { inWork, onToggle: () => onToggleWork(session, inWork) } : undefined;
 
   return (
     <MobileSwipeActionsRow
-      actionsWidth={ROW_ACTIONS_WIDTH}
+      actionsWidth={work ? ROW_ACTIONS_WITH_WORK_WIDTH : ROW_ACTIONS_WIDTH}
       revealed={revealed}
       onRevealedChange={(next) => handlers.onRevealedChange(session.id, next)}
       dataActiveSession={active}
@@ -86,6 +92,7 @@ const MobileTimelineRow: React.FC<{
           onConfirmDelete={() => handlers.onConfirmDelete(session)}
           onRequestRename={() => handlers.onRequestRename(session.id)}
           onRevealedChange={(next) => handlers.onRevealedChange(session.id, next)}
+          work={work}
         />
       )}
     >

@@ -356,6 +356,9 @@ export function createRoutingRuntime({
     return publishUpdated();
   };
 
+  /** Where a Jev request goes right now, or null when no classification provider is usable. */
+  const currentClassifierEndpoint = async () => (await resolveAccess()).endpoint;
+
   /** Held permissions the UI can read back after a reload. */
   const heldPermissions = () => {
     const held = [];
@@ -367,6 +370,7 @@ export function createRoutingRuntime({
 
   return {
     describe,
+    classifierEndpoint: currentClassifierEndpoint,
     noteModelSelection,
     isAutoSession,
     resolveAutoSelection,

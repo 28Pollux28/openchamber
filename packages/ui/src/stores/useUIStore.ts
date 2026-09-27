@@ -890,6 +890,10 @@ interface UIStore {
   streamingAutoFollowEnabled: boolean;
   sessionRecapEnabled: boolean;
   sessionSuggestionEnabled: boolean;
+  /** The "In work" sidebar block and the Track / Done actions. */
+  sessionWorkEnabled: boolean;
+  /** Let Jev move a session into work when real work starts in it. */
+  sessionWorkAutoOpen: boolean;
   sessionGoalEnabled: boolean;
   sessionGoalDefaultBudgetEnabled: boolean;
   sessionGoalDefaultBudget: number;
@@ -1123,6 +1127,8 @@ interface UIStore {
   setStreamingAutoFollowEnabled: (value: boolean) => void;
   setSessionRecapEnabled: (value: boolean) => void;
   setSessionSuggestionEnabled: (value: boolean) => void;
+  setSessionWorkEnabled: (value: boolean) => void;
+  setSessionWorkAutoOpen: (value: boolean) => void;
   setSessionGoalEnabled: (value: boolean) => void;
   setSessionGoalDefaultBudgetEnabled: (value: boolean) => void;
   setSessionGoalDefaultBudget: (value: number) => void;
@@ -1321,6 +1327,8 @@ export const useUIStore = create<UIStore>()(
         streamingAutoFollowEnabled: true,
         sessionRecapEnabled: true,
         sessionSuggestionEnabled: true,
+        sessionWorkEnabled: true,
+        sessionWorkAutoOpen: true,
         sessionGoalEnabled: true,
         sessionGoalDefaultBudgetEnabled: false,
         sessionGoalDefaultBudget: 200_000,
@@ -2183,6 +2191,14 @@ export const useUIStore = create<UIStore>()(
 
         setSessionSuggestionEnabled: (value) => {
           set({ sessionSuggestionEnabled: value });
+        },
+
+        setSessionWorkEnabled: (value) => {
+          set({ sessionWorkEnabled: value });
+        },
+
+        setSessionWorkAutoOpen: (value) => {
+          set({ sessionWorkAutoOpen: value });
         },
 
         setSessionGoalEnabled: (value) => {
@@ -3193,6 +3209,8 @@ export const useUIStore = create<UIStore>()(
           streamingAutoFollowEnabled: state.streamingAutoFollowEnabled,
           sessionRecapEnabled: state.sessionRecapEnabled,
           sessionSuggestionEnabled: state.sessionSuggestionEnabled,
+          sessionWorkEnabled: state.sessionWorkEnabled,
+          sessionWorkAutoOpen: state.sessionWorkAutoOpen,
           sessionGoalEnabled: state.sessionGoalEnabled,
           sessionGoalDefaultBudgetEnabled: state.sessionGoalDefaultBudgetEnabled,
           sessionGoalDefaultBudget: state.sessionGoalDefaultBudget,

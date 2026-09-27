@@ -191,6 +191,7 @@ import { ComposerContextChips } from './composer/ui/ComposerContextChips';
 import { LinkedReferenceRow } from './composer/ui/LinkedReferenceRow';
 import { RevertedMessageDock } from './composer/ui/RevertedMessageDock';
 import { SessionSuggestionChip } from '@/components/chat/SessionSuggestionChip';
+import { SessionDoneHintRow } from '@/components/chat/SessionDoneHintRow';
 import { FormDock } from '@/components/chat/FormDock';
 import { PermissionDock } from '@/components/chat/PermissionDock';
 import { SessionGoalRow } from '@/components/chat/SessionGoalRow';
@@ -3534,6 +3535,22 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             onApply={applyAssistSuggestion}
         />
     ) : null;
+    // Jev's "looks done" hint shares the composer's top row slot, above the
+    // suggestion, so nothing below the input moves.
+    const doneHintRow = !isBtwActive && !newSessionDraftOpen ? (
+        <SessionDoneHintRow
+            sessionId={currentSessionId}
+            directory={currentSessionDirectoryForSync ?? currentDirectory}
+        />
+    ) : null;
+    // Null exactly when the suggestion row alone would have been: the mobile
+    // pill picks its shape from whether a top row exists.
+    const composerTopRows = doneHintRow || suggestionRow ? (
+        <>
+            {doneHintRow}
+            {suggestionRow}
+        </>
+    ) : null;
     const mobileModelAgentRow = isMobile && !isBtwActive ? (
         // px-3.5 lines the model logo and the agent label up with the attach
         // and mic icons above them; the buttons drop their own padding so the
@@ -3766,7 +3783,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         iconSizeClass={iconSizeClass}
                         sendIconSizeClass={sendIconSizeClass}
                         stopIconSizeClass={stopIconSizeClass}
-                        topRow={suggestionRow}
+                        topRow={composerTopRows}
                         attachments={(
                             <div className="px-3 pt-1">
                                 <AttachedFilesList onShowPopup={handleShowAttachmentPreview} className="pt-2" />
@@ -3859,7 +3876,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         text area + footer exactly. */}
                     <div className={cn('relative flex flex-col', isComposerExpanded && 'flex-1 min-h-0')}>
                     <div className={cn("overflow-hidden", isComposerExpanded && 'flex flex-1 min-h-0 flex-col')}>
-                        {suggestionRow}
+                        {composerTopRows}
                         {isMobile && isBtwActive ? (
                             <div className="scrollbar-none relative z-10 flex items-center gap-x-2 overflow-x-auto px-3 pb-0.5 pt-1.5">
                                 <ModelControls

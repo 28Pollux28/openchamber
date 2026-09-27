@@ -418,6 +418,12 @@ export const createSettingsHelpers = (dependencies) => {
     if (typeof candidate.sessionSuggestionEnabled === 'boolean') {
       result.sessionSuggestionEnabled = candidate.sessionSuggestionEnabled;
     }
+    if (typeof candidate.sessionWorkEnabled === 'boolean') {
+      result.sessionWorkEnabled = candidate.sessionWorkEnabled;
+    }
+    if (typeof candidate.sessionWorkAutoOpen === 'boolean') {
+      result.sessionWorkAutoOpen = candidate.sessionWorkAutoOpen;
+    }
     if (typeof candidate.sessionGoalEnabled === 'boolean') {
       result.sessionGoalEnabled = candidate.sessionGoalEnabled;
     }

@@ -32,6 +32,7 @@ import {
 import { withContextObligatoryMessage, type ContextObligatoryMessage } from "@/lib/contextObligatoryMessages"
 import { getBtwOriginalSessionID, getBtwSessionID, isBtwSession, withoutBtwSessionLink } from "@/lib/sessionBtwMetadata"
 import { withLinkedIssue, type LinkedIssue } from "@/lib/linkedIssues"
+import { withSessionWorkState, type SessionWork } from "@/lib/sessionWorkMetadata"
 import { getImperativeSessionMessageLoader } from "./session-message-loader"
 import { cleanupPersistedSessionState } from "./session-deletion-cleanup"
 import { requestSessionArchiveBatch, requestSessionMetadataUpdate, requestSessionUnarchiveBatch, type SessionArchiveStamp } from "./session-archive-batch"
@@ -1068,6 +1069,27 @@ export async function setLinkedIssue(
 ): Promise<Session> {
   return patchSessionMetadata(sessionId, directory, (metadata) =>
     withLinkedIssue(metadata, issue, linked))
+}
+
+/**
+ * The user tracks a session as in work (`open`) or marks its work done.
+ * Bound to the server it was clicked on: when the runtime switches while the
+ * change is in flight, nothing reaches the new server or its cache, and the
+ * result is null rather than an error to show.
+ */
+export async function setSessionWorkState(
+  sessionId: string,
+  directory: string | null | undefined,
+  state: SessionWork["state"],
+): Promise<Session | null> {
+  const runtimeKeyAtClick = getRuntimeKey()
+  try {
+    return await patchSessionMetadata(sessionId, directory, (metadata) =>
+      withSessionWorkState(metadata, state, Date.now()), runtimeKeyAtClick)
+  } catch (error) {
+    if (isStaleRuntime(runtimeKeyAtClick)) return null
+    throw error
+  }
 }
 
 export async function setContextObligatoryMessage(

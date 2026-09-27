@@ -82,7 +82,10 @@ import type { WorktreeMetadata } from '@/types/worktree';
 import { MobileDeleteWorktreeDialog } from './MobileDeleteWorktreeDialog';
 import { MobileProjectIcon } from './MobileProjectIcon';
 import { MobileSessionRenameForm } from './MobileSessionRenameForm';
-import { MobileSessionRowActions, MobileSwipeActionsRow, ROW_ACTIONS_WIDTH } from './MobileSessionSwipe';
+import { MobileSessionRowActions, MobileSwipeActionsRow, ROW_ACTIONS_WIDTH, ROW_ACTIONS_WITH_WORK_WIDTH, type MobileSessionWorkAction } from './MobileSessionSwipe';
+import { isDoneSuggested, isSessionInWork } from '@/lib/sessionWorkMetadata';
+import { setSessionWorkState } from '@/sync/session-actions';
+import { useUIStore } from '@/stores/useUIStore';
 import {
   MobileTimelineList,
   type TimelineEntry,
@@ -184,6 +187,8 @@ const TIMELINE_CHAT_PAGE_SIZE = 3;
 // parent label. Root/project-level sessions align with the project label;
 // worktree sessions sit one level deeper. SessionRow adds 16px (dot + gap) on top.
 const PROJECT_SESSION_INDENT = 40;
+/** Expansion key of the "In work" section, alongside project ids. */
+const WORK_SECTION_ID = 'openchamber:work';
 // Timeline chats align with the timeline rows' text, which has no gutter.
 const TIMELINE_CHAT_INDENT = 12;
 // Extra left padding applied to each nested subsession level.
@@ -290,6 +295,8 @@ const SessionRow: React.FC<{
   onCancelRename?: () => void;
   /** Timeline chats: no left gutter; the status dot sits before the time instead. */
   statusOnRight?: boolean;
+  /** Track / Done in the swipe actions; top-level rows while the feature is on. */
+  work?: MobileSessionWorkAction;
 }> = ({
   session,
   active,
@@ -310,6 +317,7 @@ const SessionRow: React.FC<{
   onRequestRename,
   onSubmitRename,
   onCancelRename,
+  work,
 }) => {
   const { t } = useI18n();
   const time = formatRelativeShort(getSessionTimestamp(session));
@@ -323,6 +331,8 @@ const SessionRow: React.FC<{
   const showUnreadDot = !isStreaming && unseenCount > 0 && !active;
   const hasActivityDuration = useHasSessionActivityDuration(session.id, isStreaming);
   const showActivityDuration = (isStreaming || showUnreadDot) && hasActivityDuration;
+  // Jev thinks this work looks finished: the same quiet check the sidebar shows.
+  const showDoneHint = Boolean(work?.inWork) && !isStreaming && isDoneSuggested(session);
 
   const rowContent = (
     <>
@@ -404,6 +414,9 @@ const SessionRow: React.FC<{
                     label={isStreaming ? t('sessions.sidebar.session.status.active') : t('sessions.sidebar.session.status.unread')}
                   />
             ) : null}
+            {showDoneHint ? (
+              <Icon name="check" className="size-3.5 shrink-0 text-muted-foreground" aria-label={t('sessions.sidebar.session.work.doneSuggested')} />
+            ) : null}
             {/* The elapsed turn takes the time slot while it matters, then
                 hands it back to the relative timestamp. */}
             {showActivityDuration ? (
@@ -445,7 +458,7 @@ const SessionRow: React.FC<{
 
   return (
     <MobileSwipeActionsRow
-      actionsWidth={ROW_ACTIONS_WIDTH}
+      actionsWidth={work ? ROW_ACTIONS_WITH_WORK_WIDTH : ROW_ACTIONS_WIDTH}
       revealed={revealed}
       onRevealedChange={(next) => onRevealedChange?.(next)}
       dataActiveSession={active}
@@ -464,6 +477,7 @@ const SessionRow: React.FC<{
           onConfirmDelete={onConfirmDelete}
           onRequestRename={onRequestRename}
           onRevealedChange={onRevealedChange}
+          work={work}
         />
       )}
     >
@@ -868,6 +882,30 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     () => partitionSidebarSessions(sessions, false),
     [sessions],
   );
+
+  // Sessions in work, with their subsessions, move to their own section under
+  // Chats and leave the projects and the timeline, like the desktop sidebar.
+  // Chats are plain conversations and never in work. Ownership and search
+  // still see every session.
+  const sessionWorkEnabled = useUIStore((state) => state.sessionWorkEnabled);
+  const workSessionIds = React.useMemo(() => {
+    const ids = new Set<string>();
+    if (!sessionWorkEnabled) return ids;
+    for (const session of sessions) {
+      if (getParentId(session) || isChatDirectoryPath(getSessionDirectory(session)) || !isSessionInWork(session)) continue;
+      ids.add(session.id);
+      for (const id of getDescendantIds(childrenBySessionId, session.id)) ids.add(id);
+    }
+    return ids;
+  }, [childrenBySessionId, sessionWorkEnabled, sessions]);
+  const sectionProjectSessions = React.useMemo(
+    () => (workSessionIds.size > 0 ? projectSessions.filter((session) => !workSessionIds.has(session.id)) : projectSessions),
+    [projectSessions, workSessionIds],
+  );
+  const sectionChatSessions = React.useMemo(
+    () => (workSessionIds.size > 0 ? chatSessions.filter((session) => !workSessionIds.has(session.id)) : chatSessions),
+    [chatSessions, workSessionIds],
+  );
   const spaces = useSpacesStore((state) => state.spaces);
   const spaceList = React.useMemo(() => Array.from(spaces.values()), [spaces]);
   const spaceLabelById = React.useMemo(
@@ -889,12 +927,22 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     path: '',
     worktree: null,
     space: null,
-    sessions: orderSessionsByLifecycleScopes(chatSessions, pinnedSessionIds, sessionOrderRanks),
-  }), [chatSessions, pinnedSessionIds, sessionOrderRanks]);
+    sessions: orderSessionsByLifecycleScopes(sectionChatSessions, pinnedSessionIds, sessionOrderRanks),
+  }), [pinnedSessionIds, sectionChatSessions, sessionOrderRanks]);
+  const workBucket = React.useMemo<WorktreeBucket>(() => ({
+    key: WORK_SECTION_ID,
+    label: '',
+    path: '',
+    worktree: null,
+    space: null,
+    sessions: workSessionIds.size > 0
+      ? orderSessionsByLifecycleScopes(sessions.filter((session) => workSessionIds.has(session.id)), pinnedSessionIds, sessionOrderRanks)
+      : [],
+  }), [pinnedSessionIds, sessionOrderRanks, sessions, workSessionIds]);
   const chatsBucketKey = `${CHAT_DRAFT_PROJECT_ID}::${CHAT_DRAFT_PROJECT_ID}`;
   const chatRootCount = React.useMemo(
-    () => chatSessions.filter((session) => !getParentId(session)).length,
-    [chatSessions],
+    () => sectionChatSessions.filter((session) => !getParentId(session)).length,
+    [sectionChatSessions],
   );
 
   const normalizedQuery = query.trim().toLowerCase();
@@ -946,7 +994,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
       for (const worktree of node.project.worktrees) ensureBucket(node, worktree.path, worktree);
     }
 
-    for (const session of projectSessions) {
+    for (const session of sectionProjectSessions) {
       const owner = sessionOwnership.bySessionId.get(session.id);
       if (!owner) continue;
       const node = nodes.find((entry) => entry.project.id === owner.projectId);
@@ -972,7 +1020,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     }
 
     return nodes;
-  }, [activeProjectId, pinnedSessionIds, projectSessions, projectsMeta, sessionOrderRanks, sessionOwnership, spaces, t]);
+  }, [activeProjectId, pinnedSessionIds, projectsMeta, sectionProjectSessions, sessionOrderRanks, sessionOwnership, spaces, t]);
 
   const normalizedDirectory = normalizePath(currentDirectory);
 
@@ -1099,6 +1147,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
             onRequestRename={() => handleRequestRename(session.id)}
             onSubmitRename={(nextTitle) => void handleSubmitRename(session.id, nextTitle)}
             onCancelRename={() => setRenamingSessionId(null)}
+            work={workActionFor(session)}
           />
           {hasChildren && expanded
             ? children.map((child) => renderNode(child, rowIndent + CHILD_INDENT_STEP))
@@ -1182,6 +1231,21 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
   };
 
   const handleArchive = (session: Session) => runSubtreeAction('archive', session);
+
+  const handleToggleWork = async (session: Session, inWork: boolean) => {
+    try {
+      await setSessionWorkState(session.id, getSessionDirectory(session) || null, inWork ? 'done' : 'open');
+    } catch {
+      toast.error(t('sessions.sidebar.session.work.updateFailed'));
+    }
+  };
+
+  /** Track / Done for a top-level row while the feature is on. */
+  const workActionFor = (session: Session): MobileSessionWorkAction | undefined => {
+    if (!sessionWorkEnabled || getParentId(session) || isChatDirectoryPath(getSessionDirectory(session))) return undefined;
+    const inWork = workSessionIds.has(session.id);
+    return { inWork, onToggle: () => { void handleToggleWork(session, inWork); } };
+  };
 
   const handleConfirmDelete = (session: Session) => runSubtreeAction('delete', session);
 
@@ -1360,14 +1424,14 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
 
   const timelineEntries = React.useMemo<TimelineEntry[]>(() => {
     if (!timelineActive) return [];
-    const roots = projectSessions.filter(
+    const roots = sectionProjectSessions.filter(
       (session) => !getParentId(session) && timelineContextById.has(session.id),
     );
     return orderSessionsByLifecycleScopes(roots, pinnedSessionIds, sessionOrderRanks).flatMap((session) => {
       const context = timelineContextById.get(session.id);
       return context ? [{ session, project: context.project, branch: context.branch }] : [];
     });
-  }, [pinnedSessionIds, projectSessions, sessionOrderRanks, timelineActive, timelineContextById]);
+  }, [pinnedSessionIds, sectionProjectSessions, sessionOrderRanks, timelineActive, timelineContextById]);
 
   const revealMoreTimelineSessions = React.useCallback(() => {
     setTimelineVisibleCount((current) => revealNextTimelinePage(current, timelineEntries.length));
@@ -1386,6 +1450,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     onRequestRename: handleRequestRename,
     onSubmitRename: (sessionId, title) => void handleSubmitRename(sessionId, title),
     onCancelRename: () => setRenamingSessionId(null),
+    onToggleWork: sessionWorkEnabled ? (session, inWork) => { void handleToggleWork(session, inWork); } : undefined,
   };
 
   const hasNoMatches =
@@ -1678,6 +1743,47 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
                   </section>
                 );
               })()}
+              {workBucket.sessions.length > 0 ? (() => {
+                const workExpanded = projectExpandedMap[WORK_SECTION_ID] ?? true;
+                const workLabel = t('sessions.sidebar.work.title');
+                return (
+                  <section>
+                    <button
+                      type="button"
+                      className="flex min-h-12 w-full min-w-0 items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-interactive-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                      onClick={() => {
+                        if (revealedRowId) {
+                          handleRowKeyRevealedChange(revealedRowId, false);
+                          return;
+                        }
+                        toggleProject(WORK_SECTION_ID, workExpanded);
+                      }}
+                      aria-expanded={workExpanded}
+                      aria-label={
+                        workExpanded
+                          ? t('sessions.sidebar.group.collapseAria', { label: workLabel })
+                          : t('sessions.sidebar.group.expandAria', { label: workLabel })
+                      }
+                      style={{ touchAction: 'manipulation' }}
+                    >
+                      <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-[var(--surface-muted)] text-muted-foreground">
+                        <Icon name="eye" className="size-4" />
+                      </span>
+                      <span className="block min-w-0 flex-1 truncate typography-ui-label font-semibold text-foreground">
+                        {workLabel}
+                      </span>
+                      <span className="shrink-0 typography-micro text-muted-foreground tabular-nums">
+                        {workBucket.sessions.filter((session) => !getParentId(session)).length}
+                      </span>
+                    </button>
+                    {workExpanded ? (
+                      <div className="pb-2">
+                        {renderBucketSessions(`${WORK_SECTION_ID}::${WORK_SECTION_ID}`, workBucket, PROJECT_SESSION_INDENT, { pageSize: Number.MAX_SAFE_INTEGER })}
+                      </div>
+                    ) : null}
+                  </section>
+                );
+              })() : null}
               {timelineActive ? (
                 <MobileTimelineList
                   entries={timelineEntries}

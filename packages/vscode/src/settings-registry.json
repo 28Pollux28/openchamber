@@ -481,6 +481,17 @@
     "sessionSuggestionEnabled": {
       "scope": "profile"
     },
+    "sessionWorkEnabled": {
+      "scope": "profile"
+    },
+    "sessionWorkAutoOpen": {
+      "scope": "profile",
+      "surfaces": [
+        "web",
+        "desktop",
+        "mobile"
+      ]
+    },
     "sessionGoalEnabled": {
       "scope": "profile"
     },

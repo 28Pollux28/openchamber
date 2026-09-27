@@ -130,6 +130,44 @@ only for unmarked legacy sessions. Row memoization compares those same semantics
 so metadata-only membership changes update the menu. See
 `lib/multirun/DOCUMENTATION.md` for source selection and fork rules.
 
+## In work
+
+Sessions in work (`metadata.openchamber.work.state === 'open'`, see
+`packages/web/server/lib/session-work/DOCUMENTATION.md`) render in their own
+`work` activity zone under Chats and above Recent / the timeline, in both view
+modes, while `sessionWorkEnabled` is on. `list/SessionProjectCollection.tsx`
+selects them from the ordered collection (top-level, unarchived, not managed
+Chats, shared lifecycle order) and
+passes `workItems` plus `workSessionIds` to the row model. A session in work
+MOVES: the row model drops it from Recent, the Timeline list, project groups,
+and folders, so it appears once. Chats are never in work and offer no Track
+action. An empty zone is not rendered. Rows use
+`renderContext: 'timeline'` in the timeline view and `recent` (project and
+branch shown) in the projects view. Search in the projects view keeps a tree
+whose subsession matches (`sessionTreeMatchesSidebarQuery`): those subsessions
+are nowhere else in the sidebar. The zone counts only sessions that match
+themselves (`countSessionTreeQueryMatches`), and a group subtracts the trees
+that moved out of it with the same counter its search data used
+(`countSessionSearchMatches`), so one exact id is one match; a group or project
+whose only matches moved renders nothing. Track / Done captures the runtime key at the
+click (`setSessionWorkState`), so a server switch mid-request writes nothing to
+the new server.
+
+Row actions revealed on hover are the same three in both views: Track / Done
+(eye in the muted action color like its neighbours / check in
+`status.success`, one icon size up because the glyph draws small), quick
+archive/delete, the menu. Pin/unpin lives in the menu only. Touch layouts (`alwaysShowActions`)
+keep Track / Done in the menu. At rest a row in work shows a grey check only
+while Jev's done hint is current (`isDoneSuggested`); the composer shows the
+same hint as a top row (`components/chat/SessionDoneHintRow.tsx`). The
+whole-row tooltip in the projects view shows the current recap. The mobile
+sheet (`apps/MobileSessionsSheet.tsx`) mirrors it: an "In work" section under
+Chats takes the sessions in work with their subsessions out of the project
+buckets and the timeline, and Track / Done is a fifth swipe action on
+top-level rows (`ROW_ACTIONS_WITH_WORK_WIDTH`). Row memoization
+compares `metadata` by reference and `time.idle`, so metadata-only changes
+(work, goal, recap) re-render the row.
+
 ## Timeline view
 
 `sidebarViewMode` (profile-scoped, per surface) switches the desktop and web
@@ -139,8 +177,8 @@ renders `projects`.
 - Timeline keeps the managed Chats zone, with an initial reveal of 3 instead of
   the usual Chats limit. Pinned chats are always shown and never spend that
   limit, so Show more/Show fewer count only unpinned rows. Chats rows render
-  with `renderContext: 'timeline-chat'`: one line, no left gutter, pin and
-  status dot on the right beside the time. Collapsing a zone header resets its
+  with `renderContext: 'timeline-chat'`: one line, no left gutter, pin marker
+  and status dot on the right beside the time. Collapsing a zone header resets its
   Show more state.
 - Zone headers are sticky in the projects view and never in the timeline; there
   is no user toggle. Timeline zone headers drop the leading icon and use a

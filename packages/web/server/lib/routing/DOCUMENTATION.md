@@ -36,7 +36,9 @@ Auto. There is no env gate — the feature shipped dark behind
   `loadAssistContext` (text parts only, attached quotes included, no files or
   tool payloads), each user message cut to its head and each answer to head
   plus tail. The new request is never cut.
-- `runtime.js` — `createRoutingRuntime`: `describe`, `noteModelSelection`,
+- `runtime.js` — `createRoutingRuntime`: `describe`, `classifierEndpoint` (the
+  endpoint a Jev request goes to now, or null; also used by
+  `../session-work`), `noteModelSelection`,
   `isAutoSession`, `resolveAutoSelection`, `applySessionSelection`, `routeSend`,
   `evaluatePermission`, `legacySafetyNetEnabled`, config, token and classifier
   writes, event broadcasts.

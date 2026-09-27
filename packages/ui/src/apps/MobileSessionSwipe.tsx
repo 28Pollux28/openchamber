@@ -9,6 +9,11 @@ import type { useSessionAiRenameAction } from '@/components/session/useSessionAi
 
 // Four 48px action slots: delete, archive, manual rename and AI rename.
 export const ROW_ACTIONS_WIDTH = 192;
+
+/** Rows that can be in work carry a fifth slot for Track / Done. */
+export const ROW_ACTIONS_WITH_WORK_WIDTH = 240;
+
+export type MobileSessionWorkAction = { inWork: boolean; onToggle: () => void };
 const ROW_SWIPE_SNAP_MS = 180;
 
 /** Generic swipe-right-to-reveal wrapper for drawer rows (sessions, projects,
@@ -120,6 +125,8 @@ export const MobileSessionRowActions: React.FC<{
   onConfirmDelete?: () => void;
   onRequestRename?: () => void;
   onRevealedChange?: (revealed: boolean) => void;
+  /** Track / Done, when the feature is on and the row is a top-level session. */
+  work?: MobileSessionWorkAction;
 }> = ({
   title,
   revealed,
@@ -130,6 +137,7 @@ export const MobileSessionRowActions: React.FC<{
   onConfirmDelete,
   onRequestRename,
   onRevealedChange,
+  work,
 }) => {
   const { t } = useI18n();
   const tabIndex = revealed ? 0 : -1;
@@ -190,6 +198,22 @@ export const MobileSessionRowActions: React.FC<{
       >
         <Icon name={aiRename.pending ? 'loader-4' : 'ai-generate-2'} className={aiRename.pending ? 'size-[18px] animate-spin' : 'size-[18px]'} />
       </Button>
+      {work ? (
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          className={cn(
+            'flex flex-1 items-center justify-center transition-colors active:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring',
+            work.inWork ? 'text-status-success' : 'text-muted-foreground active:text-foreground',
+          )}
+          aria-label={work.inWork ? t('sessions.sidebar.session.work.markDone') : t('sessions.sidebar.session.work.track')}
+          onClick={() => { work.onToggle(); onRevealedChange?.(false); }}
+          style={{ touchAction: 'manipulation' }}
+        >
+          {/* The check glyph draws smaller than the others at the same box. */}
+          <Icon name={work.inWork ? 'check' : 'eye'} className={work.inWork ? 'size-5' : 'size-[18px]'} />
+        </button>
+      ) : null}
     </>
   );
 };
