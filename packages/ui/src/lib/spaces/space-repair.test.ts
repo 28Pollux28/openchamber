@@ -49,6 +49,14 @@ describe('the state of a space', () => {
     const failure = { code: 'gatekeeper_missing', message: 'gone' };
     expect(spaceConditionOf(entry({ state: 'exited' }), undefined, { kind: 'failed', action: 'start', failure })).toEqual({ kind: 'action_failed', action: 'start', failure });
   });
+
+  test('a failure gives way when the host lists a state its action no longer fits', () => {
+    const refused = { code: 'space_not_running', message: 'stopped' };
+    // A restart offered for a space that did not answer, refused because it had stopped.
+    expect(spaceConditionOf(entry({ state: 'exited' }), mark('stale'), { kind: 'failed', action: 'restart', failure: refused })).toEqual({ kind: 'stopped' });
+    // A start refused because the gatekeeper is gone leaves the way to delete it.
+    expect(spaceConditionOf(entry({ state: 'exited', damage: 'gatekeeper_gone' }), undefined, { kind: 'failed', action: 'start', failure: refused })).toEqual({ kind: 'gatekeeper_gone' });
+  });
 });
 
 describe('the actions of a space', () => {
@@ -100,6 +108,17 @@ describe('the actions of a space', () => {
       await runSpaceAction(ID, 'start');
       expect(useSpacesStore.getState().actions.get(ID)).toEqual({ kind: 'failed', action: 'start', failure: { code: 'gatekeeper_missing', message: 'gone' } });
       expect(useSpacesStore.getState().journey?.get(ID)?.damage).toBe('gatekeeper_gone');
+    });
+
+    test('keeps nothing of an action that a runtime switch overtook', async () => {
+      let release: () => void = () => undefined;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      host((path) => (path.endsWith('/start') ? held.then(() => new Response(JSON.stringify({ code: 'space_busy', message: 'busy' }), { status: 409 })) : listAnswer([])));
+      const run = runSpaceAction(ID, 'start');
+      useSpacesStore.getState().resetForRuntimeSwitch();
+      release();
+      await run;
+      expect(useSpacesStore.getState().actions.size).toBe(0);
     });
 
     test('runs one action per space at a time in this window', async () => {

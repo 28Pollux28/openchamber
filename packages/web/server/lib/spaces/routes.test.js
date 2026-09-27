@@ -55,8 +55,6 @@ const journeyOf = (overrides = {}) => {
     stopSpace: record('stopSpace', { id: ID, state: 'exited' }),
     restartSpace: record('restartSpace', { id: ID, state: 'running', networkRestored: true }),
     restartOpenCode: record('restartOpenCode', { id: ID, state: 'running' }),
-    restartSpace: record('restartSpace', { id: ID, state: 'running', networkRestored: true }),
-    restartOpenCode: record('restartOpenCode', { id: ID, state: 'running' }),
     removeSpace: record('removeSpace', { id: ID, removed: true }),
     grantAccess: record('grantAccess', { grant: { id: 'open-1' } }),
     openDomain: record('openDomain', { network: { mode: 'allowlist', domains: ['registry.npmjs.org'] } }),

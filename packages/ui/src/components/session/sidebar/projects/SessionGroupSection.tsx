@@ -1136,7 +1136,7 @@ function SessionGroupSectionBase(props: SessionGroupSectionProps): React.ReactNo
           </div>
         ) : null}
         {group.space ? (
-          <div className={cn('absolute right-[3.25rem] top-1/2 -translate-y-1/2 z-10 transition-opacity', alwaysShowActions ? 'opacity-100' : 'opacity-0 group-hover/gh:opacity-100 group-focus-within/gh:opacity-100 has-[[data-state=open]]:opacity-100')}>
+          <div className={cn('absolute right-[3.25rem] top-1/2 -translate-y-1/2 z-10 transition-opacity', alwaysShowActions ? 'opacity-100' : 'opacity-0 group-hover/gh:opacity-100 group-focus-within/gh:opacity-100 has-[[data-popup-open]]:opacity-100')}>
             <SpaceActionsMenu spaceId={group.space.id} label={group.label} />
           </div>
         ) : null}

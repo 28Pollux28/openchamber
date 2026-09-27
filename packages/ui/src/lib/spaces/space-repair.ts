@@ -15,7 +15,7 @@ import {
   type SpaceEntry,
   type SpaceFailure,
 } from './spaces-api';
-import { refreshSpacesJourney, useSpacesStore, type SpaceAction, type SpaceActionState, type SpaceMark } from './spaces-store';
+import { refreshSpacesJourney, spacesRuntimeGeneration, useSpacesStore, type SpaceAction, type SpaceActionState, type SpaceMark } from './spaces-store';
 
 /**
  * What is wrong with a space that exists, in the order the status line tells it: an action under
@@ -38,7 +38,10 @@ export const spaceConditionOf = (
 ): SpaceCondition | null => {
   if (action?.kind === 'running') return { kind: 'busy', action: action.action };
   if (!entry || entry.state === 'preparing' || entry.state === 'failed') return null;
-  if (action?.kind === 'failed') return { kind: 'action_failed', action: action.action, failure: action.failure };
+  // A failure is shown only while its action still fits what the host lists: a restart refused
+  // because the space had stopped meanwhile gives way to "stopped" and its Start, rather than
+  // offering the same refused restart again and again.
+  if (action?.kind === 'failed' && spaceMenuActionsOf(entry).includes(action.action)) return { kind: 'action_failed', action: action.action, failure: action.failure };
   if (entry.state === 'missing') return { kind: 'container_gone' };
   if (entry.damage === 'gatekeeper_gone') return { kind: 'gatekeeper_gone' };
   if (entry.state === 'exited') return { kind: 'stopped' };
@@ -81,6 +84,7 @@ const call = (spaceId: string, action: SpaceAction): Promise<SpaceFailure | null
 export const runSpaceAction = async (spaceId: string, action: SpaceAction): Promise<void> => {
   const store = useSpacesStore.getState();
   if (store.actions.get(spaceId)?.kind === 'running') return;
+  const generation = spacesRuntimeGeneration();
   store.noteAction(spaceId, { kind: 'running', action });
   let failure: SpaceFailure | null;
   try {
@@ -89,6 +93,8 @@ export const runSpaceAction = async (spaceId: string, action: SpaceAction): Prom
     if (!(error instanceof Error)) throw error;
     failure = failureOfError(error);
   }
+  // An action a runtime switch overtook belongs to the runtime it ran on; nothing of it is kept.
+  if (generation !== spacesRuntimeGeneration()) return;
   const after = useSpacesStore.getState();
   after.noteAction(spaceId, failure ? { kind: 'failed', action, failure } : null);
   if (!failure && action === 'remove') {

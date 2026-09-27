@@ -220,6 +220,9 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
 
 let journeyGeneration = 0;
 
+/** Counts runtime switches, so work started before one can tell that its answer is no longer wanted. */
+export const spacesRuntimeGeneration = (): number => journeyGeneration;
+
 /**
  * Reads the journey list again and keeps it. A read that fails leaves the last list in place and
  * rejects, so a failure never reads as "no spaces"; one that a runtime switch overtook is dropped.

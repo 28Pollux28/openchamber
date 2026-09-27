@@ -347,15 +347,22 @@ describe('the journey: repair', () => {
 
   it('restarts the container with a fresh token written first, then stops and starts it with its network said again', async () => {
     const { journey, place, calls, id } = await ready();
+    // The place's own steps, in the order they came, beside the stand-ins': the server inside
+    // reads the new token only when the container starts again after a stop.
+    for (const step of ['stop', 'start']) {
+      const run = place[step];
+      place[step] = async (spaceId) => { calls.push([step, spaceId]); return run(spaceId); };
+    }
     const started = await journey.restartSpace(id);
     expect(started).toMatchObject({ id, state: 'running', networkRestored: true });
-    expect(calls.map(([name]) => name)).toEqual(['writeToken', 'setNetwork']);
+    expect(calls.map(([name]) => name)).toEqual(['writeToken', 'stop', 'start', 'setNetwork']);
     expect(calls[0][2]).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(await place.list()).toEqual([expect.objectContaining({ state: 'running' })]);
     // A second restart writes another token.
     const first = calls[0][2];
     calls.splice(0);
     await journey.restartSpace(id);
+    expect(calls[0][0]).toBe('writeToken');
     expect(calls[0][2]).not.toBe(first);
   });
 
