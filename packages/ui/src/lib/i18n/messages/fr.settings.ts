@@ -898,7 +898,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Impossible d\'effacer l\'authentification enregistrée.',
   'settings.openchamber.sessionRetention.title': 'Rétention de session',
   'settings.openchamber.sessionWork.title': 'Sessions en cours',
-  'settings.openchamber.sessionWork.info': 'Un bloc en haut de la barre latérale pour les sessions où un vrai travail est en cours. Une session y reste jusqu\'à ce que vous la marquiez comme terminée : survolez-la et utilisez l\'œil pour la suivre ou la coche pour la terminer, ou passez par le menu de la session.',
+  'settings.openchamber.sessionWork.info': 'Un bloc dans la barre latérale, sous les discussions, pour les sessions où un vrai travail est en cours. Une session y reste jusqu\'à ce que vous la marquiez comme terminée : survolez-la et utilisez l\'œil pour la suivre ou la coche pour la terminer, ou passez par le menu de la session.',
   'settings.openchamber.sessionWork.field.enabled': 'Afficher les sessions en cours',
   'settings.openchamber.sessionWork.field.autoOpen': 'Placer automatiquement les sessions en cours',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev lit chaque message que vous envoyez et place la session en cours lorsque vous demandez une modification, signalez un bug ou discutez d\'un changement concret. Les questions et la recherche ne comptent pas. Jev ne marque jamais le travail comme terminé : quand un tour ressemble à la fin du travail, la session affiche une coche grise et c\'est vous qui décidez.',

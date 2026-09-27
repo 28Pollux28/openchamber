@@ -980,7 +980,7 @@ export const settingsDict = {
   "settings.openchamber.passkeys.toast.clearAuthFailed": "Não foi possível limpar a autenticação salva.",
   "settings.openchamber.sessionRetention.title": "Retenção de sessões",
   "settings.openchamber.sessionWork.title": "Sessões em andamento",
-  "settings.openchamber.sessionWork.info": "Um bloco no topo da barra lateral para as sessões com trabalho real em andamento. A sessão fica ali até você marcá-la como concluída: passe o cursor e use o olho para acompanhá-la ou o check para concluí-la, ou use o menu da sessão.",
+  "settings.openchamber.sessionWork.info": "Um bloco na barra lateral, abaixo das conversas, para as sessões com trabalho real em andamento. A sessão fica ali até você marcá-la como concluída: passe o cursor e use o olho para acompanhá-la ou o check para concluí-la, ou use o menu da sessão.",
   "settings.openchamber.sessionWork.field.enabled": "Mostrar sessões em andamento",
   "settings.openchamber.sessionWork.field.autoOpen": "Mover sessões para em andamento automaticamente",
   "settings.openchamber.sessionWork.field.autoOpenInfo": "O Jev lê cada mensagem que você envia e move a sessão para em andamento quando você pede uma mudança, relata um bug ou discute uma mudança concreta. Perguntas e pesquisa não contam. O Jev nunca marca o trabalho como concluído: quando um turno parece o fim do trabalho, a sessão mostra um check cinza e você decide.",

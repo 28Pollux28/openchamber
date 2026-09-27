@@ -1013,7 +1013,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': '保存された認証情報をクリアできませんでした。',
   'settings.openchamber.sessionRetention.title': 'Session 保持',
   'settings.openchamber.sessionWork.title': '作業中のセッション',
-  'settings.openchamber.sessionWork.info': '実際の作業が進んでいるセッションをサイドバー上部にまとめるブロックです。完了にするまでそこに残ります。セッションにカーソルを合わせ、目のアイコンで追跡、チェックで完了にするか、セッションメニューを使います。',
+  'settings.openchamber.sessionWork.info': '実際の作業が進んでいるセッションを、サイドバーのチャットの下にまとめるブロックです。完了にするまでそこに残ります。セッションにカーソルを合わせ、目のアイコンで追跡、チェックで完了にするか、セッションメニューを使います。',
   'settings.openchamber.sessionWork.field.enabled': '作業中のセッションを表示',
   'settings.openchamber.sessionWork.field.autoOpen': 'セッションを自動的に作業中にする',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev は送信したメッセージを読み、変更を依頼したとき、バグを報告したとき、具体的な変更を話し合っているときにセッションを作業中にします。質問や調査は対象外です。Jev が作業を完了にすることはありません。ターンが作業の終わりに見えるとセッションに灰色のチェックが表示され、判断はあなたに委ねられます。',

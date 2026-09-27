@@ -980,7 +980,7 @@ export const settingsDict = {
   "settings.openchamber.passkeys.toast.clearAuthFailed": "No se pudo limpiar la autenticación guardada.",
   "settings.openchamber.sessionRetention.title": "Retención de sesiones",
   "settings.openchamber.sessionWork.title": "Sesiones en curso",
-  "settings.openchamber.sessionWork.info": "Un bloque en la parte superior de la barra lateral para las sesiones con trabajo real en curso. Una sesión permanece ahí hasta que la marques como hecha: pasa el cursor y usa el ojo para seguirla o la marca para terminarla, o usa el menú de la sesión.",
+  "settings.openchamber.sessionWork.info": "Un bloque en la barra lateral, debajo de los chats, para las sesiones con trabajo real en curso. Una sesión permanece ahí hasta que la marques como hecha: pasa el cursor y usa el ojo para seguirla o la marca para terminarla, o usa el menú de la sesión.",
   "settings.openchamber.sessionWork.field.enabled": "Mostrar sesiones en curso",
   "settings.openchamber.sessionWork.field.autoOpen": "Mover sesiones a en curso automáticamente",
   "settings.openchamber.sessionWork.field.autoOpenInfo": "Jev lee cada mensaje que envías y mueve la sesión a en curso cuando pides un cambio, informas de un error o hablas de un cambio concreto. Las preguntas y la investigación no cuentan. Jev nunca marca el trabajo como hecho: cuando un turno parece el final del trabajo, la sesión muestra una marca gris y tú decides.",

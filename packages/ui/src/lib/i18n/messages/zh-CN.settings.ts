@@ -980,7 +980,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': '无法清除已保存的认证信息。',
   'settings.openchamber.sessionRetention.title': '会话保留',
   'settings.openchamber.sessionWork.title': '进行中的会话',
-  'settings.openchamber.sessionWork.info': '侧边栏顶部的一个区块，用于放置正在进行实际工作的会话。会话会一直留在那里，直到你标记为完成：悬停在会话上，用眼睛图标跟踪，用对勾标记完成，或使用会话菜单。',
+  'settings.openchamber.sessionWork.info': '侧边栏中位于聊天下方的一个区块，用于放置正在进行实际工作的会话。会话会一直留在那里，直到你标记为完成：悬停在会话上，用眼睛图标跟踪，用对勾标记完成，或使用会话菜单。',
   'settings.openchamber.sessionWork.field.enabled': '显示进行中的会话',
   'settings.openchamber.sessionWork.field.autoOpen': '自动将会话移入进行中',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev 会阅读你发送的每条消息，当你请求修改、报告缺陷或讨论具体改动时，把会话移入进行中。提问和调研不算。Jev 从不把工作标记为完成：当某一轮看起来像工作的结尾时，会话会显示一个灰色对勾，由你决定。',

@@ -978,7 +978,7 @@ export const settingsDict = {
   'settings.openchamber.sessionRetention.manualCleanup.title': 'Ręczne czyszczenie',
   'settings.openchamber.sessionRetention.title': 'Przechowywanie sesji',
   'settings.openchamber.sessionWork.title': 'Sesje w toku',
-  'settings.openchamber.sessionWork.info': 'Blok na górze paska bocznego dla sesji, w których trwa prawdziwa praca. Sesja zostaje tam, dopóki nie oznaczysz jej jako gotowej: najedź na nią i użyj oka, aby ją śledzić, lub znacznika, aby ją zakończyć, albo skorzystaj z menu sesji.',
+  'settings.openchamber.sessionWork.info': 'Blok na pasku bocznym, pod czatami, dla sesji, w których trwa prawdziwa praca. Sesja zostaje tam, dopóki nie oznaczysz jej jako gotowej: najedź na nią i użyj oka, aby ją śledzić, lub znacznika, aby ją zakończyć, albo skorzystaj z menu sesji.',
   'settings.openchamber.sessionWork.field.enabled': 'Pokazuj sesje w toku',
   'settings.openchamber.sessionWork.field.autoOpen': 'Automatycznie przenoś sesje do toku',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev czyta każdą wysłaną wiadomość i przenosi sesję do toku, gdy prosisz o zmianę, zgłaszasz błąd lub omawiasz konkretną zmianę. Pytania i research się nie liczą. Jev nigdy nie oznacza pracy jako gotowej: gdy tura wygląda na koniec pracy, sesja pokazuje szary znacznik, a decyzja należy do ciebie.',

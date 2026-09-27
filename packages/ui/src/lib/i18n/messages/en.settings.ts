@@ -1012,7 +1012,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Could not clear saved authentication.',
   'settings.openchamber.sessionRetention.title': 'Session Retention',
   'settings.openchamber.sessionWork.title': 'Sessions in work',
-  'settings.openchamber.sessionWork.info': 'A block at the top of the sidebar for sessions where real work is going on. A session stays there until you mark it done: hover it and use the eye to track it or the check to mark it done, or use the session menu.',
+  'settings.openchamber.sessionWork.info': 'A block in the sidebar, under Chats, for sessions where real work is going on. A session stays there until you mark it done: hover it and use the eye to track it or the check to mark it done, or use the session menu.',
   'settings.openchamber.sessionWork.field.enabled': 'Show sessions in work',
   'settings.openchamber.sessionWork.field.autoOpen': 'Move sessions into work automatically',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev reads each message you send and moves the session into work when you ask for a change, report a bug, or discuss a concrete change. Questions and research don\'t count. Jev never marks work done: when a turn looks like the end of the work, the session shows a grey check and you decide.',

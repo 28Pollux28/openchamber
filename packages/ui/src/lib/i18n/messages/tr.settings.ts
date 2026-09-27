@@ -1008,7 +1008,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Kaydedilmiş kimlik doğrulama bilgileri temizlenemedi.',
   'settings.openchamber.sessionRetention.title': 'Session Saklama',
   'settings.openchamber.sessionWork.title': 'Devam eden oturumlar',
-  'settings.openchamber.sessionWork.info': 'Kenar çubuğunun üstünde, gerçek iş süren oturumlar için bir bölüm. Bir oturum, siz tamamlandı olarak işaretleyene kadar orada kalır: üzerine gelin ve izlemek için göz simgesini, bitirmek için onay işaretini kullanın ya da oturum menüsünü kullanın.',
+  'settings.openchamber.sessionWork.info': 'Kenar çubuğunda, sohbetlerin altında, gerçek iş süren oturumlar için bir bölüm. Bir oturum, siz tamamlandı olarak işaretleyene kadar orada kalır: üzerine gelin ve izlemek için göz simgesini, bitirmek için onay işaretini kullanın ya da oturum menüsünü kullanın.',
   'settings.openchamber.sessionWork.field.enabled': 'Devam eden oturumları göster',
   'settings.openchamber.sessionWork.field.autoOpen': 'Oturumları otomatik olarak devam edenlere taşı',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev gönderdiğiniz her mesajı okur ve bir değişiklik istediğinizde, bir hata bildirdiğinizde ya da somut bir değişikliği tartıştığınızda oturumu devam edenlere taşır. Sorular ve araştırma sayılmaz. Jev işi asla tamamlandı olarak işaretlemez: bir tur işin sonu gibi göründüğünde oturumda gri bir onay işareti görünür ve kararı siz verirsiniz.',

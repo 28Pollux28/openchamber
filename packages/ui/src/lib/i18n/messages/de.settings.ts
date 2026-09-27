@@ -964,7 +964,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': 'Konnte gespeicherte Authentifizierung nicht löschen.',
   'settings.openchamber.sessionRetention.title': 'Sitzungsaufbewahrung',
   'settings.openchamber.sessionWork.title': 'Sitzungen in Arbeit',
-  'settings.openchamber.sessionWork.info': 'Ein Bereich oben in der Seitenleiste für Sitzungen, in denen echte Arbeit läuft. Eine Sitzung bleibt dort, bis Sie sie als erledigt markieren: Fahren Sie darüber und nutzen Sie das Auge zum Verfolgen oder den Haken zum Abschließen, oder verwenden Sie das Sitzungsmenü.',
+  'settings.openchamber.sessionWork.info': 'Ein Bereich in der Seitenleiste unter den Chats für Sitzungen, in denen echte Arbeit läuft. Eine Sitzung bleibt dort, bis Sie sie als erledigt markieren: Fahren Sie darüber und nutzen Sie das Auge zum Verfolgen oder den Haken zum Abschließen, oder verwenden Sie das Sitzungsmenü.',
   'settings.openchamber.sessionWork.field.enabled': 'Sitzungen in Arbeit anzeigen',
   'settings.openchamber.sessionWork.field.autoOpen': 'Sitzungen automatisch in Arbeit verschieben',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev liest jede Nachricht, die Sie senden, und verschiebt die Sitzung in Arbeit, wenn Sie eine Änderung wünschen, einen Fehler melden oder eine konkrete Änderung besprechen. Fragen und Recherche zählen nicht. Jev markiert Arbeit nie als erledigt: Sieht ein Durchgang nach dem Ende der Arbeit aus, zeigt die Sitzung einen grauen Haken, und Sie entscheiden.',

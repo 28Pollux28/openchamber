@@ -16,7 +16,12 @@ import { useI18n } from '@/lib/i18n';
 import { reportSettingsSaveState } from '@/lib/persistence';
 import type { ClassifierSource } from '@/lib/routing/routingApi';
 import { useRoutingStore } from '@/stores/useRoutingStore';
+import { openExternalUrl } from '@/lib/url';
 import { useClassifierSourceName } from './classifierSources';
+import { SettingsInlineLink } from './JevAccessNote';
+
+// The docs keep the list of features Jev answers for, so this page never goes stale.
+const CLASSIFICATION_DOCS_URL = 'https://docs.openchamber.dev/classification-providers/';
 
 interface ClassificationProvidersPageProps {
   titleLeading: React.ReactNode;
@@ -24,7 +29,7 @@ interface ClassificationProvidersPageProps {
 
 /**
  * Settings → Providers → Classification providers: where Jev requests go, for
- * the permission safety net and Auto model routing. Not an OpenCode provider,
+ * every feature that asks Jev. Not an OpenCode provider,
  * so it has its own page instead of the provider detail view. The server owns
  * the pick and the TypeSafe key (`packages/web/server/lib/routing`).
  */
@@ -104,7 +109,14 @@ export const ClassificationProvidersPage: React.FC<ClassificationProvidersPagePr
     <SettingsPageLayout
       title={t('settings.classification.page.title')}
       titleLeading={titleLeading}
-      description={t('settings.classification.page.description')}
+      description={(
+        <p className={SETTINGS_DESCRIPTION_CLASS}>
+          {t('settings.classification.page.description')}{' '}
+          <SettingsInlineLink onClick={() => { void openExternalUrl(CLASSIFICATION_DOCS_URL); }}>
+            {t('settings.classification.page.docsLink')}
+          </SettingsInlineLink>
+        </p>
+      )}
       showSaveStatus
     >
       {loadError ? <p className={SETTINGS_DESCRIPTION_CLASS}>{t('settings.routing.loadError', { error: loadError })}</p> : null}

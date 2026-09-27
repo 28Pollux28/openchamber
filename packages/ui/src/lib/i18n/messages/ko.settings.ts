@@ -980,7 +980,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': '저장된 인증을 지울 수 없습니다.',
   'settings.openchamber.sessionRetention.title': '세션 보존',
   'settings.openchamber.sessionWork.title': '작업 중인 세션',
-  'settings.openchamber.sessionWork.info': '실제 작업이 진행 중인 세션을 사이드바 상단에 모아 두는 영역입니다. 완료로 표시할 때까지 그곳에 남습니다. 세션에 마우스를 올려 눈 아이콘으로 추적하거나 체크로 완료하고, 세션 메뉴를 사용할 수도 있습니다.',
+  'settings.openchamber.sessionWork.info': '실제 작업이 진행 중인 세션을 사이드바의 채팅 아래에 모아 두는 영역입니다. 완료로 표시할 때까지 그곳에 남습니다. 세션에 마우스를 올려 눈 아이콘으로 추적하거나 체크로 완료하고, 세션 메뉴를 사용할 수도 있습니다.',
   'settings.openchamber.sessionWork.field.enabled': '작업 중인 세션 표시',
   'settings.openchamber.sessionWork.field.autoOpen': '세션을 자동으로 작업 중으로 이동',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev는 보내는 메시지를 읽고 변경을 요청하거나 버그를 보고하거나 구체적인 변경을 논의할 때 세션을 작업 중으로 옮깁니다. 질문과 조사는 포함되지 않습니다. Jev는 작업을 완료로 표시하지 않습니다. 턴이 작업의 끝처럼 보이면 세션에 회색 체크가 표시되고 결정은 사용자가 합니다.',

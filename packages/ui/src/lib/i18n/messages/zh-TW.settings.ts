@@ -977,7 +977,7 @@ export const settingsDict = {
   'settings.openchamber.passkeys.toast.clearAuthFailed': '無法清除已儲存的驗證資訊。',
   'settings.openchamber.sessionRetention.title': '工作階段保留',
   'settings.openchamber.sessionWork.title': '進行中的工作階段',
-  'settings.openchamber.sessionWork.info': '側邊欄頂端的一個區塊，用來放置正在進行實際工作的工作階段。工作階段會一直留在那裡，直到你標記為完成：將游標移到工作階段上，用眼睛圖示追蹤、用勾號標記完成，或使用工作階段選單。',
+  'settings.openchamber.sessionWork.info': '側邊欄中位於聊天下方的一個區塊，用來放置正在進行實際工作的工作階段。工作階段會一直留在那裡，直到你標記為完成：將游標移到工作階段上，用眼睛圖示追蹤、用勾號標記完成，或使用工作階段選單。',
   'settings.openchamber.sessionWork.field.enabled': '顯示進行中的工作階段',
   'settings.openchamber.sessionWork.field.autoOpen': '自動將工作階段移入進行中',
   'settings.openchamber.sessionWork.field.autoOpenInfo': 'Jev 會閱讀你送出的每則訊息，當你要求修改、回報錯誤或討論具體改動時，把工作階段移入進行中。提問和研究不算。Jev 從不把工作標記為完成：當某一輪看起來像工作的結尾時，工作階段會顯示灰色勾號，由你決定。',
