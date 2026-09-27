@@ -86,6 +86,21 @@ describe('taskToolModel', () => {
         expect(prepareTaskToolOutput(output)).toBe('result');
     });
 
+    test('unwraps the OpenCode 2 subagent envelope and preserves the result Markdown exactly', () => {
+        const result = '**MERGE**\n\n- first item\n\n```ts\nconst answer = 42;\n```';
+        const output = `<subagent sessionID="ses_abc123" state="completed">\n${result}\n</subagent>`;
+
+        expect(prepareTaskToolOutput(output)).toBe(result);
+    });
+
+    test('leaves a subagent tag that does not wrap the whole output untouched', () => {
+        const unterminated = '<subagent sessionID="ses_abc123" state="completed">\nstill writing';
+        expect(prepareTaskToolOutput(unterminated)).toBe(unterminated);
+
+        const trailingProse = '<subagent sessionID="ses_abc123" state="completed">\nresult\n</subagent>\nmore text';
+        expect(prepareTaskToolOutput(trailingProse)).toBe(trailingProse);
+    });
+
     test('leaves output without a complete task envelope untouched', () => {
         const plainMarkdown = '## Verdict\n- first item';
         expect(prepareTaskToolOutput(plainMarkdown)).toBe(plainMarkdown);
