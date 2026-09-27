@@ -101,6 +101,9 @@ const spaceEntrySchema = z.object({
   grants: z.array(grantSchema),
   access: z.enum(['granted', 'needs_access', 'unknown']).nullable(),
   needsAccess: z.array(z.string()),
+  // What is broken in a damaged space: `repairable` comes back with a restart of the container,
+  // `gatekeeper_gone` never does. Null for a space that is whole.
+  damage: z.enum(['repairable', 'gatekeeper_gone']).nullable().default(null),
 });
 
 export type SpaceEntry = z.infer<typeof spaceEntrySchema>;
@@ -197,6 +200,22 @@ export const readSpaceJournal = (spaceId: string, signal?: AbortSignal): Promise
 const removalSchema = z.object({ id: spaceIdSchema, removed: z.boolean(), failures: z.array(failureSchema) });
 
 type SpaceRemoval = z.infer<typeof removalSchema>;
+
+/** Starts a stopped space; its network and the grants the host can say again come back with it. */
+export const startSpace = (spaceId: string): Promise<SpaceEntry> =>
+  request(`${SPACES_ROUTE}/${spaceId}/start`, spaceEntrySchema, { method: 'POST' });
+
+/** Stops a running space and its gatekeeper; its files stay. */
+export const stopSpace = (spaceId: string): Promise<SpaceEntry> =>
+  request(`${SPACES_ROUTE}/${spaceId}/stop`, spaceEntrySchema, { method: 'POST' });
+
+/** Restarts the container of a running space, with a fresh token for the server inside. */
+export const restartSpace = (spaceId: string): Promise<SpaceEntry> =>
+  request(`${SPACES_ROUTE}/${spaceId}/restart`, spaceEntrySchema, { method: 'POST' });
+
+/** Restarts OpenCode inside a running space and answers once it is ready again. */
+export const restartSpaceOpenCode = (spaceId: string): Promise<SpaceEntry> =>
+  request(`${SPACES_ROUTE}/${spaceId}/restart-opencode`, spaceEntrySchema, { method: 'POST' });
 
 export const removeSpace = (spaceId: string): Promise<SpaceRemoval> =>
   request(`${SPACES_ROUTE}/${spaceId}`, removalSchema, { method: 'DELETE' });

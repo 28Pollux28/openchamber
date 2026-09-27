@@ -10,6 +10,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { SpaceError } from './errors.js';
 import { createSpaceJourney } from './journey.js';
+import { ROLE_GATEKEEPER, spaceResourceName } from './labels.js';
 import { createSpaceManager } from './manager.js';
 import { createMemoryPlace } from './places/memory-place.js';
 import { createPlaceRegistry } from './places/registry.js';
@@ -56,6 +57,10 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
     readJournal: async (spaceId) => { calls.push(['readJournal', spaceId]); return { records: [], dropped: 0, since: '2026-09-26T10:00:00.000Z' }; },
     forget: (spaceId) => { held.delete(spaceId); },
   };
+  const serverInside = {
+    writeToken: async (spaceId, token) => { calls.push(['writeToken', spaceId, token]); fail('writeToken'); },
+  };
+  const restartOpenCodeInside = async (spaceId) => { calls.push(['restartOpenCodeInside', spaceId]); fail('restartOpenCodeInside'); };
   const spaceOpenCode = {
     writeProviderConfig: async (spaceId, grants) => { calls.push(['writeProviderConfig', spaceId, grants]); fail('writeProviderConfig'); },
   };
@@ -78,7 +83,7 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
   const records = createSpaceRecords({ dataDir, logger: quiet });
   const manager = createSpaceManager({ registry: createPlaceRegistry([place]), now: () => new Date('2026-09-26T10:00:00.000Z') });
   const journey = createSpaceJourney({
-    manager, place, gatekeeper, codeIn, codeOut, records, spaceOpenCode,
+    manager, place, gatekeeper, codeIn, codeOut, records, spaceOpenCode, serverInside, restartOpenCodeInside,
     listProjectDirectories: async () => projects,
     readHostSecret: (name) => hostEnvironment[name],
     announce: (spaceId, payload) => { events.push({ spaceId, ...payload.properties }); },
@@ -311,6 +316,75 @@ describe('the journey: start, stop, remove', () => {
     expect(await journey.removeSpace(id)).toMatchObject({ id, removed: true });
     expect(await place.list()).toEqual([]);
     expect(await journey.listSpaces()).toEqual([]);
+  });
+});
+
+describe('the journey: repair', () => {
+  const ready = async (options) => {
+    const made = journeyWith(options);
+    const { id } = await made.journey.createSpace(REQUEST);
+    await until(() => steps(made.events, id).includes('ready'));
+    await until(() => made.records.read(id).record?.history !== 'pending');
+    made.calls.splice(0);
+    return { ...made, id };
+  };
+
+  /** Damages the one space of a memory place after it was made: its gatekeeper missing, and gone for good or only stopped. */
+  const damage = (place, gatekeeper) => {
+    const list = place.list;
+    place.list = async () => (await list()).map((space) => ({ ...space, damaged: true, missing: [spaceResourceName(space.id, ROLE_GATEKEEPER)] }));
+    place.verify = async () => {
+      if (gatekeeper === 'unverifiable') throw new SpaceError('command_failed', 'docker did not answer');
+      return gatekeeper === 'gone' ? [{ check: 'gatekeeper_missing', message: 'The space has no gatekeeper container' }] : [];
+    };
+  };
+
+  it('restarts OpenCode inside a running space and nothing else', async () => {
+    const { journey, calls, id } = await ready();
+    expect(await journey.restartOpenCode(id)).toMatchObject({ id, state: 'running' });
+    expect(calls).toEqual([['restartOpenCodeInside', id]]);
+  });
+
+  it('restarts the container with a fresh token written first, then stops and starts it with its network said again', async () => {
+    const { journey, place, calls, id } = await ready();
+    const started = await journey.restartSpace(id);
+    expect(started).toMatchObject({ id, state: 'running', networkRestored: true });
+    expect(calls.map(([name]) => name)).toEqual(['writeToken', 'setNetwork']);
+    expect(calls[0][2]).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(await place.list()).toEqual([expect.objectContaining({ state: 'running' })]);
+    // A second restart writes another token.
+    const first = calls[0][2];
+    calls.splice(0);
+    await journey.restartSpace(id);
+    expect(calls[0][2]).not.toBe(first);
+  });
+
+  it('restarts the container even when the token could not be written, because the token is no secret from the agent', async () => {
+    const { journey, calls, id } = await ready({ failAt: 'writeToken' });
+    expect(await journey.restartSpace(id)).toMatchObject({ id, state: 'running', networkRestored: true });
+    expect(calls.map(([name]) => name)).toEqual(['writeToken', 'setNetwork']);
+  });
+
+  it('refuses both restarts for a stopped space, and says why OpenCode did not restart', async () => {
+    const { journey, calls, id } = await ready();
+    await journey.stopSpace(id);
+    await expect(journey.restartSpace(id)).rejects.toMatchObject({ code: 'space_not_running' });
+    await expect(journey.restartOpenCode(id)).rejects.toMatchObject({ code: 'space_not_running' });
+    expect(calls).toEqual([]);
+
+    const failing = await ready({ failAt: 'restartOpenCodeInside' });
+    await expect(failing.journey.restartOpenCode(failing.id)).rejects.toMatchObject({ code: 'restartOpenCodeInside_failed' });
+  });
+
+  it('lists what is broken: nothing, a gatekeeper that a restart brings back, or one that is gone for good', async () => {
+    const healthy = await ready();
+    expect((await healthy.journey.listSpaces())[0]).toMatchObject({ damaged: false, damage: null });
+
+    for (const [gatekeeper, expected] of [['stopped', 'repairable'], ['gone', 'gatekeeper_gone'], ['unverifiable', 'repairable']]) {
+      const { journey, place } = await ready();
+      damage(place, gatekeeper);
+      expect((await journey.listSpaces())[0]).toMatchObject({ damaged: true, damage: expected });
+    }
   });
 });
 
