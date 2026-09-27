@@ -184,6 +184,10 @@ import {
     MobileDraftTargetSheets,
     MobileDraftTargetTriggers,
 } from './composer/ui/DraftTargetSelectors';
+import { NewSpaceDialog } from '@/components/session/spaces/NewSpaceDialog';
+import { isSpaceCreationRequest } from '@/lib/spaces/space-creation';
+import { spaceModelRefusal } from '@/lib/spaces/space-model-access';
+import { isDraftSendWaiting, subscribeDraftSendWaiting } from '@/lib/worktrees/pendingDraftWorktree';
 import { ComposerAutocompletePopups } from './composer/ui/ComposerAutocompletePopups';
 import { ComposerFooter } from './composer/ui/ComposerFooter';
 import { MobilePillComposer } from './composer/ui/MobilePillComposer';
@@ -1619,6 +1623,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
             console.warn('Cannot send message: provider or model not selected');
             toast.error(t('chat.chatInput.toast.noModelSelected'));
             return;
+        }
+
+        // The first message of a space made in this window goes only on a model the space was given;
+        // otherwise it stays in the input with the reason.
+        if (!currentSessionId && newSessionDraftOpen) {
+            const refusal = spaceModelRefusal({ requestId: newSessionDraft?.pendingWorktreeRequestId ?? null, directory: newSessionDraft?.directoryOverride ?? null }, providerIdToSend);
+            if (refusal) {
+                toast.error(refusal);
+                return;
+            }
         }
 
         // Auto-review owns the active workflow; follow-ups wait in its queue.
@@ -3386,6 +3400,24 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         handleDraftDirectoryChange,
     } = useDraftTarget(showDraftTargetSelectors);
 
+    // The one entry to an isolated space: while the feature's switch is on, for a project the
+    // branch selector serves, never in VS Code (decision 16). The dialog keeps the project it
+    // was opened for, whatever the draft picks after.
+    const isolatedSpacesEnabled = useUIStore((state) => state.isolatedSpacesEnabled);
+    const [newSpaceProject, setNewSpaceProject] = React.useState<{ id: string; path: string } | null>(null);
+    // A message sent while the space is still being made waits for it; the composer is empty
+    // then, so this line is the only sign that the message was not lost.
+    const draftRequestId = newSessionDraft?.pendingWorktreeRequestId ?? null;
+    const messageWaitsForSpace = React.useSyncExternalStore(
+        subscribeDraftSendWaiting,
+        () => isDraftSendWaiting(draftRequestId) && isSpaceCreationRequest(draftRequestId),
+    );
+    const handleCreateSpace = React.useMemo(() => {
+        if (!isolatedSpacesEnabled || isVSCode || !selectedDraftProject || selectedDraftProject.kind === 'chat') return undefined;
+        const project = { id: selectedDraftProject.id, path: selectedDraftProject.path };
+        return () => setNewSpaceProject(project);
+    }, [isVSCode, isolatedSpacesEnabled, selectedDraftProject]);
+
     const chatSurfaceMode = useChatSurfaceMode();
     const isMiniChatSurface = chatSurfaceMode === 'mini-chat';
     const showDesktopDraftPresentation = (newSessionDraftOpen || draftPresentationExiting)
@@ -3736,9 +3768,16 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                             showBranchSelector={shouldShowDraftBranchSelector}
                             onProjectChange={handleDraftProjectChange}
                             onDirectoryChange={handleDraftDirectoryChange}
+                            onCreateSpace={handleCreateSpace}
                             theme={currentTheme}
                         />
                     </div>
+                ) : null}
+                {showDraftTargetSelectors && messageWaitsForSpace ? (
+                    <p className="mb-1.5 flex items-center gap-1.5 px-0.5 typography-meta text-muted-foreground" role="status">
+                        <Icon name="time" className="size-3.5 shrink-0" />
+                        {t('spaces.draft.queued')}
+                    </p>
                 ) : null}
                 {isMobile && showDraftTargetSelectors && selectedDraftProject ? (
                     <MobileDraftTargetTriggers
@@ -4239,10 +4278,14 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                 showBranchSelector={shouldShowDraftBranchSelector}
                 onProjectChange={handleDraftProjectChange}
                 onDirectoryChange={handleDraftDirectoryChange}
+                onCreateSpace={handleCreateSpace}
                 theme={currentTheme}
                 openPicker={mobileDraftPicker}
                 onOpenPickerChange={setMobileDraftPicker}
             />
+        ) : null}
+        {newSpaceProject ? (
+            <NewSpaceDialog open onOpenChange={(open) => { if (!open) setNewSpaceProject(null); }} project={newSpaceProject} />
         ) : null}
         </>
     );

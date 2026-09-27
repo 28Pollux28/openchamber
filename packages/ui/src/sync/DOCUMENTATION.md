@@ -323,7 +323,16 @@ host's empty answer would otherwise mark a turn running inside as interrupted.
 A space that dies in the middle of a turn sends no settle event, so the
 session keeps the busy state it last reported until the space answers again
 or the user acts; the group's stale mark is what says the space is gone. The
-status and repair actions of a later stage own that. VS Code never applies
+status and repair actions of a later stage own that.
+
+The host also announces each step of a creation as
+`openchamber:space-progress`; the pipeline hands it to `sync-context.tsx`, which
+moves the space's entry in `spaces-store.ts` on. That store also keeps the
+journey route's list, the only source that knows a space still being made or
+one whose making failed, read on every (re)connection while the switch is on:
+a step announced after a read began wins over that read's answer, and a read a
+runtime switch overtook is dropped. The sidebar shows a group for every space
+of either list (`useSidebarSpaces`). VS Code never applies
 the prefix and never shows a space (decision 16 of the design).
 
 Not done here: the session-keyed actions still fall back to the current

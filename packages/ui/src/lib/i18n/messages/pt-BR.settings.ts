@@ -1058,7 +1058,6 @@ export const settingsDict = {
   "settings.openchamber.spaces.field.enabled": "Permitir que agentes trabalhem em espaços isolados",
   "settings.openchamber.spaces.field.enabledAria": "Permitir que agentes trabalhem em espaços isolados",
   "settings.openchamber.spaces.field.enabledInfo": "Um espaço isolado é um contêiner com uma cópia do projeto, onde o agente trabalha sem acessar sua máquina, seus outros projetos ou suas chaves. Quando ele termina, você aplica o trabalho ao seu projeto ou o descarta. Precisa do Docker neste computador e baixa uma imagem de cerca de 1,6 GB na primeira vez.",
-  "settings.openchamber.spaces.field.enabledRestart": "Passa a valer depois que o OpenChamber reiniciar.",
   "settings.openchamber.tools.title": "Ferramentas do OpenChamber",
   "settings.openchamber.tools.field.agentControlTool": "Ferramenta de controle para agentes",
   "settings.openchamber.tools.field.agentControlToolAria": "Ativar a ferramenta de controle para agentes",

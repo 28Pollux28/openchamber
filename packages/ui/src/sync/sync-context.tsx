@@ -54,6 +54,7 @@ import {
 } from "./session-event-router"
 import { shouldConsumeBulkArchiveEcho } from "./bulk-archive-echo"
 import { applyForkedSession, noteForkedSessionPatched } from "./forked-session"
+import { useUIStore } from "@/stores/useUIStore"
 import { useBtwStore } from "@/stores/useBtwStore"
 import { selectNewChildSessions } from "./child-session-discovery"
 import { syncDebug } from "./debug"
@@ -73,7 +74,7 @@ import { useConfigStore } from "@/stores/useConfigStore"
 import { refreshStoresForCatalogKind } from "@/stores/catalogRefresh"
 import { resolveGlobalSessionDirectory, useGlobalSessionsStore } from "@/stores/useGlobalSessionsStore"
 import { spaceIdOfDirectory } from "@/lib/spaces/space-route"
-import { useSpacesStore } from "@/lib/spaces/spaces-store"
+import { refreshSpacesJourney, useSpacesStore } from "@/lib/spaces/spaces-store"
 import { cleanupPersistedSessionState } from "./session-deletion-cleanup"
 import { toast } from "@/components/ui"
 import { appendNotification } from "./notification-store"
@@ -2633,7 +2634,20 @@ export function SyncProvider(props: {
         if (directories.length === 0) return
         void useGlobalSessionsStore.getState().refreshSessionsForDirectories(directories).catch(() => undefined)
       },
+      onSpaceProgress: (progress) => {
+        // A step of a creation moves the space's group on at once. A space this list has not seen,
+        // made from another window among them, and the end of a creation, whose entry then comes
+        // from the place, are read again from the journey route.
+        const known = useSpacesStore.getState().noteProgress(progress)
+        if (known && progress.step !== "ready" && progress.step !== "failed") return
+        void refreshSpacesJourney().catch(() => undefined)
+      },
       onReconnect: ({ replayReset }) => {
+        // The first connection and every one after a gap: spaces being made or whose making failed
+        // are known only to the journey list, and a step announced during the gap was missed.
+        if (useUIStore.getState().isolatedSpacesEnabled && !isVSCodeRuntime()) {
+          void refreshSpacesJourney().catch(() => undefined)
+        }
         // Queue recovery is independent of the directory-bootstrap debounce.
         void useMessageQueueStore.getState().resync().catch(() => undefined)
         useConfigStore.setState({

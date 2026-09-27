@@ -1086,7 +1086,6 @@ export const settingsDict = {
   'settings.openchamber.spaces.field.enabled': 'Ajanların yalıtılmış alanlarda çalışmasına izin ver',
   'settings.openchamber.spaces.field.enabledAria': 'Ajanların yalıtılmış alanlarda çalışmasına izin ver',
   'settings.openchamber.spaces.field.enabledInfo': 'Yalıtılmış alan, projenin bir kopyasını içeren bir kapsayıcıdır; ajan burada makinenize, diğer projelerinize veya anahtarlarınıza erişmeden çalışır. İşi bittiğinde yaptıklarını projenize uygular ya da atarsınız. Bu bilgisayarda Docker gerektirir ve ilk seferde yaklaşık 1,6 GB boyutunda bir imaj indirir.',
-  'settings.openchamber.spaces.field.enabledRestart': 'OpenChamber yeniden başlatıldıktan sonra geçerli olur.',
   'settings.openchamber.tools.title': 'OpenChamber Araçları',
   'settings.openchamber.tools.field.agentControlTool': 'Agent kontrol aracı',
   'settings.openchamber.tools.field.agentControlToolAria': 'Agent kontrol aracını etkinleştir',

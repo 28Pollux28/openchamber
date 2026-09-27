@@ -7,6 +7,7 @@ import { surfacePanelI18n } from './surface-panel.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
+import { isolatedSpacesI18n } from './isolated-spaces.i18n';
 import { providersI18n } from './providers.i18n';
 import { mcpGridI18n } from './mcp-grid.i18n';
 import { pluginsGridI18n } from './plugins-grid.i18n';
@@ -63,6 +64,7 @@ export const dict = {
   ...fileArtifactsI18n.tr,
   ...usageStatsI18n.tr,
   ...webSearchI18n.tr,
+  ...isolatedSpacesI18n.tr,
   ...providersI18n.tr,
   ...mcpGridI18n.tr,
   ...pluginsGridI18n.tr,

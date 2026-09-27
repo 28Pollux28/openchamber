@@ -1034,7 +1034,6 @@ export const settingsDict = {
   'settings.openchamber.spaces.field.enabled': 'Agenten in isolierten Bereichen arbeiten lassen',
   'settings.openchamber.spaces.field.enabledAria': 'Agenten in isolierten Bereichen arbeiten lassen',
   'settings.openchamber.spaces.field.enabledInfo': 'Ein isolierter Bereich ist ein Container mit einer Kopie des Projekts, in dem der Agent arbeitet, ohne auf Ihren Rechner, Ihre anderen Projekte oder Ihre Schlüssel zuzugreifen. Wenn er fertig ist, übernehmen Sie seine Arbeit in Ihr Projekt oder verwerfen sie. Benötigt Docker auf diesem Computer und lädt beim ersten Mal ein Image von etwa 1,6 GB herunter.',
-  'settings.openchamber.spaces.field.enabledRestart': 'Wird nach einem Neustart von OpenChamber wirksam.',
   'settings.openchamber.tools.title': 'OpenChamber-Werkzeuge',
   'settings.openchamber.tools.field.agentControlTool': 'Agenten-Steuerungswerkzeug',
   'settings.openchamber.tools.field.agentControlToolAria': 'Das Agenten-Steuerungswerkzeug aktivieren',

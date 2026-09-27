@@ -920,7 +920,6 @@ export const settingsDict = {
   'settings.openchamber.spaces.field.enabled': 'Pozwól agentom pracować w izolowanych przestrzeniach',
   'settings.openchamber.spaces.field.enabledAria': 'Pozwól agentom pracować w izolowanych przestrzeniach',
   'settings.openchamber.spaces.field.enabledInfo': 'Izolowana przestrzeń to kontener z kopią projektu, w którym agent pracuje bez dostępu do Twojego komputera, innych projektów ani kluczy. Gdy skończy, zastosujesz jego pracę w projekcie albo ją odrzucisz. Wymaga Dockera na tym komputerze i za pierwszym razem pobiera obraz o rozmiarze około 1,6 GB.',
-  'settings.openchamber.spaces.field.enabledRestart': 'Zacznie działać po ponownym uruchomieniu OpenChamber.',
   'settings.openchamber.tools.title': 'Narzędzia OpenChamber',
   'settings.openchamber.tools.field.agentControlTool': 'Narzędzie sterowania dla agentów',
   'settings.openchamber.tools.field.agentControlToolAria': 'Włącz narzędzie sterowania dla agentów',

@@ -1058,7 +1058,6 @@ export const settingsDict = {
   'settings.openchamber.spaces.field.enabled': '에이전트가 격리 공간에서 작업하도록 허용',
   'settings.openchamber.spaces.field.enabledAria': '에이전트가 격리 공간에서 작업하도록 허용',
   'settings.openchamber.spaces.field.enabledInfo': '격리 공간은 프로젝트 사본이 들어 있는 컨테이너로, 에이전트는 사용자의 컴퓨터, 다른 프로젝트, 키에 접근하지 않고 그 안에서 작업합니다. 작업이 끝나면 결과를 프로젝트에 적용하거나 폐기합니다. 이 컴퓨터에 Docker가 필요하며 처음에는 약 1.6 GB의 이미지를 다운로드합니다.',
-  'settings.openchamber.spaces.field.enabledRestart': 'OpenChamber를 다시 시작한 후에 적용됩니다.',
   'settings.openchamber.tools.title': 'OpenChamber 도구',
   'settings.openchamber.tools.field.agentControlTool': '에이전트 제어 도구',
   'settings.openchamber.tools.field.agentControlToolAria': '에이전트 제어 도구 활성화',
