@@ -29,7 +29,14 @@ const TOWARD_CHANGE = {
   },
 };
 
-const WRAP_UP = 'Does `request` close out the work in this conversation: the user confirms it works or is good, asks to commit, push, or merge it as finished, or thanks the agent, without asking for any further change?';
+/**
+ * Reads the whole turn, not only `request`: a shipping step (commit, push,
+ * merge, sync, release) closes the work once `answer` reports it done.
+ * Measured against the earlier request-only wording at the same threshold:
+ * held-out 70 hints in 106 work sessions (18 followed by more edits) against
+ * 60 (16), and 47 of 81 shipping steps hinted against 33.
+ */
+const WRAP_UP = 'Does this turn close out the work in this conversation: in `request` the user confirms it works or is good, thanks the agent, or asks to commit, push, merge, sync, or release it, without asking for any further change, and `answer` reports that step done?';
 
 const RECAP = {
   question: 'Is there substantive work or a finding in this conversation worth a one-line reminder later: something the agent changed, fixed, found out, or a decision that was reached?',

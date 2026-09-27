@@ -75,7 +75,11 @@ also exists in VS Code.
 send and turn end together missed 4/92 work sessions and opened 10/78 non-work
 ones (four of them discussions of concrete changes, which count as work). The
 misses are work that starts inside a PR-review session. `wrap_up >= 0.85`
-hinted 60 times across 104 work sessions, 18 of them followed by more work.
+reads the whole turn (a commit, push, merge, sync or release the answer
+reports done closes the work); on the held-out sessions it hinted 70 times
+across 106 work sessions, 18 of them followed by more edits, and caught 47 of
+81 shipping steps. The earlier request-only wording hinted 60 times (16) and
+caught 33, and missed a plain "sync the branch with main" after finished work.
 `recap` stayed high (0.86–0.96) after a closing "thanks"/"commit" that followed
 real work, because it reads the same three turns the recap does. Do not change
 the wording or thresholds without re-running this measurement.
