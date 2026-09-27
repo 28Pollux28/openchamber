@@ -168,7 +168,11 @@ export type SpaceProgress = z.infer<typeof openchamberSpaceProgressSchema>["prop
 
 const openchamberAutoAcceptSchema = z.object({
   type: z.literal("openchamber:permission-auto-accept.updated"),
-  properties: z.object({ sessions: z.record(z.string(), z.boolean()), revision: z.number().optional() }),
+  properties: z.object({
+    sessions: z.record(z.string(), z.boolean()),
+    modes: z.record(z.string(), z.enum(["ask", "safety", "auto"])).optional(),
+    revision: z.number().optional(),
+  }),
 })
 
 // The wire event contract is generated from the server; the stream is trusted
