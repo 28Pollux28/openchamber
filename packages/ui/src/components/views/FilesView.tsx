@@ -59,7 +59,7 @@ import { acquireRuntimeUrlAuthToken, refreshRuntimeUrlAuthToken, subscribeRuntim
 import { getRuntimeApiBaseUrl, getRuntimeKey } from '@/lib/runtime-switch';
 import { subscribeToFileContentInvalidation } from '@/lib/fileContentInvalidation';
 import { DiagramEditor } from '@/components/diagram';
-import { excalidrawFormatForPath, isExcalidrawMountable } from '@/components/excalidraw/scene';
+import { excalidrawFormatForPath, isExcalidrawMountable, shouldShowExcalidrawCanvas } from '@/components/excalidraw/scene';
 import type { ExcalidrawEditorHandle } from '@/components/excalidraw/ExcalidrawEditor';
 import { lazyWithChunkRecovery } from '@/lib/chunkLoadRecovery';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
@@ -823,6 +823,18 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
   const [showMobilePageContent, setShowMobilePageContent] = React.useState(false);
   const [wrapLines, setWrapLines] = React.useState(true);
   const [isFullscreen, setIsFullscreen] = React.useState(false);
+  // The canvas lives in one place at a time (docked or fullscreen), so moving
+  // it carries unsaved strokes over through the draft, as the source toggle does.
+  const changeFullscreen = React.useCallback((next: boolean) => {
+    if (excalidrawCanvasDirtyRef.current) {
+      const snapshot = excalidrawEditorRef.current?.getContent();
+      if (snapshot) {
+        setDraftContent(snapshot.content);
+        setExcalidrawCanvasDirty(false);
+      }
+    }
+    setIsFullscreen(next);
+  }, []);
   const [isSearchOpen, setIsSearchOpen] = React.useState(false);
   const toolbarDropdownOpenCountRef = React.useRef(0);
 
@@ -1014,6 +1026,11 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
   const copiedPathTimeoutRef = React.useRef<number | null>(null);
   const editorViewRef = React.useRef<EditorView | null>(null);
   const editorWrapperRef = React.useRef<HTMLDivElement | null>(null);
+  // The canvas has no CodeMirror wrapper; Cmd/Ctrl+S must reach it too.
+  const excalidrawWrapperRef = React.useRef<HTMLDivElement | null>(null);
+  // Last drawing change, so autosave waits until the user stops drawing. A ref:
+  // strokes arrive every frame and must not re-render this view.
+  const excalidrawLastEditAtRef = React.useRef(0);
   const [editorViewReadyNonce, setEditorViewReadyNonce] = React.useState(0);
   const pendingNavigationRafRef = React.useRef<number | null>(null);
   const pendingNavigationCycleRef = React.useRef<{ key: string; attempts: number }>({ key: '', attempts: 0 });
@@ -1772,19 +1789,19 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
 
     try {
       const isExcalidrawCanvasSave = Boolean(selectedFile.path && isExcalidrawFile(selectedFile.path) && excalidrawCanvasDirty);
-      const canvasScene = isExcalidrawCanvasSave ? excalidrawEditorRef.current?.getContent() ?? null : null;
-      const contentToWrite = canvasScene
-        ? canvasScene
-        : serializeEditorContent(draftContent, loadedFileLineEnding);
+      // One snapshot: what is written and what is later marked saved are the
+      // same scene, so strokes drawn during the write stay unsaved.
+      const canvasSnapshot = isExcalidrawCanvasSave ? excalidrawEditorRef.current?.getContent() ?? null : null;
+      // The file keeps the line endings it was loaded with, drawn or typed.
+      const contentToWrite = serializeEditorContent(canvasSnapshot ? canvasSnapshot.content : draftContent, loadedFileLineEnding);
       const result = await files.writeFile(selectedFile.path, contentToWrite);
       if (!result?.success) {
         toast.error(t('filesView.toast.writeFileFailed'));
         return false;
       }
-      if (canvasScene) {
+      if (canvasSnapshot) {
         applyLoadedTextContent(contentToWrite, false);
-        excalidrawEditorRef.current?.markSaved();
-        setExcalidrawCanvasDirty(false);
+        excalidrawEditorRef.current?.markSaved(canvasSnapshot.signature);
       } else {
         setFileContent(draftContent);
         lastLoadedFileContentRef.current = contentToWrite;
@@ -1858,13 +1875,24 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
       return;
     }
 
-    autoSaveTimerRef.current = setTimeout(() => {
-      void saveDraft().then((saved) => {
-        if (!saved) return;
-        setAutoSaveStatus('saved');
-        setTimeout(() => setAutoSaveStatus('idle'), 2000);
-      });
-    }, AUTO_SAVE_DELAY);
+    // Drawing changes no dependency here (the draft stays put while the canvas
+    // is dirty), so the timer re-arms itself until the canvas has been quiet
+    // for the full delay, like typing does.
+    const schedule = (delay: number) => {
+      autoSaveTimerRef.current = setTimeout(() => {
+        const quietFor = Date.now() - excalidrawLastEditAtRef.current;
+        if (quietFor < AUTO_SAVE_DELAY) {
+          schedule(AUTO_SAVE_DELAY - quietFor);
+          return;
+        }
+        void saveDraft().then((saved) => {
+          if (!saved) return;
+          setAutoSaveStatus('saved');
+          setTimeout(() => setAutoSaveStatus('idle'), 2000);
+        });
+      }, delay);
+    };
+    schedule(AUTO_SAVE_DELAY);
 
     return () => {
       if (autoSaveTimerRef.current) {
@@ -1881,7 +1909,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
 
   useKeybinds({
     save_file: (event) => {
-      if (!(event.target instanceof Node) || !editorWrapperRef.current?.contains(event.target)) return false;
+      if (!(event.target instanceof Node)) return false;
+      if (!editorWrapperRef.current?.contains(event.target) && !excalidrawWrapperRef.current?.contains(event.target)) return false;
 
       // Cancel pending auto-save because the explicit save should run immediately.
       if (autoSaveTimerRef.current) {
@@ -2778,7 +2807,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
     }
     if (mode === 'edit') {
       if (excalidrawCanvasDirtyRef.current) {
-        setDraftContent(excalidrawEditorRef.current?.getContent() ?? fileContent);
+        setDraftContent(excalidrawEditorRef.current?.getContent()?.content ?? fileContent);
       }
       setExcalidrawCanvasDirty(false);
       setExcalidrawViewMode(mode);
@@ -3483,6 +3512,10 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
   const mainViewVirtualizer = useFileViewVirtualizer();
   const fullscreenViewVirtualizer = useFileViewVirtualizer();
   const previewReady = !fileLoading && !fileError && loadedFilePath === selectedFilePath;
+  const showExcalidrawCanvas = React.useMemo(
+    () => Boolean(selectedFilePath) && shouldShowExcalidrawCanvas({ isExcalidraw, viewMode: excalidrawViewMode, previewReady, draft: draftContent }),
+    [draftContent, excalidrawViewMode, isExcalidraw, previewReady, selectedFilePath],
+  );
   const codePreviewActive = previewReady && canUseShikiFileView && textViewMode === 'view'
     && !(isJson && jsonViewMode === 'tree');
   const markdownPreviewActive = previewReady && isMarkdown && getMdViewMode() === 'preview';
@@ -4045,7 +4078,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsFullscreen(false)}
+              onClick={() => changeFullscreen(false)}
               className="size-6 p-0 hover:bg-transparent focus-visible:bg-transparent active:bg-transparent"
               title={t('filesView.editor.exitFullscreen')}
               aria-label={t('filesView.editor.exitFullscreen')}
@@ -4058,7 +4091,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setIsFullscreen(!isFullscreen)}
+              onClick={() => changeFullscreen(!isFullscreen)}
               className="size-6 p-0 hover:bg-transparent focus-visible:bg-transparent active:bg-transparent"
               title={isFullscreen ? t('filesView.editor.exitFullscreen') : t('filesView.editor.fullscreen')}
               aria-label={isFullscreen ? t('filesView.editor.exitFullscreen') : t('filesView.editor.fullscreen')}
@@ -4074,6 +4107,23 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
       </div>
     );
   };
+
+  const excalidrawInFullscreen = mode === 'full' && isFullscreen;
+  const excalidrawCanvas = showExcalidrawCanvas && selectedFile ? (
+    <div ref={excalidrawWrapperRef} className="h-full overflow-hidden" style={{ minHeight: '400px' }}>
+      <React.Suspense fallback={null}>
+        <LazyExcalidrawEditor
+          key={`${selectedFile.path}:${excalidrawRemountNonce}:${excalidrawInFullscreen ? 'fullscreen' : 'docked'}`}
+          ref={excalidrawEditorRef}
+          content={draftContent}
+          format={excalidrawFormatForPath(selectedFile.path)}
+          onDirtyChange={(dirty) => setExcalidrawCanvasDirty(dirty)}
+          onEdit={() => { excalidrawLastEditAtRef.current = Date.now(); }}
+          onUnsupported={handleExcalidrawUnsupported}
+        />
+      </React.Suspense>
+    </div>
+  ) : null;
 
   const fileViewer = (
     <div
@@ -4287,19 +4337,9 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             <div className="p-3 typography-ui text-[color:var(--status-error)]">{fileError}</div>
           ) : artifactPreview ? (
             artifactPreview
-          ) : selectedFile && isExcalidraw && excalidrawViewMode === 'preview' && previewReady && canMountExcalidraw ? (
-            <div className="h-full overflow-hidden" style={{ minHeight: '400px' }}>
-              <React.Suspense fallback={null}>
-                <LazyExcalidrawEditor
-                  key={`${selectedFile.path}:${excalidrawRemountNonce}`}
-                  ref={excalidrawEditorRef}
-                  content={draftContent}
-                  format={excalidrawFormatForPath(selectedFile.path)}
-                  onDirtyChange={(dirty) => setExcalidrawCanvasDirty(dirty)}
-                  onUnsupported={handleExcalidrawUnsupported}
-                />
-              </React.Suspense>
-            </div>
+          ) : showExcalidrawCanvas ? (
+            // Shown fullscreen instead while the overlay is open: one canvas instance.
+            excalidrawInFullscreen ? <div className="h-full" /> : excalidrawCanvas
           ) : selectedFile && isDrawio && drawioViewMode === 'preview' ? (
             <div className="h-full overflow-hidden" style={{ minHeight: '400px' }}>
               <DiagramEditor
@@ -4707,6 +4747,8 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
             <div className="p-4 typography-ui text-[color:var(--status-error)]">{fileError}</div>
           ) : artifactPreview ? (
             artifactPreview
+          ) : showExcalidrawCanvas ? (
+            excalidrawCanvas
           ) : isMarkdown && getMdViewMode() === 'preview' ? (
             // The find bar is a sibling of the scroll container, never a child:
             // inside it, its own "1/3" and "No matches" text would be walked and

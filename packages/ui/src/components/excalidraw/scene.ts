@@ -50,6 +50,19 @@ export const isExcalidrawDocument = (content: string): boolean =>
 export const isExcalidrawMountable = (content: string): boolean =>
   content.trim() === '' || isExcalidrawDocument(content);
 
+/**
+ * Whether the Files view mounts the canvas. This is the guard that keeps a
+ * blank canvas from being serialized over a real drawing: a draft the canvas
+ * cannot read stays in the source editor. `previewReady` covers the frame the
+ * view waits for before remounting on a source-to-canvas toggle.
+ */
+export const shouldShowExcalidrawCanvas = (input: {
+  isExcalidraw: boolean;
+  viewMode: 'preview' | 'edit';
+  previewReady: boolean;
+  draft: string;
+}): boolean => input.isExcalidraw && input.viewMode === 'preview' && input.previewReady && isExcalidrawMountable(input.draft);
+
 export type ExcalidrawFormat = 'json' | 'obsidian';
 
 export const excalidrawFormatForPath = (filePath: string): ExcalidrawFormat =>
@@ -72,3 +85,28 @@ export const excalidrawSceneSignature = (
     appState.gridStep ?? '',
   ].join(':');
 };
+
+/**
+ * Tracks whether the canvas differs from what was last written. Saving takes
+ * one snapshot and marks that snapshot's signature saved after the write, so
+ * strokes drawn while the write ran leave the canvas dirty instead of being
+ * recorded as saved but never written.
+ */
+export const createExcalidrawSaveTracker = (initialSignature: string | null) => {
+  let saved = initialSignature;
+  let live = initialSignature;
+  return {
+    /** A new live scene; `edited` is true when the drawing itself changed. */
+    observe: (signature: string): { edited: boolean; dirty: boolean } => {
+      const edited = signature !== live;
+      live = signature;
+      return { edited, dirty: signature !== saved };
+    },
+    /** Records a written snapshot; returns whether the live scene is still dirty. */
+    markSaved: (signature: string): boolean => {
+      saved = signature;
+      return live !== signature;
+    },
+  };
+};
+

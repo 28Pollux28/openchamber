@@ -80,9 +80,13 @@ tool, so the event never reaches it.
 Excalidraw editor (`components/excalidraw/`). The editor is code-split:
 `FilesView` imports only the pure `scene.ts` helpers, and the editor (with
 `document.ts` and the ~4 MB vendor chunk) loads through
-`lazyWithChunkRecovery` when such a file is opened. It mounts in the docked
-chain only, not in the fullscreen overlay: two mounted instances would share
-one ref and the live scene.
+`lazyWithChunkRecovery` when such a file is opened. Exactly one instance is
+mounted, in the docked chain or in the fullscreen overlay (two would share one
+ref and the live scene); `shouldShowExcalidrawCanvas` in `scene.ts` decides
+whether it mounts at all. Entering or leaving fullscreen moves unsaved strokes
+through the text draft, as the source toggle does, and the other slot remounts
+from it. The web build leaves `@excalidraw/excalidraw` to Rollup's own splitting
+so its on-demand locales stay separate chunks.
 
 `scene.ts` owns the file container. A plain `.excalidraw` is the scene JSON; an
 Obsidian `.excalidraw.md` is markdown whose `## Drawing` section holds the JSON
@@ -102,10 +106,16 @@ so the viewport is not reset. The live scene is exposed through an imperative
 every pointer move of a drag.
 
 Canvas edits never enter the text draft. A separate `excalidrawCanvasDirty`
-flag feeds the shared `isDirty`, so autosave, Ctrl+S, the unsaved-changes
-prompt, `saveDraft`, and the external-change guard all see canvas edits as text
-edits. `saveDraft` writes the scene when the canvas is dirty and the text draft
-otherwise.
+flag feeds the shared `isDirty`, so autosave, Ctrl/Cmd+S (the keybind accepts
+focus inside the canvas wrapper as well as the text editor), the
+unsaved-changes prompt, `saveDraft`, and the external-change guard all see
+canvas edits as text edits. `saveDraft` writes the scene when the canvas is
+dirty and the text draft otherwise, in the line endings the file was loaded
+with. It takes one snapshot (`getContent()` returns the document and its scene
+signature) and marks that signature saved after the write, so strokes drawn
+while the write ran keep the canvas dirty (`createExcalidrawSaveTracker`).
+Drawing does not change the draft, so autosave's timer re-arms itself until the
+canvas has been quiet for the full delay: one write after the user stops.
 
 A file the editor cannot parse must never mount: a blank canvas would be
 serialized over the user's drawing on the next save. The source→canvas toggle
@@ -119,6 +129,11 @@ drawing work.
 `.excalidraw.md` so the file never takes the markdown preview path. The source
 view for `.excalidraw.md` is the markdown document, which is where its
 non-drawing sections stay editable.
+
+The editor's chrome follows the OpenChamber theme: `excalidraw-theme.css` maps
+Excalidraw's palette variables (primary, islands, popups, inputs, selection
+outline) onto theme tokens under the `.oc-excalidraw` wrapper, for light and
+dark. The canvas background is left to the drawing, which saves it in the file.
 
 Excalidraw fetches its canvas fonts and the optional "Text to diagram" bundle
 from a version-pinned CDN (`esm.sh`, CORS-enabled) when no asset path is set.

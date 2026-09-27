@@ -6,6 +6,8 @@ import {
   excalidrawSceneSignature,
   isExcalidrawDocument,
   isExcalidrawMountable,
+  shouldShowExcalidrawCanvas,
+  createExcalidrawSaveTracker,
 } from './scene';
 
 const obsidian = (lang: string, payload: string) =>
@@ -105,6 +107,53 @@ describe('isExcalidrawMountable', () => {
     expect(isExcalidrawMountable(obsidian('json', '{}'))).toBe(true);
     expect(isExcalidrawMountable('garbage')).toBe(false);
     expect(isExcalidrawMountable('# just a note')).toBe(false);
+  });
+});
+
+describe('shouldShowExcalidrawCanvas', () => {
+  const shown = (overrides: Partial<Parameters<typeof shouldShowExcalidrawCanvas>[0]>) =>
+    shouldShowExcalidrawCanvas({ isExcalidraw: true, viewMode: 'preview', previewReady: true, draft: '{"elements":[]}', ...overrides });
+
+  test('mounts the canvas for a readable drawing in preview', () => {
+    expect(shown({})).toBe(true);
+    expect(shown({ draft: obsidian('json', '{"elements":[]}') })).toBe(true);
+  });
+
+  test('a new empty file opens as a blank canvas', () => {
+    expect(shown({ draft: '' })).toBe(true);
+  });
+
+  test('never mounts over a draft the canvas cannot read, so a blank scene cannot be saved over it', () => {
+    expect(shown({ draft: 'not a drawing' })).toBe(false);
+    expect(shown({ draft: '# a note that lost its drawing block' })).toBe(false);
+  });
+
+  test('stays off in source mode, before the file finished loading, and for other files', () => {
+    expect(shown({ viewMode: 'edit' })).toBe(false);
+    expect(shown({ previewReady: false })).toBe(false);
+    expect(shown({ isExcalidraw: false })).toBe(false);
+  });
+});
+
+describe('createExcalidrawSaveTracker', () => {
+  test('a stroke drawn while the save was writing stays unsaved', () => {
+    const tracker = createExcalidrawSaveTracker('opened');
+    expect(tracker.observe('stroke-1')).toEqual({ edited: true, dirty: true });
+    // The save snapshots stroke-1, then another stroke lands before the write returns.
+    tracker.observe('stroke-2');
+    expect(tracker.markSaved('stroke-1')).toBe(true);
+    expect(tracker.observe('stroke-2')).toEqual({ edited: false, dirty: true });
+  });
+
+  test('a save with nothing drawn during the write leaves the canvas clean', () => {
+    const tracker = createExcalidrawSaveTracker('opened');
+    tracker.observe('stroke-1');
+    expect(tracker.markSaved('stroke-1')).toBe(false);
+  });
+
+  test('scrolling or selecting reports no edit', () => {
+    const tracker = createExcalidrawSaveTracker('opened');
+    expect(tracker.observe('opened')).toEqual({ edited: false, dirty: false });
   });
 });
 

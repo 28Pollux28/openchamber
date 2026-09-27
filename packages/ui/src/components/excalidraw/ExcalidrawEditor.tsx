@@ -1,23 +1,33 @@
 import React from 'react';
 import { Excalidraw } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
+import './excalidraw-theme.css';
 import type { AppState, BinaryFiles } from '@excalidraw/excalidraw/types';
 import type { OrderedExcalidrawElement } from '@excalidraw/excalidraw/element/types';
 
 import { useOptionalThemeSystem } from '@/contexts/useThemeSystem';
 import { useI18n } from '@/lib/i18n';
-import { excalidrawLangCode, excalidrawSceneSignature, type ExcalidrawFormat } from './scene';
+import { createExcalidrawSaveTracker, excalidrawLangCode, excalidrawSceneSignature, type ExcalidrawFormat } from './scene';
 import { openExcalidrawDocument, serializeExcalidrawDocument } from './document';
 
+/** One read of the live scene: the document to write and the scene it came from. */
+export type ExcalidrawSnapshot = { content: string; signature: string };
+
 export type ExcalidrawEditorHandle = {
-  getContent: () => string | null;
-  markSaved: () => void;
+  getContent: () => ExcalidrawSnapshot | null;
+  /**
+   * Records `signature` (from the snapshot that was written) as saved. Strokes
+   * drawn while the write ran differ from it, so the canvas stays dirty.
+   */
+  markSaved: (signature: string) => void;
 };
 
 type ExcalidrawEditorProps = {
   content: string;
   format: ExcalidrawFormat;
   onDirtyChange?: (dirty: boolean) => void;
+  /** Called on every change to the drawing (not on scroll or selection). */
+  onEdit?: () => void;
   onUnsupported?: () => void;
 };
 
@@ -28,22 +38,30 @@ type LiveScene = {
 };
 
 export const ExcalidrawEditor = React.forwardRef<ExcalidrawEditorHandle, ExcalidrawEditorProps>(
-  function ExcalidrawEditor({ content, format, onDirtyChange, onUnsupported }, ref) {
+  function ExcalidrawEditor({ content, format, onDirtyChange, onEdit, onUnsupported }, ref) {
     const { locale } = useI18n();
     const themeSystem = useOptionalThemeSystem();
     const onDirtyChangeRef = React.useRef(onDirtyChange);
     onDirtyChangeRef.current = onDirtyChange;
     const onUnsupportedRef = React.useRef(onUnsupported);
     onUnsupportedRef.current = onUnsupported;
+    const onEditRef = React.useRef(onEdit);
+    onEditRef.current = onEdit;
 
     const theme = themeSystem?.currentTheme.metadata.variant === 'dark' ? 'dark' : 'light';
 
     const [parsed] = React.useState(() => openExcalidrawDocument(content, format));
     const liveSceneRef = React.useRef<LiveScene | null>(null);
-    const savedSignatureRef = React.useRef<string | null>(
+    const [saveTracker] = React.useState(() => createExcalidrawSaveTracker(
       parsed ? excalidrawSceneSignature(parsed.scene.elements, parsed.scene.appState) : null,
-    );
+    ));
     const isDirtyRef = React.useRef(false);
+
+    const reportDirty = React.useCallback((dirty: boolean) => {
+      if (dirty === isDirtyRef.current) return;
+      isDirtyRef.current = dirty;
+      onDirtyChangeRef.current?.(dirty);
+    }, []);
     const reportedUnsupportedRef = React.useRef(false);
 
     React.useEffect(() => {
@@ -56,33 +74,28 @@ export const ExcalidrawEditor = React.forwardRef<ExcalidrawEditorHandle, Excalid
       getContent: () => {
         const scene = liveSceneRef.current;
         if (!scene || !parsed) return null;
-        return serializeExcalidrawDocument(parsed.container, scene);
+        return {
+          content: serializeExcalidrawDocument(parsed.container, scene),
+          signature: excalidrawSceneSignature(scene.elements, scene.appState),
+        };
       },
-      markSaved: () => {
-        const scene = liveSceneRef.current;
-        if (!scene) return;
-        savedSignatureRef.current = excalidrawSceneSignature(scene.elements, scene.appState);
-        if (!isDirtyRef.current) return;
-        isDirtyRef.current = false;
-        onDirtyChangeRef.current?.(false);
-      },
-    }), [parsed]);
+      markSaved: (signature) => reportDirty(saveTracker.markSaved(signature)),
+    }), [parsed, reportDirty, saveTracker]);
 
     const handleChange = React.useCallback(
       (elements: readonly OrderedExcalidrawElement[], appState: AppState, files: BinaryFiles) => {
         liveSceneRef.current = { elements, appState, files };
-        const dirty = excalidrawSceneSignature(elements, appState) !== savedSignatureRef.current;
-        if (dirty === isDirtyRef.current) return;
-        isDirtyRef.current = dirty;
-        onDirtyChangeRef.current?.(dirty);
+        const { edited, dirty } = saveTracker.observe(excalidrawSceneSignature(elements, appState));
+        if (edited) onEditRef.current?.();
+        reportDirty(dirty);
       },
-      [],
+      [reportDirty, saveTracker],
     );
 
     if (!parsed) return null;
 
     return (
-      <div className="h-full w-full">
+      <div className="oc-excalidraw h-full w-full">
         <Excalidraw
           initialData={parsed.scene}
           onChange={handleChange}
