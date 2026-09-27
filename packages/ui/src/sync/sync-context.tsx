@@ -2599,14 +2599,18 @@ export function SyncProvider(props: {
       routeDirectory: (directory, payload) => {
         return resolveDirectoryFromRoutingIndex(routingIndex, directory, payload, childStores)
       },
-      onEvents: (directory, payloads) => {
-        // Track ALL stream activity (including heartbeats) as proof of
-        // connection health. The watchdog stale check uses this to distinguish
-        // a genuinely dead stream (no heartbeats for 20s) from a quiet-but-
-        // connected session that is only receiving heartbeats. Excluding
-        // heartbeats here caused issue #1656: the stale timer fired for any
-        // quiet session, triggering redundant full resyncs every ~15s.
+      // Track ALL stream activity (including heartbeats) as proof of
+      // connection health. The watchdog stale check uses this to distinguish
+      // a genuinely dead stream (no heartbeats for 20s) from a quiet-but-
+      // connected session that is only receiving heartbeats. Excluding
+      // heartbeats caused issue #1656: the stale timer fired for any quiet
+      // session, triggering redundant full resyncs every ~15s. OpenCode 2
+      // heartbeats never become events: OpenCode sends an SSE comment and the
+      // WS bridge an `openchamber:heartbeat` frame, so delivered events miss them.
+      onStreamActivity: () => {
         lastStreamActivityAtRef.current = Date.now()
+      },
+      onEvents: (directory, payloads) => {
         const batch = createDirectoryEventBatch()
         try {
           for (const payload of payloads) {
