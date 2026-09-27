@@ -319,8 +319,11 @@ entry to the previous one's config. OpenChamber adds no automatic MCP reconnect
 loop; recovery after a failed connection is manual for both local and remote
 servers. Previously generated reconnect plugin files are inert because managed
 launch no longer registers them. User-configured plugins remain user-owned.
-PATH and `OPENCODE_SERVER_PASSWORD` remain lifecycle-owned and cannot
-be replaced by injected values. External OpenCode processes receive no
+PATH, `OPENCODE_PASSWORD` and `OPENCODE_SERVER_PASSWORD` remain lifecycle-owned
+and cannot be replaced by injected or inherited values; OpenCode 2 prefers
+`OPENCODE_PASSWORD`, so both carry the managed password. A user-provided
+password is read with the same precedence, and Basic auth always uses the
+`opencode` username because OpenCode 2 accepts no other. External OpenCode processes receive no
 OpenChamber tool injection. Managed launch env strips AppImage `ARGV0` before
 spawn so zsh-backed OpenCode tools do not rewrite child argv[0] to the AppImage
 path (#2588).
