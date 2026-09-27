@@ -2331,4 +2331,5 @@ export const settingsDict = {
   'settings.mcp.page.advanced.oauthMetadataUrlInvalid': 'Tam bir http:// veya https:// adresi girin.',
   ...guestIntegrationsI18n.tr,
   ...extensionsSettingsI18n.tr,
+  'settings.magicPrompts.page.block.codeFusionInstructions': 'Kod fusion talimatları',
 };

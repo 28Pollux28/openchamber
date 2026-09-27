@@ -2341,4 +2341,5 @@ export const settingsDict = {
   'settings.mcp.page.advanced.oauthMetadataUrlHint': 'OAuth 또는 OpenID Connect 인증 서버 메타데이터 문서입니다. MCP 서버가 인증 서버를 명시하는 보호 리소스 메타데이터를 게시하지 않을 때 설정하세요.',
   'settings.mcp.page.advanced.oauthMetadataUrlPlaceholder': 'https://example.com/.well-known/oauth-authorization-server',
   'settings.mcp.page.advanced.oauthMetadataUrlInvalid': 'http:// 또는 https://로 시작하는 전체 주소를 입력하세요.',
+  'settings.magicPrompts.page.block.codeFusionInstructions': '코드 fusion 지침',
 } as const;

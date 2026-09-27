@@ -108,6 +108,12 @@ import {
 } from './mobileSessionFields';
 import { MobileProjectEditSurface } from './MobileProjectEditSurface';
 import { useEdgeSwipe } from './useEdgeSwipe';
+import { ArrowsMerge } from '@/components/icons/ArrowsMerge';
+import { CollapsedActivityIndicator } from '@/components/session/sidebar/sessions/collapsedActivityIndicator';
+import { useCollapsedSessionActivityState } from '@/components/session/sidebar/sessions/collapsedActivityState';
+import type { SessionNode } from '@/components/session/sidebar/types';
+import { buildMultiRunIndex, type MultiRunSummary } from '@/lib/multirun/runs';
+import { MobileRunProviderLogos } from './MobileRunProviderLogos';
 
 type MobileSessionsSheetProps = {
   open: boolean;
@@ -500,6 +506,52 @@ const SessionRow: React.FC<{
     >
       {rowContent}
     </MobileSwipeActionsRow>
+  );
+};
+
+const EMPTY_SESSION_NODES: readonly SessionNode[] = [];
+
+/**
+ * One row for a whole multi-run, laid out like the session rows around it:
+ * the lanes' combined activity in the left gutter, the run mark and title,
+ * then provider logos and the time. Tapping opens the run overview, where
+ * each lane opens its chat. Mobile shows runs but never launches them.
+ */
+const MobileRunRow: React.FC<{ run: MultiRunSummary; laneNodes: readonly SessionNode[]; indent: number }> = ({ run, laneNodes, indent }) => {
+  const { t } = useI18n();
+  const active = useUIStore((state) => state.runOverviewKey === run.key);
+  const activity = useCollapsedSessionActivityState({ nodes: laneNodes, includeUnreadSubtasks: false });
+  const time = formatRelativeShort(run.lastActivity);
+  return (
+    <div
+      data-active-session={active || undefined}
+      className={cn('relative flex items-center overflow-hidden transition-colors', active && 'bg-[color-mix(in_srgb,var(--primary)_10%,transparent)]')}
+    >
+      {activity ? (
+        <span
+          className="absolute flex w-6 items-center justify-center"
+          style={{ left: Math.max(indent - 32, 2), top: 0, bottom: 0 }}
+        >
+          <CollapsedActivityIndicator state={activity} />
+        </span>
+      ) : null}
+      <button
+        type="button"
+        className="flex h-9 w-full min-w-0 items-center gap-2.5 pr-3.5 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+        style={{ paddingLeft: indent, touchAction: 'manipulation' }}
+        onClick={() => useUIStore.getState().setRunOverviewKey(run.key)}
+        aria-label={t('sessions.sidebar.run.openOverviewAria', { title: run.title })}
+      >
+        <span className="flex min-w-0 flex-1 items-center gap-1.5">
+          <ArrowsMerge className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <span className={cn('block min-w-0 flex-1 truncate typography-ui-label', active ? 'text-primary' : 'text-foreground')}>
+            {run.title}
+          </span>
+        </span>
+        <MobileRunProviderLogos providerIDs={run.providerIDs} />
+        {time ? <span className="shrink-0 typography-micro text-muted-foreground tabular-nums">{time}</span> : null}
+      </button>
+    </div>
   );
 };
 
@@ -955,6 +1007,31 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     authoritativeProjects,
     spaceList,
   ), [authoritativeProjects, projectSessions, projectsMeta, spaceList]);
+  // Multi-runs render as one row that opens their overview; their lanes list
+  // under the project root instead of each lane's worktree, like the sidebar.
+  const runIndex = React.useMemo(() => buildMultiRunIndex(projectSessions, (session) => {
+    const owner = sessionOwnership.bySessionId.get(session.id);
+    const project = owner ? projectsMeta.find((entry) => entry.id === owner.projectId) : undefined;
+    return project?.path || normalizePath(getSessionDirectory(session)) || null;
+  }), [projectSessions, projectsMeta, sessionOwnership]);
+  // Each run's members with their subsessions: a run row's activity dot is
+  // the combined state of everything the run holds, as on the sidebar.
+  const runLaneNodesByKey = React.useMemo(() => {
+    const sessionById = new Map(sessions.map((session) => [session.id, session]));
+    const toNode = (session: Session): SessionNode => ({
+      session,
+      children: (childrenBySessionId.get(session.id) ?? []).map(toNode),
+      worktree: null,
+    });
+    const nodes = new Map<string, SessionNode[]>();
+    for (const run of runIndex.runs.values()) {
+      nodes.set(run.key, run.memberIds.flatMap((id) => {
+        const session = sessionById.get(id);
+        return session ? [toNode(session)] : [];
+      }));
+    }
+    return nodes;
+  }, [childrenBySessionId, runIndex, sessions]);
   const chatsBucket = React.useMemo<WorktreeBucket>(() => ({
     key: CHAT_DRAFT_PROJECT_ID,
     label: '',
@@ -1105,7 +1182,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
       const space = owner.kind === 'space' && owner.spaceId ? spaces.get(owner.spaceId) ?? null : null;
       const bucket = space
         ? ensureBucket(node, owner.scopeDirectory, null, space)
-        : matchedWorktree
+        : matchedWorktree && !runIndex.runKeyBySessionId.has(session.id)
           ? ensureBucket(node, matchedWorktree.path, matchedWorktree)
           : ensureBucket(node, node.project.path, null);
       bucket.sessions.push(session);
@@ -1121,7 +1198,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     }
 
     return nodes;
-  }, [activeProjectId, pinnedSessionIds, projectsMeta, sectionProjectSessions, sessionOrderRanks, sessionOwnership, spaceList, spaces, t]);
+  }, [activeProjectId, pinnedSessionIds, projectsMeta, runIndex, sectionProjectSessions, sessionOrderRanks, sessionOwnership, spaceList, spaces, t]);
 
   const normalizedDirectory = normalizePath(currentDirectory);
 
@@ -1212,13 +1289,21 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
       return !parentId || !idsInBucket.has(parentId);
     });
 
+    // The lanes of a run become one entry at the first lane's position.
+    type RootEntry = { kind: 'session'; session: Session } | { kind: 'run'; run: MultiRunSummary };
+    const listedRuns = new Set<string>();
+    const rootEntries = roots.flatMap((entry): RootEntry[] => {
+      const runKey = runIndex.runKeyBySessionId.get(entry.id);
+      const run = runKey ? runIndex.runs.get(runKey) : undefined;
+      if (!run) return [{ kind: 'session', session: entry }];
+      if (listedRuns.has(run.key)) return [];
+      listedRuns.add(run.key);
+      return [{ kind: 'run', run }];
+    });
     // Pinned roots stay on screen whatever the page is, and do not consume it.
-    const alwaysVisibleRoots = alwaysVisibleIds
-      ? roots.filter((entry) => alwaysVisibleIds.has(entry.id))
-      : [];
-    const pagedRoots = alwaysVisibleIds
-      ? roots.filter((entry) => !alwaysVisibleIds.has(entry.id))
-      : roots;
+    const isAlwaysVisible = (entry: RootEntry): boolean => entry.kind === 'session' && Boolean(alwaysVisibleIds?.has(entry.session.id));
+    const alwaysVisibleRoots = alwaysVisibleIds ? rootEntries.filter(isAlwaysVisible) : [];
+    const pagedRoots = alwaysVisibleIds ? rootEntries.filter((entry) => !isAlwaysVisible(entry)) : rootEntries;
     const visibleCount = visibleCountByBucket.get(bucketKey) ?? pageSize;
     const visiblePagedRoots = pagedRoots.slice(0, visibleCount);
     const visibleRoots = [...alwaysVisibleRoots, ...visiblePagedRoots];
@@ -1264,7 +1349,9 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
 
     return (
       <div>
-        {visibleRoots.map((session) => renderNode(session, indent))}
+        {visibleRoots.map((entry) => (entry.kind === 'run'
+          ? <MobileRunRow key={`run:${entry.run.key}`} run={entry.run} laneNodes={runLaneNodesByKey.get(entry.run.key) ?? EMPTY_SESSION_NODES} indent={indent} />
+          : renderNode(entry.session, indent)))}
         {remaining > 0 ? (
           <ShowMoreRow indent={indent} onClick={() => showMoreBucketSessions(bucketKey, visiblePagedRoots.length, pageSize)} />
         ) : null}
@@ -1551,16 +1638,25 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     return contexts;
   }, [gitBranchesByDirectory, projectSessions, projectsMeta, sessionOwnership, spaceLabelById, timelineActive]);
 
+  // The lanes of a run become one run row at the first lane's position, the
+  // same collapse the grouped tree and the desktop timeline make.
   const timelineEntries = React.useMemo<TimelineEntry[]>(() => {
     if (!timelineActive) return [];
     const roots = sectionProjectSessions.filter(
       (session) => !getParentId(session) && timelineContextById.has(session.id),
     );
-    return orderSessionsByLifecycleScopes(roots, pinnedSessionIds, sessionOrderRanks).flatMap((session) => {
+    const listedRuns = new Set<string>();
+    return orderSessionsByLifecycleScopes(roots, pinnedSessionIds, sessionOrderRanks).flatMap((session): TimelineEntry[] => {
       const context = timelineContextById.get(session.id);
-      return context ? [{ session, project: context.project, branch: context.branch }] : [];
+      if (!context) return [];
+      const runKey = runIndex.runKeyBySessionId.get(session.id);
+      const run = runKey ? runIndex.runs.get(runKey) : undefined;
+      if (!run) return [{ kind: 'session', session, project: context.project, branch: context.branch }];
+      if (listedRuns.has(run.key)) return [];
+      listedRuns.add(run.key);
+      return [{ kind: 'run', run, laneNodes: runLaneNodesByKey.get(run.key) ?? EMPTY_SESSION_NODES, project: context.project }];
     });
-  }, [pinnedSessionIds, sectionProjectSessions, sessionOrderRanks, timelineActive, timelineContextById]);
+  }, [pinnedSessionIds, runIndex, runLaneNodesByKey, sectionProjectSessions, sessionOrderRanks, timelineActive, timelineContextById]);
 
   const revealMoreTimelineSessions = React.useCallback(() => {
     setTimelineVisibleCount((current) => revealNextTimelinePage(current, timelineEntries.length));

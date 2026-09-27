@@ -2341,4 +2341,5 @@ export const settingsDict = {
   'settings.mcp.page.advanced.oauthMetadataUrlHint': 'OAuth 或 OpenID Connect 授权服务器元数据文档。当 MCP 服务器未发布指明其授权服务器的受保护资源元数据时设置。',
   'settings.mcp.page.advanced.oauthMetadataUrlPlaceholder': 'https://example.com/.well-known/oauth-authorization-server',
   'settings.mcp.page.advanced.oauthMetadataUrlInvalid': '请输入完整的 http:// 或 https:// 地址。',
+  'settings.magicPrompts.page.block.codeFusionInstructions': '代码融合说明',
 } as const;

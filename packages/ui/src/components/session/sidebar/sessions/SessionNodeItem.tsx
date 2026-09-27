@@ -62,8 +62,7 @@ import { getRuntimeBearerTokenSync } from '@/lib/runtime-auth';
 import { getRuntimeApiBaseUrl } from '@/lib/runtime-switch';
 import { getChatsRootFromDirectory, isChatDirectoryPath } from '@/lib/chatDirectories';
 import { getMultiRunIdentity, sameMultiRunIdentity } from '@/lib/multirun/identity';
-import { MultiRunFusionDialog } from '@/components/multirun/MultiRunFusionDialog';
-import { FusionIcon } from '@/components/icons/FusionIcon';
+import { ArrowsMerge } from '@/components/icons/ArrowsMerge';
 import { RuntimeAPIContext } from '@/contexts/runtimeAPIContext';
 import {
   buildSessionTreeMoveMessages,
@@ -581,8 +580,7 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
     },
   });
   const isSessionMenuOpen = isMenuOpen || isContextMenuOpen;
-  const isMultiRunLikeSession = React.useMemo(() => getMultiRunIdentity(resolvedSession) !== null, [resolvedSession]);
-  const [fusionDialogOpen, setFusionDialogOpen] = React.useState(false);
+  const multiRunKey = React.useMemo(() => getMultiRunIdentity(resolvedSession)?.key ?? null, [resolvedSession]);
 
   const descendantCount = React.useMemo(() => collectNodeDescendantIds(node).length, [collectNodeDescendantIds, node]);
 
@@ -1261,10 +1259,10 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
           </Sub>
         );
       })() : null}
-      {isMultiRunLikeSession ? (
-        <Item onClick={() => setFusionDialogOpen(true)} className="[&>svg]:mr-1">
-          <FusionIcon className="mr-1 h-4 w-4" />
-          {t('sessions.sidebar.session.menu.runFusion')}
+      {multiRunKey ? (
+        <Item onClick={() => useUIStore.getState().setRunOverviewKey(multiRunKey)} className="[&>svg]:mr-1">
+          <ArrowsMerge className="mr-1 h-4 w-4" />
+          {t('sessions.sidebar.session.menu.openRunOverview')}
         </Item>
       ) : null}
 
@@ -1925,13 +1923,6 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
           </DialogFooter>
         </DialogContent>
       </Dialog>
-      {isMultiRunLikeSession ? (
-        <MultiRunFusionDialog
-          session={resolvedSession}
-          open={fusionDialogOpen}
-          onOpenChange={setFusionDialogOpen}
-        />
-      ) : null}
     </React.Fragment>
   );
 }

@@ -22,6 +22,9 @@ type Props = {
   title: React.ReactNode;
   titleClassName: string;
   branchLabel: string | null;
+  /** Replaces the branch at the start of the third line (a run row puts its
+      mark and lane count there). */
+  thirdLineLead?: React.ReactNode;
   statusDot: React.ReactNode;
   /** Pin glyph shown in the meta cluster while the row is pinned. */
   pinnedMarker: React.ReactNode;
@@ -80,6 +83,7 @@ export const SessionTimelineRowBody: React.FC<Props> = ({
   title,
   titleClassName,
   branchLabel,
+  thirdLineLead = null,
   statusDot,
   pinnedMarker,
   timeSlot,
@@ -92,7 +96,7 @@ export const SessionTimelineRowBody: React.FC<Props> = ({
   metaPaddingClass,
   hideMetaOnHoverClass,
 }) => {
-  const hasThirdLine = !compact && (Boolean(branchLabel) || Boolean(prBadge) || Boolean(zombieIndicator) || Boolean(badges) || Boolean(providerId));
+  const hasThirdLine = !compact && (Boolean(branchLabel) || Boolean(thirdLineLead) || Boolean(prBadge) || Boolean(zombieIndicator) || Boolean(badges) || Boolean(providerId));
   // Compact rows have no third line, so their badges ride in the meta
   // cluster: the hover actions overlay that cluster, and anything placed
   // after it would sit underneath them.
@@ -123,12 +127,12 @@ export const SessionTimelineRowBody: React.FC<Props> = ({
     <div className={cn('w-full min-w-0 truncate typography-ui-label font-normal', titleClassName)}>{title}</div>
     {hasThirdLine ? (
       <div className="flex w-full min-w-0 items-center gap-1">
-        {branchLabel ? (
+        {thirdLineLead ?? (branchLabel ? (
           <>
             <Icon name="git-branch" className="h-3 w-3 flex-shrink-0 text-muted-foreground/40" />
             <span className="min-w-0 truncate typography-micro text-muted-foreground/50">{branchLabel}</span>
           </>
-        ) : null}
+        ) : null)}
         <span className="ml-auto flex flex-shrink-0 items-center gap-1">
           {zombieIndicator ?? prBadge}
           {badges}

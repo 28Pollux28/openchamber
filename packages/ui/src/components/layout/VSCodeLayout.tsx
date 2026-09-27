@@ -47,6 +47,8 @@ import type { UsageWindow } from '@/types';
 import type { SessionContextUsage } from '@/stores/types/sessionTypes';
 import { useUIStore, type TimeFormatPreference } from '@/stores/useUIStore';
 import { useSessionListSync } from '@/components/session/sidebar/list/useSessionListSync';
+import { RunOverview } from '@/components/multirun/RunOverview';
+import { RunAutoFusion } from '@/lib/multirun/autoFusion';
 
 const SettingsView = lazyWithChunkRecovery(() => import('@/components/views/SettingsView').then(m => ({ default: m.SettingsView })));
 
@@ -258,8 +260,21 @@ export const VSCodeLayout: React.FC = () => {
   }, [currentSessionId, newSessionDraftOpen, currentView, viewMode, isSyncingMessages, hasActiveSessionWork]);
 
   const handleBackToSessions = React.useCallback(() => {
+    useUIStore.getState().setRunOverviewKey(null);
     setCurrentView('sessions');
   }, []);
+
+  // A run overview replaces the chat like any other surface: opening one shows
+  // the chat column, and selecting a session closes it.
+  const runOverviewKey = useUIStore((state) => state.runOverviewKey);
+  React.useEffect(() => {
+    if (runOverviewKey) setCurrentView((view) => (view === 'sessions' ? 'chat' : view));
+  }, [runOverviewKey]);
+  React.useEffect(() => useSessionUIStore.subscribe((state, prev) => {
+    if (state.currentSessionId && state.currentSessionId !== prev.currentSessionId) {
+      useUIStore.getState().setRunOverviewKey(null);
+    }
+  }), []);
 
   const handleSessionSelected = React.useCallback(() => {
     setCurrentView('chat');
@@ -606,10 +621,11 @@ export const VSCodeLayout: React.FC = () => {
               showRateLimits
               enableSessionSwitcher
             />
-            <div className="flex-1 overflow-hidden">
+            <div className="relative flex-1 overflow-hidden">
               <ErrorBoundary>
-                <ChatView active={currentView === 'chat'} />
+                <ChatView active={currentView === 'chat' && !runOverviewKey} />
               </ErrorBoundary>
+              <ErrorBoundary><RunOverview /></ErrorBoundary>
             </div>
           </div>
         </div>
@@ -644,15 +660,17 @@ export const VSCodeLayout: React.FC = () => {
               showRateLimits
               enableSessionSwitcher
             />
-            <div className="flex-1 overflow-hidden">
+            <div className="relative flex-1 overflow-hidden">
               <ErrorBoundary>
-                <ChatView active={currentView === 'chat'} />
+                <ChatView active={currentView === 'chat' && !runOverviewKey} />
               </ErrorBoundary>
+              <ErrorBoundary><RunOverview /></ErrorBoundary>
             </div>
           </div>
         </>
       )}
       <SessionDialogs />
+      <RunAutoFusion />
       </div>
     </>
   );

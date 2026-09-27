@@ -2342,4 +2342,5 @@ export const settingsDict = {
   'settings.mcp.page.advanced.oauthMetadataUrlHint': 'Dokument metadanych serwera autoryzacji OAuth lub OpenID Connect. Ustaw go, gdy serwer MCP nie publikuje metadanych chronionego zasobu wskazujących jego serwer autoryzacji.',
   'settings.mcp.page.advanced.oauthMetadataUrlPlaceholder': 'https://example.com/.well-known/oauth-authorization-server',
   'settings.mcp.page.advanced.oauthMetadataUrlInvalid': 'Podaj pełny adres http:// lub https://.',
+  'settings.magicPrompts.page.block.codeFusionInstructions': 'Instrukcje fusion kodu',
 };

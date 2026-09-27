@@ -138,7 +138,6 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
   const setArchivePageOpen = useUIStore((state) => state.setArchivePageOpen);
   const setUsageStatsPageOpen = useUIStore((state) => state.setUsageStatsPageOpen);
   const setWorktreesPageProjectId = useUIStore((state) => state.setWorktreesPageProjectId);
-  const openMultiRunLauncher = useUIStore((state) => state.openMultiRunLauncher);
   const notifyOnSubtasks = useUIStore((state) => state.notifyOnSubtasks);
 
   const normalizedSessionSearchQuery = React.useMemo(
@@ -553,13 +552,6 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
   const headerActionButtonClass = mobileVariant ? mobileHeaderActionButtonClass : desktopHeaderActionButtonClass;
   const headerActionIconClass = 'h-4.5 w-4.5';
 
-  const handleOpenMultiRunFromHeader = React.useCallback(() => {
-    if (mobileVariant) {
-      setSessionSwitcherOpen(false);
-    }
-    openMultiRunLauncher();
-  }, [mobileVariant, openMultiRunLauncher, setSessionSwitcherOpen]);
-
   const worktreeRefreshDependencies = React.useMemo(() => ({
     projects,
     getCurrentProjects: () => useProjectsStore.getState().projects,
@@ -653,8 +645,6 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
           if (mobileVariant) setSessionSwitcherOpen(false);
           setScheduledTasksDialogOpen(true);
         }}
-        onOpenMultiRun={handleOpenMultiRunFromHeader}
-        canOpenMultiRun={projects.length > 0}
         onOpenArchive={() => {
           if (mobileVariant) setSessionSwitcherOpen(false);
           setArchivePageOpen(true);

@@ -2341,4 +2341,5 @@ export const settingsDict = {
   'settings.mcp.page.advanced.oauthMetadataUrlHint': 'OAuth または OpenID Connect の認可サーバーメタデータ文書です。MCP サーバーが認可サーバーを示す保護リソースメタデータを公開していない場合に設定します。',
   'settings.mcp.page.advanced.oauthMetadataUrlPlaceholder': 'https://example.com/.well-known/oauth-authorization-server',
   'settings.mcp.page.advanced.oauthMetadataUrlInvalid': 'http:// または https:// で始まる完全なアドレスを入力してください。',
+  'settings.magicPrompts.page.block.codeFusionInstructions': 'コードフュージョンの指示',
 } as const;

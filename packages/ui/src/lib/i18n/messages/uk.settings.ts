@@ -2341,4 +2341,5 @@ export const settingsDict = {
   'settings.mcp.page.advanced.oauthMetadataUrlHint': 'Документ метаданих сервера авторизації OAuth або OpenID Connect. Вкажіть його, якщо MCP-сервер не публікує метадані захищеного ресурсу, які називають його сервер авторизації.',
   'settings.mcp.page.advanced.oauthMetadataUrlPlaceholder': 'https://example.com/.well-known/oauth-authorization-server',
   'settings.mcp.page.advanced.oauthMetadataUrlInvalid': 'Введіть повну адресу http:// або https://.',
+  'settings.magicPrompts.page.block.codeFusionInstructions': 'Інструкції кодового fusion',
 } as const;

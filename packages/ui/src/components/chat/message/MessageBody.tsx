@@ -23,6 +23,11 @@ import { ArrowsMerge } from '@/components/icons/ArrowsMerge';
 import { MarkdownImageGallery, SimpleMarkdownRenderer } from '../MarkdownRenderer';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useUIStore } from '@/stores/useUIStore';
+import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
+import type { Session } from '@/lib/opencode/model';
+import { getMultiRunIdentity } from '@/lib/multirun/identity';
+import { openParallelComposer } from '@/lib/multirun/openParallelComposer';
+import { AskOtherModelsDialog } from '@/components/multirun/AskOtherModelsDialog';
 import { flattenAssistantTextParts, suggestPlanTitleFromText } from '@/lib/messages/messageText';
 import { MULTIRUN_EXECUTION_FORK_PROMPT_META_TEXT } from '@/lib/messages/executionMeta';
 import { useMessageTTS } from '@/hooks/useMessageTTS';
@@ -1231,7 +1236,6 @@ const AssistantMessageBody = React.memo(({
     const createSessionFromAssistantMessage = useSessionUIStore((state) => state.createSessionFromAssistantMessage);
     const currentSessionId = useSessionUIStore((state) => state.currentSessionId);
     const getDirectoryForSession = useSessionUIStore((state) => state.getDirectoryForSession);
-    const openMultiRunLauncherWithPrompt = useUIStore((state) => state.openMultiRunLauncherWithPrompt);
     const projects = useProjectsStore((state) => state.projects);
     const effectiveDirectory = useEffectiveDirectory();
     const isReviewSessionView = reviewTransferDirection === 'review-to-original';
@@ -1381,10 +1385,24 @@ const AssistantMessageBody = React.memo(({
             }
 
             const prefilledPrompt = `${MULTIRUN_EXECUTION_FORK_PROMPT_META_TEXT}\n\n${assistantPlanText}`;
-            openMultiRunLauncherWithPrompt(prefilledPrompt);
+            openParallelComposer(prefilledPrompt);
         },
-        [assistantPlanText, openMultiRunLauncherWithPrompt]
+        [assistantPlanText]
     );
+
+    const [askOtherModelsSession, setAskOtherModelsSession] = React.useState<Session | null>(null);
+    const handleAskOtherModels = React.useCallback(() => {
+        if (!sessionId) return;
+        const session = useGlobalSessionsStore.getState().activeSessions.find((entry) => entry.id === sessionId);
+        if (!session) return;
+        // A lane is already part of a run: its overview is where more models join.
+        const identity = getMultiRunIdentity(session);
+        if (identity) {
+            useUIStore.getState().setRunOverviewKey(identity.key);
+            return;
+        }
+        setAskOtherModelsSession(session);
+    }, [sessionId]);
 
     const handleSaveAsPlanClick = React.useCallback(
         // Optional event: the footer's action sheet calls this without one.
@@ -2227,6 +2245,12 @@ const AssistantMessageBody = React.memo(({
                             <Icon name="chat-new" className="h-3.5 w-3.5" />
                             {t('chat.messageBody.actions.startNewSession')}
                         </DropdownMenuItem>
+                        {canShowMultiRunAction && turnGroupingContext?.turnId ? (
+                            <DropdownMenuItem className="typography-meta" onSelect={handleAskOtherModels}>
+                                <ArrowsMerge className="h-3.5 w-3.5" />
+                                {t('chat.messageBody.actions.askOtherModels')}
+                            </DropdownMenuItem>
+                        ) : null}
                         {canShowMultiRunAction ? (
                             <DropdownMenuItem className="typography-meta" onSelect={handleForkMultiRun}>
                                 <ArrowsMerge className="h-3.5 w-3.5" />
@@ -2235,6 +2259,14 @@ const AssistantMessageBody = React.memo(({
                         ) : null}
                     </DropdownMenuContent>
                 </DropdownMenu>
+            ) : null}
+            {askOtherModelsSession && turnGroupingContext?.turnId ? (
+                <AskOtherModelsDialog
+                    session={askOtherModelsSession}
+                    turnUserMessageId={turnGroupingContext.turnId}
+                    open
+                    onOpenChange={(open) => { if (!open) setAskOtherModelsSession(null); }}
+                />
             ) : null}
         </>
     );
