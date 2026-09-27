@@ -11,12 +11,9 @@ export function useProjectWorktrees(
 ) {
   const [availableWorktrees, setAvailableWorktrees] = React.useState<WorktreeMetadata[]>([]);
   const [isLoadingWorktrees, setIsLoadingWorktrees] = React.useState(false);
-  const projectWorktrees = useSessionUIStore((state) =>
-    state.availableWorktreesByProject.get(projectRef?.id ?? ''),
-  );
-  const storeWorktrees = useSessionUIStore((state) =>
-    state.availableWorktreesByProject.get(projectRef?.id ?? '') ?? state.availableWorktrees,
-  );
+  // Worktree mutations (create, delete) publish a new list to the store; that
+  // is only a signal here, the panel's list is always re-read from the server.
+  const storeWorktrees = useSessionUIStore((state) => state.availableWorktrees);
 
   const refreshWorktrees = React.useCallback(async () => {
     if (!projectRef || isGitRepo === false) return;
@@ -49,10 +46,6 @@ export function useProjectWorktrees(
     })();
     return () => { cancelled = true; };
   }, [projectRef, isGitRepo, listWorktrees]);
-
-  React.useEffect(() => {
-    if (isGitRepo && projectRef && projectWorktrees) setAvailableWorktrees(projectWorktrees);
-  }, [isGitRepo, projectRef, projectWorktrees]);
 
   React.useEffect(() => {
     if (!isGitRepo || !projectRef) return;

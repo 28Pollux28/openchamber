@@ -39,7 +39,7 @@ describe('Manage worktrees listing', () => {
     serverWorktrees = [removed, retained];
     failListing = false;
     sessionsKey = 'before';
-    useSessionUIStore.setState({ availableWorktrees: [removed, retained], availableWorktreesByProject: new Map([[project.id, [removed, retained]]]) });
+    useSessionUIStore.setState({ availableWorktrees: [removed, retained] });
     host = document.createElement('div');
     document.body.appendChild(host);
     root = createRoot(host);
@@ -63,17 +63,23 @@ describe('Manage worktrees listing', () => {
 
     serverWorktrees = [retained];
     await act(async () => {
-      useSessionUIStore.setState({ availableWorktrees: [retained], availableWorktreesByProject: new Map([[project.id, [retained]]]) });
+      useSessionUIStore.setState({ availableWorktrees: [retained] });
     });
     expect(host.textContent).toBe('retained');
     expect(listing.availableWorktrees).toHaveLength(1);
   });
 
-  test('keeps a confirmed deletion visible when a follow-up listing fails', async () => {
-    expect(listing.availableWorktrees).toHaveLength(2);
+  test('keeps the last known list when the post-deletion listing fails, and corrects it on the next change', async () => {
+    serverWorktrees = [retained];
     failListing = true;
     await act(async () => {
-      useSessionUIStore.setState({ availableWorktrees: [retained], availableWorktreesByProject: new Map([[project.id, [retained]]]) });
+      useSessionUIStore.setState({ availableWorktrees: [retained] });
+    });
+    expect(host.textContent).toBe('removedretained');
+
+    failListing = false;
+    await act(async () => {
+      useSessionUIStore.setState({ availableWorktrees: [retained, { ...retained }] });
     });
     expect(host.textContent).toBe('retained');
   });
