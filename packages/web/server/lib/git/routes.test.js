@@ -262,12 +262,17 @@ describe('git worktree removal instance disposal', () => {
     }));
 
     const disposeInstance = gitLibraries.removeWorktree.mock.calls[0][1].disposeInstance;
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
     await disposeInstance('/repo/wt');
 
     expect(fetchMock).toHaveBeenCalledTimes(1);
-    const request = fetchMock.mock.calls[0][0];
-    expect(request.method).toBe('POST');
-    expect(request.url).toBe('http://opencode.test/instance/dispose?directory=%2Frepo%2Fwt');
+    const [input, init] = fetchMock.mock.calls[0];
+    const request = new Request(input, init);
+    // OpenCode 2's location eviction; the v1 /instance/dispose route is gone.
+    expect(request.method).toBe('DELETE');
+    const url = new URL(request.url);
+    expect(url.origin + url.pathname).toBe('http://opencode.test/api/debug/location');
+    expect(url.searchParams.get('location[directory]')).toBe('/repo/wt');
     expect(request.headers.get('authorization')).toBe('Bearer test');
   });
 

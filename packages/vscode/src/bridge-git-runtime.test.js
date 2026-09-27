@@ -12,16 +12,10 @@ const gitService = {
   removeWorktree: mock(),
 };
 
-const sdkClient = {
-  instance: {
-    dispose: mock(),
-  },
-};
-
-const createOpencodeClient = mock(() => sdkClient);
+const fetchMock = mock(async () => new Response(null, { status: 204 }));
+globalThis.fetch = fetchMock;
 
 mock.module('./gitService', () => gitService);
-mock.module('@opencode-ai/sdk/v2', () => ({ createOpencodeClient }));
 
 const { handleStandardGitBridgeMessage } = await import('./bridge-git-runtime');
 
@@ -36,8 +30,7 @@ describe('bridge git runtime index mutations', () => {
     gitService.createWorktree.mockReset();
     gitService.getWorktreeBootstrapStatus.mockReset();
     gitService.removeWorktree.mockReset();
-    sdkClient.instance.dispose.mockReset();
-    createOpencodeClient.mockClear();
+    fetchMock.mockClear();
   });
 
   it('accepts legacy stage path payloads', async () => {
@@ -191,7 +184,6 @@ describe('bridge git runtime index mutations', () => {
 
   it('disposes the removed worktree instance through the active runtime on DELETE', async () => {
     gitService.removeWorktree.mockResolvedValue(true);
-    sdkClient.instance.dispose.mockResolvedValue({ data: true, error: undefined });
 
     const response = await handleStandardGitBridgeMessage({
       id: 'remove-worktree',
@@ -222,14 +214,15 @@ describe('bridge git runtime index mutations', () => {
     const disposeInstance = gitService.removeWorktree.mock.calls[0][1].disposeInstance;
     await disposeInstance('/repo/wt');
 
-    expect(createOpencodeClient).toHaveBeenCalledWith({
-      baseUrl: 'http://opencode.test',
-      headers: { Authorization: 'Bearer test' },
-    });
-    expect(sdkClient.instance.dispose).toHaveBeenCalledWith(
-      { directory: '/repo/wt' },
-      { signal: expect.any(AbortSignal) },
-    );
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const [input, init] = fetchMock.mock.calls[0];
+    const request = new Request(input, init);
+    // OpenCode 2's location eviction; the v1 /instance/dispose route is gone.
+    expect(request.method).toBe('DELETE');
+    const url = new URL(request.url);
+    expect(url.origin + url.pathname).toBe('http://opencode.test/api/debug/location');
+    expect(url.searchParams.get('location[directory]')).toBe('/repo/wt');
+    expect(request.headers.get('authorization')).toBe('Bearer test');
   });
 
   it('fails disposal when the managed runtime has no API URL', async () => {
@@ -247,6 +240,6 @@ describe('bridge git runtime index mutations', () => {
 
     const disposeInstance = gitService.removeWorktree.mock.calls[0][1].disposeInstance;
     await expect(disposeInstance('/repo/wt')).rejects.toThrow('OpenCode API URL is not available');
-    expect(sdkClient.instance.dispose).not.toHaveBeenCalled();
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });

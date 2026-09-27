@@ -1,39 +1,24 @@
-import { createOpencodeClient } from '@opencode-ai/sdk/v2';
+import { OpenCode } from '@opencode/client';
 
 // A removal should not hang on an unresponsive OpenCode server: disposal is
 // best-effort and `removeWorktree` swallows its failure.
 const WORKTREE_INSTANCE_DISPOSE_TIMEOUT_MS = 5_000;
 
-const formatOpenCodeDisposalError = (error) => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  if (error?.data?.message) {
-    return error.data.message;
-  }
-  try {
-    return JSON.stringify(error);
-  } catch {
-    return 'OpenCode instance disposal failed';
-  }
-};
-
 /**
  * Builds the best-effort disposal hook handed to `removeWorktree`. The URL and
  * auth headers are route dependencies, so this module never resolves the
- * OpenCode runtime itself, and both are read at call time.
+ * OpenCode runtime itself, and both are read at call time. OpenCode 2 has no
+ * instance route; evicting the location drops its cached services (file
+ * watchers, LSP, MCP), which is what held the worktree folder.
  */
 const createWorktreeInstanceDisposer = ({ buildOpenCodeUrl, getOpenCodeAuthHeaders }) => {
   return async (worktreeDirectory) => {
-    const baseUrl = buildOpenCodeUrl('/', '').replace(/\/$/, '');
-    const client = createOpencodeClient({ baseUrl, headers: getOpenCodeAuthHeaders() });
-    const result = await client.instance.dispose(
-      { directory: worktreeDirectory },
-      { signal: AbortSignal.timeout(WORKTREE_INSTANCE_DISPOSE_TIMEOUT_MS) }
-    );
-    if (result?.error) {
-      throw new Error(formatOpenCodeDisposalError(result.error));
-    }
+    const client = OpenCode.make({
+      baseUrl: buildOpenCodeUrl('/', '').replace(/\/$/, ''),
+      headers: getOpenCodeAuthHeaders(),
+      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(WORKTREE_INSTANCE_DISPOSE_TIMEOUT_MS) }),
+    });
+    await client.debug.location.evict({ location: { directory: worktreeDirectory } });
   };
 };
 
