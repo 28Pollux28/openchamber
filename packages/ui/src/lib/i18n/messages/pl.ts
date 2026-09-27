@@ -2700,7 +2700,6 @@ export const dict: Record<I18nKey, string> = {
   'helpDialog.proTips.commandPalette': 'Użyj Palety poleceń ({shortcut}), aby szybko uzyskać dostęp do wszystkich akcji',
   'helpDialog.proTips.recentSessions': '5 ostatnich sesji pojawia się w Palecie poleceń',
     'helpDialog.proTips.leaderSequences': 'Skróty dwustopniowe: naciśnij kombinację, potem drugi klawisz — Esc anuluje',
-  'helpDialog.proTips.title': 'Wskazówki:',
   'helpDialog.section.interface': 'Interfejs',
   'helpDialog.section.navigationCommands': 'Nawigacja i polecenia',
   'helpDialog.section.panels': 'Panele',

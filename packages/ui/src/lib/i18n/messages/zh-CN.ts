@@ -2019,7 +2019,6 @@ export const dict: Record<I18nKey, string> = {
   'helpDialog.item.toggleServicesMenu': '切换服务菜单',
   'helpDialog.item.openSettings': '打开设置',
   'helpDialog.keyCombiner.or': '或',
-  'helpDialog.proTips.title': '使用提示：',
   'helpDialog.proTips.commandPalette': '使用命令面板（{shortcut}）可快速访问所有操作',
   'helpDialog.proTips.recentSessions': '最近 5 个会话会显示在命令面板中',
     'helpDialog.proTips.leaderSequences': '两段式快捷键：先按组合键，再按第二个键（Esc 取消）',

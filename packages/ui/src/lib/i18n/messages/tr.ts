@@ -2013,7 +2013,6 @@ export const dict = {
   'helpDialog.item.toggleServicesMenu': 'Hizmetler menüsünü aç/kapat',
   'helpDialog.item.openSettings': 'Ayarları aç',
   'helpDialog.keyCombiner.or': 'veya',
-  'helpDialog.proTips.title': 'İpuçları:',
   'helpDialog.proTips.commandPalette': 'Tüm eylemlere hızlıca erişmek için komut paletini ({shortcut}) kullanın',
   'helpDialog.proTips.recentSessions': 'En son 5 session komut paletinde görünür',
   'header.actions.rightSidebarWithShortcut': 'Sağ kenar çubuğu ({shortcut})',

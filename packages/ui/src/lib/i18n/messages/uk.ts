@@ -2031,7 +2031,6 @@ export const dict: Record<I18nKey, string> = {
   "helpDialog.item.toggleServicesMenu": "Перемкнути меню сервісів",
   "helpDialog.item.openSettings": "Відкрити налаштування",
   "helpDialog.keyCombiner.or": "або",
-  "helpDialog.proTips.title": "Поради:",
   "helpDialog.proTips.commandPalette": "Використовуйте палітру команд ({shortcut}), щоб швидко перейти до будь-якої дії",
   "helpDialog.proTips.recentSessions": "5 останніх сесій відображаються на панелі команд",
     "helpDialog.proTips.leaderSequences": "Двокрокові шорткати: натисни комбінацію, потім другу клавішу — Esc скасовує",

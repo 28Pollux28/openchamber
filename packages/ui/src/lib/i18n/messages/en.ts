@@ -2053,7 +2053,6 @@ export const dict = {
   'helpDialog.item.toggleServicesMenu': 'Toggle Services Menu',
   'helpDialog.item.openSettings': 'Open Settings',
   'helpDialog.keyCombiner.or': 'or',
-  'helpDialog.proTips.title': 'Pro Tips:',
   'helpDialog.proTips.commandPalette': 'Use Command Palette ({shortcut}) to quickly access all actions',
   'helpDialog.proTips.recentSessions': 'The 5 most recent sessions appear in the Command Palette',
     'helpDialog.proTips.leaderSequences': 'Two-step shortcuts: press the first combo, then the second key — Esc cancels',

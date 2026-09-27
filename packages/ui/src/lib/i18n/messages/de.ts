@@ -1860,7 +1860,6 @@ export const dict = {
   'helpDialog.item.toggleServicesMenu': 'Dienstemenü umschalten',
   'helpDialog.item.openSettings': 'Einstellungen öffnen',
   'helpDialog.keyCombiner.or': 'oder',
-  'helpDialog.proTips.title': 'Pro-Tipps:',
   'helpDialog.proTips.commandPalette': 'Verwenden Sie die Befehlspalette ({shortcut}), um schnell auf alle Aktionen zuzugreifen',
   'helpDialog.proTips.recentSessions': 'Die 5 zuletzt verwendeten Sitzungen erscheinen in der Befehlspalette',
     'helpDialog.proTips.leaderSequences': 'Zweistufige Kürzel: erst die Kombination, dann die zweite Taste — Esc bricht ab',

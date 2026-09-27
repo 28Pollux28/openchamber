@@ -2031,7 +2031,6 @@ export const dict: Record<I18nKey, string> = {
   "helpDialog.item.toggleServicesMenu": "Mostrar ou ocultar menu de serviços",
   "helpDialog.item.openSettings": "Abrir configurações",
   "helpDialog.keyCombiner.or": "ou",
-  "helpDialog.proTips.title": "Dicas:",
   "helpDialog.proTips.commandPalette": "Use a paleta de comandos ({shortcut}) para acessar rapidamente todas as ações",
   "helpDialog.proTips.recentSessions": "As cinco sessões mais recentes aparecem na paleta de comandos",
     "helpDialog.proTips.leaderSequences": "Atalhos em duas etapas: pressione a combinação e depois a segunda tecla — Esc cancela",

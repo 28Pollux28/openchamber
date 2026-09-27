@@ -2055,7 +2055,6 @@ export const dict: Record<I18nKey, string> = {
   'helpDialog.item.toggleServicesMenu': '서비스 메뉴 전환',
   'helpDialog.item.openSettings': '설정 열기',
   'helpDialog.keyCombiner.or': '또는',
-  'helpDialog.proTips.title': '팁:',
   'helpDialog.proTips.commandPalette': '명령 팔레트({shortcut})로 모든 작업에 빠르게 접근하세요',
   'helpDialog.proTips.recentSessions': '최근 세션 5개가 명령 팔레트에 표시됩니다',
     'helpDialog.proTips.leaderSequences': '2단계 단축키: 조합을 누른 뒤 두 번째 키를 누르세요 (Esc로 취소)',

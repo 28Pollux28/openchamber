@@ -2049,7 +2049,6 @@ export const dict: Record<I18nKey, string> = {
   'helpDialog.item.toggleServicesMenu': 'サービスの切り替え',
   'helpDialog.item.openSettings': '設定を開く',
   'helpDialog.keyCombiner.or': 'または',
-  'helpDialog.proTips.title': 'プロのヒント:',
   'helpDialog.proTips.commandPalette': 'コマンドパレット（{shortcut}）を使うとすべての操作にすばやくアクセスできます',
   'helpDialog.proTips.recentSessions': '最近の5つのセッションがコマンドパレットに表示されます',
     'helpDialog.proTips.leaderSequences': '2段階ショートカット：組み合わせを押してから2つ目のキーを押します（Escで取消）',
