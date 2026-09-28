@@ -13,7 +13,6 @@ import { createWebFilesAPI } from './files';
 import { createWebSettingsAPI } from './settings';
 import { createWebPermissionsAPI } from './permissions';
 import { createWebNotificationsAPI } from './notifications';
-import { createWebToolsAPI } from './tools';
 import { createWebPushAPI } from './push';
 import { createWebGitHubAPI } from './github';
 import { createWebLinearAPI } from './linear';
@@ -41,19 +40,18 @@ export const createWebAPIs = (options: WebAPIsOptions = {}): RuntimeAPIs => {
   const activeUrls = createActiveRuntimeUrlResolver();
 
   return {
-    themeFiles: createDesktopThemeFileAPI(),
-    runtime: { platform: 'web', isDesktop: false, isVSCode: false, label: 'web' },
-    terminal: createWebTerminalAPI(),
-    git: createWebGitAPI(),
-    files: createWebFilesAPI({ urls: activeUrls, getDirectory: () => useDirectoryStore.getState().currentDirectory }),
-    settings: createWebSettingsAPI(),
-    permissions: createWebPermissionsAPI(),
-    notifications: createWebNotificationsAPI(),
-    github: createWebGitHubAPI({ urls: activeUrls }),
-    linear: createWebLinearAPI(),
-    push: createWebPushAPI(),
-    clientAuth: createWebClientAuthAPI(),
-    tools: createWebToolsAPI(),
-    telemetry: createWebTelemetryAPI(),
+  themeFiles: createDesktopThemeFileAPI(),
+  runtime: { platform: 'web', isDesktop: false, isVSCode: false, label: 'web' },
+  terminal: createWebTerminalAPI(),
+  git: createWebGitAPI(),
+  files: createWebFilesAPI({ urls: activeUrls, getDirectory: () => useDirectoryStore.getState().currentDirectory }),
+  settings: createWebSettingsAPI(),
+  permissions: createWebPermissionsAPI(),
+  notifications: createWebNotificationsAPI(),
+  github: createWebGitHubAPI({ urls: activeUrls }),
+  linear: createWebLinearAPI(),
+  push: createWebPushAPI(),
+  clientAuth: createWebClientAuthAPI(),
+  telemetry: createWebTelemetryAPI(),
   };
 };

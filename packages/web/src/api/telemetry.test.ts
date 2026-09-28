@@ -36,10 +36,12 @@ describe('createWebTelemetryAPI', () => {
     }
   });
 
-  test('initializes PostHog lazily on the first event, not at creation', () => {
+  test('initializes PostHog lazily on the first event, not at creation', async () => {
     const { api, init, capture } = makeApi();
     expect(init).not.toHaveBeenCalled();
     api.trackEvent('test_event', { a: 1 });
+    // capture runs on a microtask after the lazy init resolves.
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
     expect(init).toHaveBeenCalledTimes(1);
     expect(init).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
       ip: false,
@@ -51,12 +53,13 @@ describe('createWebTelemetryAPI', () => {
     expect(capture).toHaveBeenCalledWith('test_event', { a: 1 });
   });
 
-  test('reuses the initialization for later events', () => {
+  test('reuses the initialization for later events', async () => {
     const { api, init, capture } = makeApi();
     api.trackEvent('first');
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
     api.trackEvent('second', { b: 2 });
+    await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(2));
     expect(init).toHaveBeenCalledTimes(1);
-    expect(capture).toHaveBeenCalledTimes(2);
   });
 
   test('delegates to the desktop bridge and never reaches PostHog', () => {
