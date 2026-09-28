@@ -1246,6 +1246,22 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
+    id: 'integrations.extensions',
+    page: 'integrations',
+    titleKey: 'settings.integrations.extensionCatalog.title',
+    descriptionKey: 'settings.integrations.extensionCatalog.info',
+    keywords: ['extension', 'install', 'update', 'remove', 'openchamber'],
+    isAvailable: (ctx) => !ctx.isVSCode && !ctx.isMobile,
+  },
+  {
+    id: 'integrations.extensions.excalidraw',
+    page: 'integrations',
+    titleKey: 'settings.integrations.extensionCatalog.excalidraw.name',
+    descriptionKey: 'settings.integrations.extensionCatalog.excalidraw.description',
+    keywords: ['excalidraw', 'drawing', 'diagram', 'canvas', 'whiteboard', 'obsidian', 'sketch'],
+    isAvailable: (ctx) => !ctx.isVSCode && !ctx.isMobile,
+  },
+  {
     id: 'integrations.guests',
     page: 'integrations',
     titleKey: 'settings.integrations.guests.title',

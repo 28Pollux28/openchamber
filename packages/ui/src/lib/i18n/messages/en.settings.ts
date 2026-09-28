@@ -2,6 +2,7 @@ import { extensionsSettingsI18n } from './extensions.settings.i18n';
 import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
 import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
+import { extensionCatalogI18n } from './extension-catalog.i18n';
 export const settingsDict = {
   'settings.themeImport.selectAll': 'Select all',
   'settings.themeImport.deselectAll': 'Deselect all',
@@ -2302,6 +2303,7 @@ export const settingsDict = {
   'settings.openchamber.visual.field.inputHistoryLimitUnit': 'prompts',
   ...linearIntegrationI18n.en,
   ...thirdPartyIntegrationI18n.en,
+  ...extensionCatalogI18n.en,
   ...guestIntegrationsI18n.en,
   ...extensionsSettingsI18n.en,
   'settings.page.integrations.title': 'Integrations',

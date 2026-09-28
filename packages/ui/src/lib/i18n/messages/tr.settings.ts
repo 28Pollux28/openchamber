@@ -2,6 +2,7 @@ import { extensionsSettingsI18n } from './extensions.settings.i18n';
 import { guestIntegrationsI18n } from './guest-integrations.i18n';
 import { linearIntegrationI18n } from './linear-integration.i18n';
 import { thirdPartyIntegrationI18n } from './third-party-integrations.i18n';
+import { extensionCatalogI18n } from './extension-catalog.i18n';
 export const settingsDict = {
   'settings.themeImport.selectAll': 'Tümünü seç',
   'settings.themeImport.deselectAll': 'Tümünün seçimini kaldır',
@@ -2304,6 +2305,7 @@ export const settingsDict = {
   'settings.page.integrations.description': 'OpenChamber’ın birlikte çalıştığı hizmetleri ve abonelikleri bağlayın.',
   ...linearIntegrationI18n.tr,
   ...thirdPartyIntegrationI18n.tr,
+  ...extensionCatalogI18n.tr,
   'settings.agents.page.field.steps': 'En fazla adım',
   'settings.agents.page.field.stepsTooltip': 'Ajanın bir turda durmadan önce yapabileceği araç adımı sayısı.',
   'settings.agents.page.field.clearStepsAria': 'En fazla adımı temizle',
