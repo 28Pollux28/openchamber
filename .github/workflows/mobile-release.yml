@@ -72,7 +72,7 @@ env:
 jobs:
   resolve-version:
     name: Resolve mobile version
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     outputs:
       version_name: ${{ steps.version.outputs.version_name }}
       build_number: ${{ steps.version.outputs.build_number }}
