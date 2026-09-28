@@ -6,7 +6,9 @@ on:
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    # Blacksmith runner (same image as ubuntu-24.04, faster CPUs and cache);
+    # the Blacksmith GitHub App is installed on the openchamber org.
+    runs-on: blacksmith-4vcpu-ubuntu-2404
 
     steps:
       - name: Checkout repository
