@@ -114,7 +114,8 @@ import { useCollapsedSessionActivityState } from '@/components/session/sidebar/s
 import type { SessionNode } from '@/components/session/sidebar/types';
 import { buildMultiRunIndex, type MultiRunSummary } from '@/lib/multirun/runs';
 import { MobileRunProviderLogos } from './MobileRunProviderLogos';
-import { MobileSessionGoalGlyph, MobileSessionPendingBadges, usePendingRequestCounts } from './MobileSessionStateBadges';
+import { MobileSessionGoalGlyph, MobileSessionPendingBadges } from './MobileSessionStateBadges';
+import { usePendingRequestCounts } from './usePendingRequestCounts';
 
 type MobileSessionsSheetProps = {
   open: boolean;
