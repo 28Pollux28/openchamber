@@ -36,7 +36,7 @@ const rendererErrorMessage = (error?: Error | null, fallback?: string): string |
   return undefined;
 };
 
-export function rendererErrorName(error: Error | null): string | undefined {
+function rendererErrorName(error: Error | null): string | undefined {
   try {
     return error instanceof Error && ERROR_NAMES.has(error.name) ? error.name : undefined;
   } catch {
