@@ -240,8 +240,9 @@ export function FilePreviewCommentMenu({ containerRef, filePath, fileContent }: 
           {commentMode ? commentInput : (
             <div
               className={cn(
-                'oc-glass-popover rounded-2xl border border-[var(--interactive-border)]',
-                'p-2 shadow-[0_4px_16px_-4px_rgb(0_0_0_/_0.12)]',
+                'mx-auto w-fit',
+                'oc-glass-popover rounded-full border border-[var(--interactive-border)]',
+                'p-1 shadow-[0_4px_16px_-4px_rgb(0_0_0_/_0.12)]',
               )}
             >
               <button
@@ -251,16 +252,15 @@ export function FilePreviewCommentMenu({ containerRef, filePath, fileContent }: 
                 onMouseDown={(event) => event.preventDefault()}
                 onClick={openComment}
                 className={cn(
-                  'flex w-full min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
-                  'text-sm font-medium leading-tight',
-                  'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
-                  'active:opacity-80',
-                  'transition-opacity duration-150'
+                  'flex min-w-0 items-center gap-2 rounded-full px-4 py-2',
+                  'text-sm font-medium leading-tight text-foreground',
+                  'active:bg-[var(--interactive-hover)]',
+                  'transition-colors duration-150'
                 )}
                 title={t('chat.textSelection.title.commentOnSelection')}
               >
-                <Icon name="chat-1" className="h-5 w-5 flex-shrink-0" />
-                <span className="min-w-0 whitespace-normal">{t('chat.textSelection.actions.comment')}</span>
+                <Icon name="chat-1" className="size-4 flex-shrink-0" />
+                <span className="min-w-0 whitespace-nowrap">{t('chat.textSelection.actions.comment')}</span>
               </button>
             </div>
           )}
