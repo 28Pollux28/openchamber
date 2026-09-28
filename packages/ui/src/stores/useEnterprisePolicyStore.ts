@@ -63,6 +63,16 @@ export const useEnterprisePolicyStore = create<EnterprisePolicyStoreState>()((se
   },
 }));
 
+/**
+ * Whether enterprise mode keeps Jev off: on, and no administrator's endpoint
+ * answers. Pages that only configure Jev have nothing to offer then.
+ */
+export const useJevBlockedByEnterprise = (): boolean => {
+  const enterpriseMode = useEnterpriseMode();
+  const jevAvailable = useRoutingStore((state) => state.jevAvailable);
+  return enterpriseMode && !jevAvailable;
+};
+
 /** Whether enterprise mode is on for the connected runtime, also on servers that report it only through routing. */
 export const useEnterpriseMode = (): boolean => {
   const fromPolicy = useEnterprisePolicyStore((state) => state.enterpriseMode);

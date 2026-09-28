@@ -15,6 +15,7 @@ const runtimeCtx = {
   isLinux: false,
   routingAvailable: false,
   enterpriseMode: false,
+  jevBlockedByEnterprise: false,
 };
 
 describe('settings search', () => {
