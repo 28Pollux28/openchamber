@@ -10,6 +10,7 @@ import { useInputStore } from "./input-store"
 import type { ChildStoreManager } from "./child-store"
 import { computeSubtreeIds } from "./scoped-blocking-requests"
 import { opencodeClient } from "@/lib/opencode/client"
+import { trackTelemetryEvent } from "@/lib/telemetry"
 import { mergeSessionDirectoryMetadata, resolveGlobalSessionDirectory, useGlobalSessionsStore } from "@/stores/useGlobalSessionsStore"
 import { useConfigStore } from "@/stores/useConfigStore"
 import { registerSessionDirectory } from "./sync-refs"
@@ -1856,6 +1857,12 @@ export async function optimisticSend(input: {
       reason: error instanceof Error ? error.message : String(error),
     }
     recordSendFailure(failureRecord)
+    // Failure telemetry mirrors prompt_sent: coarse outcome only — no reason
+    // text (it echoes provider response bodies) and no directory.
+    trackTelemetryEvent("prompt_send_failed", {
+      status: status ?? "transport",
+      ambiguous: ambiguousFailure,
+    })
     console.warn("[session-actions] prompt send rejected; rolling back optimistic message", failureRecord)
 
     // Rollback via optimistic infrastructure

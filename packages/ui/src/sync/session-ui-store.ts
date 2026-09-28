@@ -1941,6 +1941,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
   },
 
   deleteSessions: async (ids, options) => {
+    trackTelemetryEvent('session_deleted', { count: ids.length })
     const result = await deleteSessionsAction(ids, options)
 
     return result
@@ -1952,7 +1953,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
   },
 
   archiveSessions: (ids, options) => {
-    trackTelemetryEvent('session_archived')
+    trackTelemetryEvent('session_archived', { count: ids.length })
     return archiveSessionsAction(ids, options)
   },
 
@@ -1962,7 +1963,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
   },
 
   unarchiveSessions: (ids, options) => {
-    trackTelemetryEvent('session_restored')
+    trackTelemetryEvent('session_restored', { count: ids.length })
     return unarchiveSessionsAction(ids, options)
   },
 
