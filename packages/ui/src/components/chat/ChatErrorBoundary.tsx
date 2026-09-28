@@ -46,8 +46,9 @@ export class ChatErrorBoundaryView extends React.Component<ChatErrorBoundaryView
     }
   }
 
-  componentDidUpdate(previousProps: ChatErrorBoundaryViewProps) {
-    if (previousProps.sessionId !== this.props.sessionId && this.state.hasError) {
+  componentDidUpdate(previousProps: ChatErrorBoundaryViewProps, previousState: ChatErrorBoundaryState) {
+    // Only recover an existing fallback, not an error just caught in the new session.
+    if (previousProps.sessionId !== this.props.sessionId && previousState.hasError && this.state.hasError) {
       this.handleReset();
     }
   }
