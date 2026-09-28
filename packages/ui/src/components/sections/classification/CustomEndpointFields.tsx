@@ -2,8 +2,8 @@ import React from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import {
-  SettingsControlGroup,
   SettingsFieldRow,
+  SettingsSection,
   SETTINGS_DESCRIPTION_CLASS,
   SETTINGS_FIELDS_STACK_CLASS,
 } from '@/components/sections/shared/SettingsSection';
@@ -18,7 +18,8 @@ const INPUT_CLASS = 'h-8 rounded-md px-3 min-w-0 flex-1';
 /**
  * The custom System One endpoint: URL, model and an optional key. Saving
  * picks it on the server, the way saving a TypeSafe key does. The key never
- * comes back from the server, so its field only replaces or removes it.
+ * comes back from the server, so its field only replaces it. Its own section,
+ * below the Jev pick, so the fields read as one block.
  */
 export const CustomEndpointFields: React.FC = () => {
   const { t } = useI18n();
@@ -67,19 +68,19 @@ export const CustomEndpointFields: React.FC = () => {
   // Pinned by the server environment: shown, never edited (the server refuses).
   if (saved?.pinned) {
     return (
-      <SettingsControlGroup
+      <SettingsSection
         title={t('settings.classification.custom.title')}
         info={t('settings.classification.custom.info')}
       >
         <p className={SETTINGS_DESCRIPTION_CLASS}>
           {t('settings.classification.custom.pinned', { url: saved.url, model: saved.model })}
         </p>
-      </SettingsControlGroup>
+      </SettingsSection>
     );
   }
 
   return (
-    <SettingsControlGroup
+    <SettingsSection
       title={t('settings.classification.custom.title')}
       info={t('settings.classification.custom.info')}
     >
@@ -93,7 +94,7 @@ export const CustomEndpointFields: React.FC = () => {
               value={url}
               onChange={(event) => setUrl(event.target.value)}
               onKeyDown={saveOnEnter}
-              placeholder="https://api.example.com/v1"
+              placeholder="https://example.com/v1"
               aria-label={t('settings.classification.custom.url.label')}
               className={INPUT_CLASS}
               disabled={busy}
@@ -130,19 +131,10 @@ export const CustomEndpointFields: React.FC = () => {
               className={INPUT_CLASS}
               disabled={busy}
             />
-            {saved?.keyPresent ? (
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => void run(() => setCustomEndpoint({ url: saved.url, model: saved.model, key: null }))}
-                disabled={busy}
-              >
-                {t('settings.classification.custom.key.remove')}
-              </Button>
-            ) : null}
           </div>
         </SettingsFieldRow>
-        <div className="flex items-center gap-2">
+        {/* Save commits all three fields, so it sits under them in the control column, not in one field's row. */}
+        <SettingsFieldRow label={null}>
           <Button size="sm" variant="outline" onClick={handleSave} disabled={busy || !canSave}>
             {t('settings.classification.custom.save')}
           </Button>
@@ -151,9 +143,9 @@ export const CustomEndpointFields: React.FC = () => {
               {t('settings.classification.custom.remove')}
             </Button>
           ) : null}
-        </div>
+        </SettingsFieldRow>
         {error ? <p className={SETTINGS_DESCRIPTION_CLASS}>{error}</p> : null}
       </div>
-    </SettingsControlGroup>
+    </SettingsSection>
   );
 };
