@@ -245,7 +245,14 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     id: 'chat.session-goal',
     page: 'chat',
     titleKey: 'settings.openchamber.visual.field.sessionGoal',
-    keywords: ['goal', 'objective', 'auto continue', 'small model'],
+    keywords: ['goal', 'objective', 'auto continue'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
+    id: 'chat.session-goal-checker',
+    page: 'chat',
+    titleKey: 'settings.openchamber.visual.goal.checkerLabel',
+    keywords: ['goal', 'progress', 'check', 'jev', 'classification', 'small model'],
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
