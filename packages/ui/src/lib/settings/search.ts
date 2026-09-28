@@ -675,7 +675,7 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.routing.auto.enable',
     descriptionKey: 'settings.routing.auto.enableInfo',
     keywords: ['auto', 'routing', 'model', 'jev', 'automatic'],
-    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable,
+    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable && !ctx.jevBlockedByEnterprise,
   },
   {
     id: 'routing.fallback-model',
@@ -683,7 +683,7 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.routing.auto.fallbackModel',
     descriptionKey: 'settings.routing.auto.fallbackModelInfo',
     keywords: ['fallback', 'default', 'model', 'routing'],
-    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable,
+    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable && !ctx.jevBlockedByEnterprise,
   },
   {
     id: 'routing.add-category',
@@ -691,7 +691,7 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     titleKey: 'settings.routing.categories.title',
     descriptionKey: 'settings.routing.categories.description',
     keywords: ['category', 'categories', 'task type', 'routing'],
-    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable,
+    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable && !ctx.jevBlockedByEnterprise,
   },
   {
     id: 'git.identities',

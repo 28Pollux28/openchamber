@@ -3,6 +3,7 @@ import { SettingsChipGroup, SettingsFieldRow, SETTINGS_HELPER_CLASS } from '@/co
 import { JevAccessNote, SettingsInlineLink } from '@/components/sections/classification/JevAccessNote';
 import { openClassificationProviders } from '@/components/sections/classification/classifierSources';
 import { useI18n } from '@/lib/i18n';
+import { useEnterpriseMode } from '@/stores/useEnterprisePolicyStore';
 import { selectSafetyNetAvailable, useRoutingStore } from '@/stores/useRoutingStore';
 import { useUIStore, type SessionGoalChecker } from '@/stores/useUIStore';
 
@@ -23,6 +24,8 @@ export const SessionGoalCheckerField: React.FC<{ disabled?: boolean }> = ({ disa
   const checker = useUIStore((state) => state.sessionGoalChecker);
   const setChecker = useUIStore((state) => state.setSessionGoalChecker);
   const jevAvailable = useRoutingStore(selectSafetyNetAvailable);
+  // Enterprise mode leaves nothing to set up, so no link to a page offering only Off.
+  const canSetUpJev = !useEnterpriseMode();
   const shown: SessionGoalChecker = jevAvailable ? checker : 'small-model';
 
   return (
@@ -49,7 +52,7 @@ export const SessionGoalCheckerField: React.FC<{ disabled?: boolean }> = ({ disa
             : t('settings.openchamber.visual.goal.checker.jevMissing')}
           {' '}
           <SettingsInlineLink onClick={openSmallModelSettings}>{t('settings.openchamber.visual.goal.checker.smallModelLink')}</SettingsInlineLink>
-          {jevAvailable ? null : (
+          {jevAvailable || !canSetUpJev ? null : (
             <>
               {' · '}
               <SettingsInlineLink onClick={openClassificationProviders}>{t('settings.jevAccess.setUp')}</SettingsInlineLink>

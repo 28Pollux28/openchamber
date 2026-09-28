@@ -46,6 +46,8 @@ export interface SettingsRuntimeContext {
   routingAvailable: boolean;
   /** The server runs in enterprise mode: pages for what it refuses are hidden. */
   enterpriseMode: boolean;
+  /** Enterprise mode keeps Jev off (no administrator's endpoint), so pages that only configure Jev are hidden. */
+  jevBlockedByEnterprise: boolean;
 }
 
 export interface SettingsPageMeta {
@@ -203,7 +205,7 @@ export const SETTINGS_PAGE_METADATA: readonly SettingsPageMeta[] = [
     kind: 'single',
     description: 'Pick the right model for each message automatically, and get asked before risky actions in auto-accepted sessions.',
     keywords: ['routing', 'auto', 'jev', 'typesafe', 'model routing', 'categories', 'safety net', 'auto-accept', 'fallback'],
-    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable,
+    isAvailable: (ctx) => !ctx.isVSCode && ctx.routingAvailable && !ctx.jevBlockedByEnterprise,
   },
   {
     slug: 'magic-prompts',
