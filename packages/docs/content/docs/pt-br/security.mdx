@@ -57,6 +57,7 @@ O caminho não depende de como o OpenChamber foi instalado. O app desktop, o ser
   "enterpriseMode": true,
   "organization": "Acme",
   "relayUrl": "wss://relay.acme.com/ws",
+  "allowNetworkAccess": false,
   "jev": {
     "url": "https://llm.acme.com/v1",
     "model": "acme-classifier",
@@ -65,10 +66,10 @@ O caminho não depende de como o OpenChamber foi instalado. O app desktop, o ser
 }
 ```
 
-Só `enterpriseMode` é obrigatório. `organization` aparece nas Configurações como "Gerenciado por Acme", para que as pessoas saibam quem tomou a decisão. `relayUrl` e `jev` fixam o seu próprio relay e o seu próprio endpoint do Jev, descritos abaixo.
+Só `enterpriseMode` é obrigatório. `organization` aparece nas Configurações como "Gerenciado por Acme", para que as pessoas saibam quem tomou a decisão. `relayUrl` e `jev` fixam o seu próprio relay e o seu próprio endpoint do Jev, e `allowNetworkAccess` deixa outros dispositivos acessarem o OpenChamber pela rede. Os três estão descritos abaixo.
 
 - Nada que um usuário defina, nas Configurações ou no ambiente, desliga o que o arquivo liga.
-- Um valor no arquivo tem prioridade sobre a variável de ambiente correspondente.
+- Quando o arquivo liga o modo empresarial, só o arquivo decide. As variáveis de ambiente abaixo para o relay, o Jev e o acesso pela rede são ignoradas, porque um usuário pode defini-las por conta própria.
 - Se o arquivo existe mas não pode ser lido ou não é um JSON válido, o modo empresarial continua ativo e nada é fixado. As Configurações avisam que a política não pôde ser lida. Um arquivo quebrado nunca remove a proteção sem avisar.
 - As mudanças valem sem reiniciar.
 - O OpenChamber roda como o usuário, então o usuário consegue ler o arquivo. Leve isso em conta antes de colocar uma chave de API nele.
@@ -83,6 +84,8 @@ OPENCHAMBER_ENTERPRISE_MODE=1
 
 Em um notebook é uma trava mais fraca: o app desktop lê a variável do perfil do shell de login (por exemplo, `~/.zshrc`), e o usuário pode editar esse arquivo. Nesse caso, use o arquivo de política.
 
+Com a variável, o relay, o Jev e o acesso pela rede também vêm das próprias variáveis: `OPENCHAMBER_RELAY_URL`, `OPENCHAMBER_JEV_URL` e `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1`. No Docker você vai precisar da última, já que o servidor tem que escutar além do contêiner.
+
 ### O que muda
 
 - Os provedores de modelos vêm só da sua configuração do OpenCode. Conectar um provedor, entrar em um, adicionar uma chave ou criar um provedor personalizado fica desativado no OpenChamber; remover ou trocar contas que já existem continua funcionando. Isso só fecha a entrada pelo app; a trava em si é a política do OpenCode descrita abaixo.
@@ -91,7 +94,8 @@ Em um notebook é uma trava mais fraca: o app desktop lê a variável do perfil 
 - As notificações push para celulares e navegadores levam só um título genérico como "Agent response is ready", sem o texto da mensagem nem o nome da sessão. As notificações do desktop ficam na sua máquina e mantêm o texto completo.
 - As verificações de atualização continuam rodando, então as correções de segurança ainda chegam até você, mas elas nunca reportam uso, nem mesmo o ID de instalação anônimo.
 - Os [túneis externos](/pt-br/tunnels/) (Cloudflare, ngrok) ficam desativados. Um provedor de túnel descriptografa o tráfego na borda dele e vê cada requisição em texto puro.
-- O [Private Relay](/pt-br/private-relay/) só funciona pelo seu próprio relay. Rode um [relay auto-hospedado](https://github.com/openchamber/openchamber-relay) e aponte o OpenChamber para ele com `relayUrl` no arquivo de política ou com `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws`. O relay compartilhado também não consegue ler o seu tráfego, já que é criptografado de ponta a ponta, mas o seu próprio mantém os metadados de conexão e a entrada para esta máquina dentro da sua rede. O pareamento de dispositivos na sua rede local continua funcionando.
+- O [Private Relay](/pt-br/private-relay/) só funciona pelo seu próprio relay. Rode um [relay auto-hospedado](https://github.com/openchamber/openchamber-relay) e aponte o OpenChamber para ele com `relayUrl` no arquivo de política ou com `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws`. O relay compartilhado também não consegue ler o seu tráfego, já que é criptografado de ponta a ponta, mas o seu próprio mantém os metadados de conexão e a entrada para esta máquina dentro da sua rede. Sem o seu próprio relay, não dá para parear nenhum dispositivo.
+- O OpenChamber escuta só na máquina em que roda. A configuração do desktop que deixa outros dispositivos da rede local abrirem o app fica desativada, e o servidor se recusa a iniciar em um endereço de rede, seja pela CLI (`--host`, `--lan`) ou pelo ambiente. Se o arquivo de política aparecer com o app rodando, as conexões de outras máquinas são derrubadas até a próxima inicialização. Libere o acesso pela rede com `"allowNetworkAccess": true` no arquivo de política, ou com `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1` onde o ambiente liga o modo empresarial. Lembre que a conexão é HTTP puro, então numa rede compartilhada qualquer um consegue lê-la; coloque um servidor que outras pessoas acessam atrás do [seu próprio HTTPS](/pt-br/reverse-proxy/).
 - Na extensão do VS Code, conectar provedores fica desativado e as verificações de atualização não reportam uso. Ela já não tem Jev, relay, túneis, notificações push nem voz na nuvem.
 
 As tarefas do modelo pequeno (títulos de sessão, resumos, mensagens de commit, o percurso de mudanças) não precisam de nenhum modo especial. Elas sempre rodam no modelo pequeno que você escolheu nas Configurações, em um modelo pequeno do provedor com que você está trabalhando ou no modelo padrão da sua configuração do OpenCode. Elas nunca recorrem a outro provedor que você por acaso tenha conectado.

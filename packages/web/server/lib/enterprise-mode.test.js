@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { isEnterpriseMode, isProviderConnectRequest, policyFilePaths, publicEnterprisePolicy, readEnterprisePolicy } from './enterprise-mode.js';
+import {
+  isEnterpriseMode,
+  isNetworkAccessBlocked,
+  isProviderConnectRequest,
+  policyFilePaths,
+  publicEnterprisePolicy,
+  readEnterprisePolicy,
+} from './enterprise-mode.js';
 
 const missing = () => {
   throw Object.assign(new Error('no such file'), { code: 'ENOENT' });
@@ -29,6 +36,7 @@ describe('enterprise policy', () => {
       policyError: null,
       relayUrl: null,
       jev: null,
+      allowNetworkAccess: false,
     });
   });
 
@@ -54,6 +62,48 @@ describe('enterprise policy', () => {
       policyError: null,
       relayUrl: 'wss://relay.acme.test/ws',
       jev: { url: 'https://llm.acme.test/v1', model: 'acme-jev', apiKey: 'k' },
+      allowNetworkAccess: false,
+    });
+  });
+
+  it('ignores the environment\'s pins and network allowance once the file turns enterprise mode on', () => {
+    const policy = readEnterprisePolicy(machine(
+      { [LINUX_POLICY]: '{"enterpriseMode": true}' },
+      { env: {
+        OPENCHAMBER_RELAY_URL: 'wss://my-relay.test/ws',
+        OPENCHAMBER_JEV_URL: 'https://my-endpoint.test',
+        OPENCHAMBER_ALLOW_NETWORK_ACCESS: '1',
+      } },
+    ));
+    expect(policy.relayUrl).toBeNull();
+    expect(policy.jev).toBeNull();
+    expect(policy.allowNetworkAccess).toBe(false);
+  });
+
+  it('takes the pins and network allowance from the environment when the environment turns it on', () => {
+    const policy = readEnterprisePolicy(machine({}, { env: {
+      OPENCHAMBER_ENTERPRISE_MODE: '1',
+      OPENCHAMBER_RELAY_URL: 'wss://relay.acme.test/ws',
+      OPENCHAMBER_ALLOW_NETWORK_ACCESS: 'true',
+    } }));
+    expect(policy.relayUrl).toBe('wss://relay.acme.test/ws');
+    expect(policy.allowNetworkAccess).toBe(true);
+  });
+
+  describe('network access', () => {
+    it('is blocked in enterprise mode unless allowed', () => {
+      expect(isNetworkAccessBlocked(machine({ [LINUX_POLICY]: '{"enterpriseMode": true}' }))).toBe(true);
+      expect(isNetworkAccessBlocked(machine({ [LINUX_POLICY]: '{"enterpriseMode": true, "allowNetworkAccess": true}' }))).toBe(false);
+      expect(isNetworkAccessBlocked(machine({}, { env: { OPENCHAMBER_ENTERPRISE_MODE: '1' } }))).toBe(true);
+      expect(isNetworkAccessBlocked(machine({}, { env: { OPENCHAMBER_ENTERPRISE_MODE: '1', OPENCHAMBER_ALLOW_NETWORK_ACCESS: '1' } }))).toBe(false);
+    });
+
+    it('is never blocked outside enterprise mode', () => {
+      expect(isNetworkAccessBlocked(machine({}))).toBe(false);
+    });
+
+    it('stays blocked when the policy file is broken', () => {
+      expect(isNetworkAccessBlocked(machine({ [LINUX_POLICY]: '{"allowNetworkAccess": tru' }))).toBe(true);
     });
   });
 
@@ -121,7 +171,7 @@ describe('enterprise policy', () => {
     const policy = publicEnterprisePolicy(machine({
       [LINUX_POLICY]: '{"enterpriseMode": true, "organization": "Acme", "jev": {"url": "https://x.test", "apiKey": "secret"}}',
     }));
-    expect(policy).toEqual({ enterpriseMode: true, source: 'policy-file', organization: 'Acme', policyError: null });
+    expect(policy).toEqual({ enterpriseMode: true, source: 'policy-file', organization: 'Acme', policyError: null, networkAccessBlocked: true });
   });
 
   describe('file location', () => {

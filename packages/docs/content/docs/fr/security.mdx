@@ -57,6 +57,7 @@ Le chemin ne dépend pas de la façon dont OpenChamber est installé. L’applic
   "enterpriseMode": true,
   "organization": "Acme",
   "relayUrl": "wss://relay.acme.com/ws",
+  "allowNetworkAccess": false,
   "jev": {
     "url": "https://llm.acme.com/v1",
     "model": "acme-classifier",
@@ -65,10 +66,10 @@ Le chemin ne dépend pas de la façon dont OpenChamber est installé. L’applic
 }
 ```
 
-Seul `enterpriseMode` est nécessaire. `organization` s’affiche dans les Paramètres sous la forme « Géré par Acme », pour que chacun sache qui a pris la décision. `relayUrl` et `jev` fixent votre propre relais et votre propre point de terminaison Jev, décrits plus bas.
+Seul `enterpriseMode` est nécessaire. `organization` s’affiche dans les Paramètres sous la forme « Géré par Acme », pour que chacun sache qui a pris la décision. `relayUrl` et `jev` fixent votre propre relais et votre propre point de terminaison Jev, et `allowNetworkAccess` permet à d’autres appareils d’atteindre OpenChamber par le réseau. Les trois sont décrits plus bas.
 
 - Rien de ce qu’un utilisateur règle, dans les Paramètres ou dans l’environnement, ne désactive ce que le fichier active.
-- Une valeur du fichier l’emporte sur sa variable d’environnement.
+- Quand le fichier active le mode entreprise, seul le fichier décide. Les variables d’environnement ci-dessous pour le relais, Jev et l’accès réseau sont ignorées, car un utilisateur peut les définir lui-même.
 - Si le fichier existe mais ne peut pas être lu ou n’est pas un JSON valide, le mode entreprise reste actif et rien n’est fixé. Les Paramètres indiquent que la politique n’a pas pu être lue. Un fichier cassé ne lève jamais la protection en silence.
 - Les modifications s’appliquent sans redémarrage.
 - OpenChamber tourne sous le compte de l’utilisateur, donc l’utilisateur peut lire le fichier. Pensez-y avant d’y mettre une clé d’API.
@@ -83,6 +84,8 @@ OPENCHAMBER_ENTERPRISE_MODE=1
 
 Sur un portable, c’est un verrou plus faible : l’application de bureau la lit dans le profil du shell de connexion (par exemple `~/.zshrc`), et l’utilisateur peut le modifier. Utilisez plutôt le fichier de politique.
 
+Avec la variable, le relais, Jev et l’accès réseau viennent eux aussi de leurs propres variables : `OPENCHAMBER_RELAY_URL`, `OPENCHAMBER_JEV_URL` et `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1`. Dans Docker, il vous faudra la dernière, puisque le serveur doit écouter au-delà du conteneur.
+
 ### Ce qui change
 
 - Les fournisseurs de modèles viennent uniquement de votre configuration OpenCode. Connecter un fournisseur, s’y identifier, ajouter une clé ou créer un fournisseur personnalisé est désactivé dans OpenChamber ; supprimer ou changer de compte existant fonctionne toujours. Cela ferme seulement l’accès par l’application ; le verrou lui-même, c’est la politique OpenCode décrite plus bas.
@@ -91,7 +94,8 @@ Sur un portable, c’est un verrou plus faible : l’application de bureau la li
 - Les notifications push vers les téléphones et les navigateurs ne portent qu’un titre générique comme « Agent response is ready », sans texte de message ni nom de session. Les notifications de bureau restent sur votre machine et gardent le texte complet.
 - Les vérifications de mises à jour continuent, pour que les correctifs de sécurité vous parviennent toujours, mais elles ne transmettent jamais de données d’utilisation, pas même l’identifiant d’installation anonyme.
 - Les [tunnels externes](/tunnels/) (Cloudflare, ngrok) sont désactivés. Un fournisseur de tunnel déchiffre le trafic à sa périphérie et voit chaque requête en clair.
-- Le [Relais privé](/private-relay/) ne fonctionne que via votre propre relais. Faites tourner un [relais auto-hébergé](https://github.com/openchamber/openchamber-relay) et pointez OpenChamber dessus avec `relayUrl` dans le fichier de politique ou avec `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws`. Le relais partagé ne peut pas lire votre trafic non plus, puisqu’il est chiffré de bout en bout, mais le vôtre garde les métadonnées de connexion et l’accès à cette machine à l’intérieur de votre réseau. L’association d’appareils sur votre réseau local continue de fonctionner.
+- Le [Relais privé](/private-relay/) ne fonctionne que via votre propre relais. Faites tourner un [relais auto-hébergé](https://github.com/openchamber/openchamber-relay) et pointez OpenChamber dessus avec `relayUrl` dans le fichier de politique ou avec `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws`. Le relais partagé ne peut pas lire votre trafic non plus, puisqu’il est chiffré de bout en bout, mais le vôtre garde les métadonnées de connexion et l’accès à cette machine à l’intérieur de votre réseau. Sans votre propre relais, aucun appareil ne peut être associé.
+- OpenChamber n’écoute que sur la machine où il tourne. Le réglage de bureau qui permet aux autres appareils du réseau local d’ouvrir l’application est désactivé, et le serveur refuse de démarrer sur une adresse réseau, que ce soit via la CLI (`--host`, `--lan`) ou via l’environnement. Si le fichier de politique apparaît pendant que l’application tourne, les connexions depuis d’autres machines sont coupées jusqu’au prochain démarrage. Autorisez l’accès réseau avec `"allowNetworkAccess": true` dans le fichier de politique, ou avec `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1` là où l’environnement active le mode entreprise. Gardez en tête que la connexion passe en HTTP simple, donc sur un réseau partagé n’importe qui peut la lire ; placez un serveur que d’autres atteignent derrière [votre propre HTTPS](/reverse-proxy/).
 - Dans l’extension VS Code, la connexion de fournisseurs est désactivée et les vérifications de mises à jour ne transmettent pas de données d’utilisation. Elle n’a de toute façon ni Jev, ni relais, ni tunnels, ni notifications push, ni synthèse vocale dans le cloud.
 
 Les tâches du petit modèle (titres de session, récapitulatifs, messages de commit, la revue guidée des modifications) n’ont besoin d’aucun mode particulier. Elles tournent toujours sur le petit modèle choisi dans les Paramètres, sur un petit modèle du fournisseur avec lequel vous travaillez, ou sur le modèle par défaut de votre configuration OpenCode. Elles ne se rabattent jamais sur un autre fournisseur qui se trouve simplement connecté.

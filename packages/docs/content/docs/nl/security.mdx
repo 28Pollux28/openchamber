@@ -57,6 +57,7 @@ Het pad is onafhankelijk van de installatie van OpenChamber. De desktopapp, de v
   "enterpriseMode": true,
   "organization": "Acme",
   "relayUrl": "wss://relay.acme.com/ws",
+  "allowNetworkAccess": false,
   "jev": {
     "url": "https://llm.acme.com/v1",
     "model": "acme-classifier",
@@ -65,10 +66,10 @@ Het pad is onafhankelijk van de installatie van OpenChamber. De desktopapp, de v
 }
 ```
 
-Alleen `enterpriseMode` is verplicht. `organization` verschijnt in Instellingen als 'Beheerd door Acme', zodat duidelijk is wie dit heeft ingesteld. `relayUrl` en `jev` leggen uw eigen relay en Jev-adres vast, zoals hieronder beschreven.
+Alleen `enterpriseMode` is verplicht. `organization` verschijnt in Instellingen als 'Beheerd door Acme', zodat duidelijk is wie dit heeft ingesteld. `relayUrl` en `jev` leggen uw eigen relay en Jev-adres vast, en met `allowNetworkAccess` kunnen andere apparaten OpenChamber via het netwerk bereiken. Alle drie worden hieronder beschreven.
 
 - Gebruikers kunnen wat het bestand inschakelt niet uitschakelen via Instellingen of omgevingsvariabelen.
-- Een waarde in het bestand krijgt voorrang op de bijbehorende omgevingsvariabele.
+- Als het bestand de enterprise-modus inschakelt, beslist alleen het bestand. De omgevingsvariabelen hieronder voor de relay, Jev en netwerktoegang worden genegeerd, omdat een gebruiker die zelf kan instellen.
 - Als het bestand bestaat maar onleesbaar is of geen geldige JSON bevat, blijft de enterprise-modus aan zonder vastgelegde adressen. Instellingen meldt dat het beleid niet kon worden gelezen. Een ongeldig bestand heft de bescherming nooit stilzwijgend op.
 - Wijzigingen gelden zonder herstart.
 - OpenChamber draait onder de gebruiker, dus die kan het bestand lezen. Houd daar rekening mee voordat u er een API-sleutel in zet.
@@ -83,6 +84,8 @@ OPENCHAMBER_ENTERPRISE_MODE=1
 
 Op een laptop is dit een zwakkere beperking. De desktopapp leest de waarde uit het profiel van de aanmeldshell, bijvoorbeeld `~/.zshrc`, en de gebruiker kan dat bewerken. Gebruik daar het beleidsbestand.
 
+Met de variabele komen de relay, Jev en netwerktoegang ook uit hun eigen variabelen: `OPENCHAMBER_RELAY_URL`, `OPENCHAMBER_JEV_URL` en `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1`. In Docker hebt u de laatste nodig, omdat de server ook buiten de container moet luisteren.
+
 ### Wat verandert er?
 
 - Modelproviders komen alleen uit uw OpenCode-configuratie. Providers verbinden, aanmelden, sleutels toevoegen en aangepaste providers aanmaken zijn uitgeschakeld in OpenChamber. Bestaande accounts verwijderen of ertussen wisselen blijft mogelijk. Dit sluit alleen de toegang via de app af. De eigenlijke beperking wordt afgedwongen door het hieronder beschreven OpenCode-beleid.
@@ -91,7 +94,8 @@ Op een laptop is dit een zwakkere beperking. De desktopapp leest de waarde uit h
 - Pushmeldingen naar telefoons en browsers bevatten alleen een algemene titel, zoals 'Antwoord van de agent is klaar', zonder berichttekst of sessienaam. Desktopmeldingen blijven op uw computer en behouden de volledige tekst.
 - Updatecontroles blijven werken, zodat beveiligingsupdates u bereiken, maar versturen nooit gebruiksgegevens, zelfs geen anonieme installatie-ID.
 - [Externe tunnels](/nl/tunnels/) via Cloudflare of ngrok staan uit. Een tunnelprovider ontsleutelt het verkeer aan de rand van zijn netwerk en kan elk verzoek lezen.
-- De [Privérelay](/nl/private-relay/) werkt alleen via uw eigen relay. Draai een [zelfgehoste relay](https://github.com/openchamber/openchamber-relay) en stel die in met `relayUrl` in het beleidsbestand of `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws`. De gedeelde relay kan uw verkeer ook niet lezen dankzij end-to-endversleuteling, maar een eigen relay houdt de verbindingsmetadata en de toegang tot deze computer binnen uw netwerk. Apparaten koppelen op uw lokale netwerk blijft werken.
+- De [Privérelay](/nl/private-relay/) werkt alleen via uw eigen relay. Draai een [zelfgehoste relay](https://github.com/openchamber/openchamber-relay) en stel die in met `relayUrl` in het beleidsbestand of `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws`. De gedeelde relay kan uw verkeer ook niet lezen dankzij end-to-endversleuteling, maar een eigen relay houdt de verbindingsmetadata en de toegang tot deze computer binnen uw netwerk. Zonder eigen relay kunt u helemaal geen apparaten koppelen.
+- OpenChamber luistert alleen op de computer waarop het draait. De desktopinstelling waarmee andere apparaten op het lokale netwerk de app kunnen openen staat uit, en de server weigert te starten op een netwerkadres, via de CLI (`--host`, `--lan`) of via de omgeving. Verschijnt het beleidsbestand terwijl de app draait, dan worden verbindingen van andere computers verbroken tot de volgende start. Sta netwerktoegang toe met `"allowNetworkAccess": true` in het beleidsbestand, of met `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1` als de omgeving de enterprise-modus inschakelt. Houd er rekening mee dat de verbinding onversleuteld HTTP is, dus op een gedeeld netwerk kan iedereen meelezen. Zet een server die anderen bereiken achter [uw eigen HTTPS](/nl/reverse-proxy/).
 - In de VS Code-extensie is providers verbinden uitgeschakeld en versturen updatecontroles geen gebruiksgegevens. De extensie heeft sowieso geen Jev, relay, tunnels, pushmeldingen of cloudspraak.
 
 Taken voor kleine modellen, zoals sessietitels, samenvattingen, commitberichten en rondleidingen door diffs, vereisen geen speciale modus. Ze gebruiken altijd het kleine model dat u in Instellingen kiest, een klein model van de provider waarmee u werkt, of het standaardmodel uit uw OpenCode-configuratie. Ze vallen nooit terug op een andere provider die toevallig verbonden is.

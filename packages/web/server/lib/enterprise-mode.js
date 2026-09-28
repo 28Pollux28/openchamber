@@ -15,11 +15,16 @@ import { z } from 'zod';
  *   where the administrator owns the environment.
  * Read at every use, so a changed file applies without a restart.
  *
- * The policy file also pins the self-hosted relay and the Jev endpoint. A
- * value in the file wins over its environment variable; the variable applies
- * only when the file does not name that value. A file that exists but cannot
- * be read or parsed turns enterprise mode on and pins nothing: a broken
- * policy must not quietly lift the protection it was meant to give.
+ * The policy file also pins the self-hosted relay and the Jev endpoint, and
+ * can allow network access. Who decides those follows who turned the mode on:
+ * - the file turned it on: only the file's values count. The environment is
+ *   the user's to edit, so a variable there must not reopen what the
+ *   administrator left closed (point Jev at an endpoint of their own, say);
+ * - otherwise (the environment turned it on, or the mode is off): a value in
+ *   the file wins over its variable, and the variable fills the gap.
+ * A file that exists but cannot be read or parsed turns enterprise mode on,
+ * pins nothing and allows nothing: a broken policy must not quietly lift the
+ * protection it was meant to give.
  *
  * Each feature that could send conversation content anywhere else checks it
  * at its own server boundary:
@@ -36,6 +41,11 @@ import { z } from 'zod';
  *   `dictation`).
  * - Push notifications carry no message text or session name (`notifications`).
  * - Update checks still run but never report usage (`package-manager.js`).
+ * - The server listens only on this machine unless network access is allowed
+ *   (`allowNetworkAccess` / `OPENCHAMBER_ALLOW_NETWORK_ACCESS`): it refuses
+ *   to start on a network address and drops connections from other machines
+ *   (`../index.js`); the desktop shell binds loopback (`packages/electron`).
+ *   Pairing a device then goes through a pinned relay only.
  * The VS Code extension host, which runs no OpenChamber server, reads the
  * same policy through this module for the parts it has (provider connection,
  * update checks).
@@ -68,6 +78,7 @@ const policyFileSchema = z.object({
   enterpriseMode: z.boolean().optional(),
   organization: optionalText,
   relayUrl: optionalText,
+  allowNetworkAccess: z.boolean().optional(),
   jev: z.object({ url: optionalText, model: optionalText, apiKey: optionalText }).optional(),
 }).refine((policy) => !policy.jev || policy.jev.url || (!policy.jev.model && !policy.jev.apiKey), {
   message: '"jev" needs a "url"',
@@ -88,11 +99,12 @@ const parsePolicyFile = (text) => {
     const field = issue.path.length > 0 ? `"${issue.path.join('.')}": ` : '';
     throw new Error(`${field}${issue.message}`);
   }
-  const { enterpriseMode, organization, relayUrl, jev } = parsed.data;
+  const { enterpriseMode, organization, relayUrl, allowNetworkAccess, jev } = parsed.data;
   return {
     enterpriseMode: enterpriseMode === true,
     organization: organization ?? null,
     relayUrl,
+    allowNetworkAccess,
     jev: jev?.url ? { url: jev.url, model: jev.model ?? null, apiKey: jev.apiKey ?? null } : undefined,
   };
 };
@@ -133,8 +145,8 @@ const readPolicyFile = ({ platform = process.platform, env = process.env, readFi
   return { status: 'absent' };
 };
 
-const envFlag = (env) => {
-  const value = (env.OPENCHAMBER_ENTERPRISE_MODE ?? '').trim().toLowerCase();
+const envFlag = (env, name) => {
+  const value = (env[name] ?? '').trim().toLowerCase();
   return value === '1' || value === 'true';
 };
 
@@ -158,33 +170,50 @@ export const readEnterprisePolicy = (options = {}) => {
       policyError: file.error,
       relayUrl: null,
       jev: null,
+      allowNetworkAccess: false,
     };
   }
 
   const fromFile = file.status === 'ok' ? file.policy : null;
-  const envJevUrl = envString(env, 'OPENCHAMBER_JEV_URL');
+  const fileGoverns = fromFile?.enterpriseMode === true;
+  const enterpriseMode = fileGoverns || envFlag(env, 'OPENCHAMBER_ENTERPRISE_MODE');
+
+  // With the file in charge the environment adds nothing (see above).
+  const envJevUrl = fileGoverns ? null : envString(env, 'OPENCHAMBER_JEV_URL');
   const jev = fromFile?.jev
     ?? (envJevUrl
       ? { url: envJevUrl, model: envString(env, 'OPENCHAMBER_JEV_MODEL'), apiKey: envString(env, 'OPENCHAMBER_JEV_API_KEY') }
       : null);
-  const enterpriseMode = fromFile?.enterpriseMode === true || envFlag(env);
+  const relayUrl = fromFile?.relayUrl ?? (fileGoverns ? null : envString(env, 'OPENCHAMBER_RELAY_URL'));
+  const allowNetworkAccess = fromFile?.allowNetworkAccess
+    ?? (fileGoverns ? false : envFlag(env, 'OPENCHAMBER_ALLOW_NETWORK_ACCESS'));
 
   return {
     enterpriseMode,
-    source: fromFile?.enterpriseMode ? 'policy-file' : enterpriseMode ? 'environment' : null,
+    source: fileGoverns ? 'policy-file' : enterpriseMode ? 'environment' : null,
     organization: fromFile?.organization ?? null,
     policyError: null,
-    relayUrl: fromFile?.relayUrl ?? envString(env, 'OPENCHAMBER_RELAY_URL'),
+    relayUrl,
     jev,
+    allowNetworkAccess,
   };
 };
 
 export const isEnterpriseMode = (options) => readEnterprisePolicy(options).enterpriseMode;
 
+/** Whether enterprise mode keeps this server off the network (loopback only). */
+export const isNetworkAccessBlocked = (options) => {
+  const policy = readEnterprisePolicy(options);
+  return policy.enterpriseMode && !policy.allowNetworkAccess;
+};
+
+export const NETWORK_ACCESS_BLOCKED_ERROR = 'Enterprise mode keeps OpenChamber on this machine: it does not listen on a network address. '
+  + 'An administrator can allow it with "allowNetworkAccess": true in the policy file, or OPENCHAMBER_ALLOW_NETWORK_ACCESS=1 where the environment turns enterprise mode on.';
+
 /** What a client may know about the policy; pinned endpoints and keys stay on the server. */
 export const publicEnterprisePolicy = (options) => {
-  const { enterpriseMode, source, organization, policyError } = readEnterprisePolicy(options);
-  return { enterpriseMode, source, organization, policyError };
+  const { enterpriseMode, source, organization, policyError, allowNetworkAccess } = readEnterprisePolicy(options);
+  return { enterpriseMode, source, organization, policyError, networkAccessBlocked: enterpriseMode && !allowNetworkAccess };
 };
 
 // OpenCode routes that connect a provider, sign in or add a key: every POST

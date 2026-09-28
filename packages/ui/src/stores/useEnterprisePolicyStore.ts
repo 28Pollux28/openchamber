@@ -16,11 +16,13 @@ const enterprisePolicySchema = z.object({
   source: z.enum(['policy-file', 'environment']).nullable(),
   organization: z.string().min(1).nullable(),
   policyError: z.string().min(1).nullable(),
+  // Servers from before the network rule never blocked it.
+  networkAccessBlocked: z.boolean().default(false),
 });
 
 type EnterprisePolicy = z.infer<typeof enterprisePolicySchema>;
 
-const NO_POLICY: EnterprisePolicy = { enterpriseMode: false, source: null, organization: null, policyError: null };
+const NO_POLICY: EnterprisePolicy = { enterpriseMode: false, source: null, organization: null, policyError: null, networkAccessBlocked: false };
 
 /**
  * The policy, or null when this server predates the route (404): those

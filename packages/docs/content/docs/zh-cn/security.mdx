@@ -57,6 +57,7 @@ passkey 与当前密码绑定。如果你更改或移除密码，已保存的 pa
   "enterpriseMode": true,
   "organization": "Acme",
   "relayUrl": "wss://relay.acme.com/ws",
+  "allowNetworkAccess": false,
   "jev": {
     "url": "https://llm.acme.com/v1",
     "model": "acme-classifier",
@@ -65,10 +66,10 @@ passkey 与当前密码绑定。如果你更改或移除密码，已保存的 pa
 }
 ```
 
-只有 `enterpriseMode` 是必需的。`organization` 会在设置中显示为“由 Acme 管理”，让大家知道是谁做的决定。`relayUrl` 和 `jev` 用于固定你自己的中继和你自己的 Jev 端点，详见下文。
+只有 `enterpriseMode` 是必需的。`organization` 会在设置中显示为“由 Acme 管理”，让大家知道是谁做的决定。`relayUrl` 和 `jev` 用于固定你自己的中继和你自己的 Jev 端点，`allowNetworkAccess` 则允许其他设备通过网络访问 OpenChamber。这三项详见下文。
 
 - 用户在设置或环境中做的任何设置，都无法关闭文件开启的功能。
-- 文件中的值优先于对应的环境变量。
+- 当文件开启企业模式时，只由文件决定。下文中用于中继、Jev 和网络访问的环境变量会被忽略，因为用户可以自行设置它们。
 - 如果文件存在但无法读取，或不是有效的 JSON，企业模式保持开启，且不会固定任何内容。设置中会提示无法读取策略。损坏的文件绝不会悄悄解除保护。
 - 更改无需重启即可生效。
 - OpenChamber 以用户身份运行，因此用户可以读取这个文件。在里面放 API 密钥之前请考虑到这一点。
@@ -83,6 +84,8 @@ OPENCHAMBER_ENTERPRISE_MODE=1
 
 在笔记本电脑上这是一把较弱的锁：桌面应用从登录 shell 的配置文件（例如 `~/.zshrc`）读取它，而用户可以编辑这个文件。在笔记本电脑上请使用策略文件。
 
+使用这个变量时，中继、Jev 和网络访问也来自各自的变量：`OPENCHAMBER_RELAY_URL`、`OPENCHAMBER_JEV_URL` 和 `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1`。在 Docker 中你需要最后一个，因为服务器必须监听来自容器之外的连接。
+
 ### 会有哪些变化
 
 - 模型提供商只来自你的 OpenCode 配置。在 OpenChamber 中连接提供商、登录提供商、添加密钥或创建自定义提供商都会关闭；移除或切换已有账户仍然可用。这只是关上了经由应用的入口；真正的锁是下文所述的 OpenCode 策略。
@@ -91,7 +94,8 @@ OPENCHAMBER_ENTERPRISE_MODE=1
 - 发往手机和浏览器的推送通知只带一个通用标题，例如“Agent response is ready”，不含消息文本或会话名称。桌面通知留在你的机器上，保留完整文本。
 - 更新检查照常运行，安全修复仍能送达，但它从不上报使用情况，连匿名安装 ID 也不上报。
 - [外部隧道](/zh-cn/tunnels/)（Cloudflare、ngrok）会关闭。隧道提供商会在其边缘解密流量，能以明文看到每一个请求。
-- [Private Relay](/zh-cn/private-relay/) 只能通过你自己的中继使用。运行一个[自托管中继](https://github.com/openchamber/openchamber-relay)，并用策略文件中的 `relayUrl` 或 `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws` 让 OpenChamber 指向它。共享中继同样无法读取你的流量，因为它是端到端加密的，但你自己的中继能把连接元数据和进入这台机器的通道留在你的网络内。在本地网络中配对设备照常工作。
+- [Private Relay](/zh-cn/private-relay/) 只能通过你自己的中继使用。运行一个[自托管中继](https://github.com/openchamber/openchamber-relay)，并用策略文件中的 `relayUrl` 或 `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws` 让 OpenChamber 指向它。共享中继同样无法读取你的流量，因为它是端到端加密的，但你自己的中继能把连接元数据和进入这台机器的通道留在你的网络内。没有你自己的中继，就完全无法配对设备。
+- OpenChamber 只在它所运行的机器上监听。允许本地网络中其他设备打开应用的桌面设置会关闭，服务器也会拒绝在网络地址上启动，无论是通过 CLI（`--host`、`--lan`）还是通过环境。如果应用运行期间出现了策略文件，来自其他机器的连接会被断开，直到下次启动。要允许网络访问，请在策略文件中设置 `"allowNetworkAccess": true`，或在由环境开启企业模式的情况下设置 `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1`。请注意连接是未加密的 HTTP，在共享网络中任何人都能读取；其他人要访问的服务器，请放在[你自己的 HTTPS](/zh-cn/reverse-proxy/) 后面。
 - 在 VS Code 扩展中，连接提供商的功能会关闭，更新检查也不上报使用情况。它本来就没有 Jev、中继、隧道、推送通知或云端语音功能。
 
 小模型任务（会话标题、摘要、提交信息、变更讲解）不需要任何特殊模式。它们始终使用你在设置中选择的小模型、你当前所用提供商的小模型，或你的 OpenCode 配置中的默认模型。它们绝不会退而使用你恰好连接着的其他提供商。
