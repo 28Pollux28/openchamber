@@ -2126,9 +2126,6 @@ handleSlashRedo: async (sessionId) => {
 
     try {
       await forkFromMessageAction(sessionId, messageId)
-      // Fork-from-message bypasses the store's createSession path, which is
-      // where the parentID-keyed session_forked event lives — report it here.
-      trackTelemetryEvent('session_forked')
 
       const { toast } = await import("sonner")
       toast.success(`Forked from ${existingSession.title}`)
