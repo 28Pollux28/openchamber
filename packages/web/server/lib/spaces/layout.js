@@ -109,6 +109,8 @@ export const IMAGE_CAT = '/bin/cat';
 export const IMAGE_CHOWN = '/bin/chown';
 export const IMAGE_CURL = '/usr/bin/curl';
 export const IMAGE_NODE = '/usr/local/bin/node';
+// The setup commands of a project run in bash, as the host's worktrees run them.
+export const IMAGE_BASH = '/bin/bash';
 const IMAGE_SLEEP = '/bin/sleep';
 // Code in: the receiving side of a push runs as `timeout -s KILL <seconds> git receive-pack <path>`.
 // The image's git is 2.39.5, and it has no `pkill`.

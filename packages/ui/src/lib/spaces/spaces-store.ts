@@ -39,8 +39,8 @@ export type SpaceAccessFailure = { provider: string; code: string; message: stri
 /** The model access a creation in this window gives once the space is ready, while and after it does. */
 type SpaceCreationAccess = { kind: 'giving' } | { kind: 'failed'; failures: readonly SpaceAccessFailure[] };
 
-/** The actions on a space the user can take from its group, from soft to hard. */
-export type SpaceAction = 'start' | 'stop' | 'restart_opencode' | 'restart' | 'remove';
+/** The actions on a space the user can take from its group, from soft to hard; `setup` runs the project's setup commands again. */
+export type SpaceAction = 'start' | 'stop' | 'restart_opencode' | 'restart' | 'setup' | 'remove';
 
 /** An action this window started on a space: under way, or failed with the server's reason. */
 export type SpaceActionState =
@@ -88,6 +88,10 @@ type SpacesState = {
   deleteDialog: string | null;
   openDeleteDialog: (spaceId: string) => void;
   closeDeleteDialog: () => void;
+  /** The window with the end of a failed setup command's output, open on one space. */
+  setupOutputDialog: string | null;
+  openSetupOutputDialog: (spaceId: string) => void;
+  closeSetupOutputDialog: () => void;
   /** The phone's sheet of a space's actions, where the desktop has the group's menu. */
   actionsSheet: string | null;
   openActionsSheet: (spaceId: string) => void;
@@ -183,6 +187,9 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
   deleteDialog: null,
   openDeleteDialog: (spaceId) => set({ deleteDialog: spaceId }),
   closeDeleteDialog: () => set({ deleteDialog: null }),
+  setupOutputDialog: null,
+  openSetupOutputDialog: (spaceId) => set({ setupOutputDialog: spaceId }),
+  closeSetupOutputDialog: () => set({ setupOutputDialog: null }),
   actionsSheet: null,
   openActionsSheet: (spaceId) => set({ actionsSheet: spaceId }),
   closeActionsSheet: () => set({ actionsSheet: null }),
@@ -213,7 +220,7 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
   resetForRuntimeSwitch: () => {
     progressAt.clear();
     journeyGeneration += 1;
-    set({ spaces: EMPTY, journey: null, progressRevision: 0, creationAccess: new Map(), accessDialog: null, actions: new Map(), deleteDialog: null, actionsSheet: null });
+    set({ spaces: EMPTY, journey: null, progressRevision: 0, creationAccess: new Map(), accessDialog: null, actions: new Map(), deleteDialog: null, setupOutputDialog: null, actionsSheet: null });
   },
   forgetForSwitchOff: () => get().resetForRuntimeSwitch(),
 }));

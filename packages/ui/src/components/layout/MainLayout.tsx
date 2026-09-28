@@ -18,6 +18,7 @@ import { SessionDialogs } from '@/components/session/SessionDialogs';
 import { ScheduledTasksDialog } from '@/components/session/ScheduledTasksDialog';
 import { SpaceAccessDialog } from '@/components/session/spaces/SpaceAccessDialog';
 import { SpaceActionsSheet, SpaceDeleteDialog } from '@/components/session/spaces/SpaceActions';
+import { SpaceSetupOutputDialog } from '@/components/session/spaces/SpaceSetupOutput';
 import { ArchiveView } from '@/components/views/ArchiveView';
 import { WorktreesView } from '@/components/views/WorktreesView';
 import { UsageStatsView } from '@/components/views/usage/UsageStatsView';
@@ -117,7 +118,7 @@ export const MainLayout: React.FC = () => {
                 <OpenCodeStatusDialog />
                 <RunAutoFusion />
                 <SessionDialogs />
-                {isolatedSpacesEnabled ? <><SpaceAccessDialog /><SpaceActionsSheet /><SpaceDeleteDialog /></> : null}
+                {isolatedSpacesEnabled ? <><SpaceAccessDialog /><SpaceActionsSheet /><SpaceDeleteDialog /><SpaceSetupOutputDialog /></> : null}
 
                 {/* Persistent top-left controls (toggle + project actions) that
                     stay put while the sidebar/header animate beneath them. */}

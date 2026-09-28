@@ -2654,6 +2654,10 @@ export function SyncProvider(props: {
         if (known && progress.step !== "ready" && progress.step !== "failed") return
         void refreshSpacesJourney().catch(() => undefined)
       },
+      onSpaceSetup: () => {
+        // The setup commands of a space moved on; what they do now is in the list.
+        void refreshSpacesJourney().catch(() => undefined)
+      },
       onReconnect: ({ replayReset }) => {
         // The first connection and every one after a gap: spaces being made or whose making failed
         // are known only to the journey list, and a step announced during the gap was missed.

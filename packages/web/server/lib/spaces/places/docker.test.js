@@ -392,6 +392,16 @@ describe('docker place: create', () => {
     }
   });
 
+  it('passes the output window and the tree kill of an exec to the runner, and nothing it was not given', async () => {
+    const fake = createFakeDocker();
+    const place = makePlace(fake);
+    await place.create(SPEC);
+    await place.exec(SPEC.id, ['/bin/true'], { timeoutMs: 5_000, maxOutputBytes: 1024, keepTail: true, killTree: true });
+    expect(fake.calls.at(-1).options).toEqual({ stdin: '', timeoutMs: 5_000, maxOutputBytes: 1024, keepTail: true, killTree: true });
+    await place.exec(SPEC.id, ['/bin/true']);
+    expect(fake.calls.at(-1).options).toEqual({ stdin: '', timeoutMs: 60_000 });
+  });
+
   it('refuses when a resource with the same name exists, and touches nothing', async () => {
     const stranger = { kind: 'volume', name: WORK, entry: { Name: WORK, Labels: null } };
     const fake = createFakeDocker({ resources: [stranger] });

@@ -24,7 +24,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MobileOverlayPanel } from '@/components/ui/MobileOverlayPanel';
 import { useI18n } from '@/lib/i18n';
-import { runSpaceAction, spaceMenuActionsOf } from '@/lib/spaces/space-repair';
+import { isSpaceActionUnavailable, runSpaceAction, spaceMenuActionsOf } from '@/lib/spaces/space-repair';
 import { useSpacesStore, type SpaceAction } from '@/lib/spaces/spaces-store';
 import { useUIStore } from '@/stores/useUIStore';
 import { SPACE_ACTION_TEXT } from './spaceActionText';
@@ -34,6 +34,7 @@ const ACTION_ICON = {
   stop: 'stop',
   restart_opencode: 'refresh',
   restart: 'restart',
+  setup: 'terminal-box',
   remove: 'delete-bin',
 } satisfies Record<SpaceAction, IconName>;
 
@@ -46,13 +47,13 @@ const pick = (spaceId: string, action: SpaceAction) => {
 const useSpaceActions = (spaceId: string) => {
   const entry = useSpacesStore((state) => state.journey?.get(spaceId));
   const busy = useSpacesStore((state) => state.actions.get(spaceId)?.kind === 'running');
-  return { actions: spaceMenuActionsOf(entry), busy };
+  return { actions: spaceMenuActionsOf(entry), busy, unavailable: (action: SpaceAction) => isSpaceActionUnavailable(entry, action) };
 };
 
 /** The "⋯" menu on a space's group header, beside the grant key and the new-session button. */
 export const SpaceActionsMenu: React.FC<{ spaceId: string; label: string; className?: string }> = ({ spaceId, label, className }) => {
   const { t } = useI18n();
-  const { actions, busy } = useSpaceActions(spaceId);
+  const { actions, busy, unavailable } = useSpaceActions(spaceId);
   if (actions.length === 0) return null;
   return (
     <DropdownMenu>
@@ -73,7 +74,7 @@ export const SpaceActionsMenu: React.FC<{ spaceId: string; label: string; classN
             {action === 'remove' && actions.length > 1 ? <DropdownMenuSeparator /> : null}
             <DropdownMenuItem
               variant={action === 'remove' ? 'destructive' : 'default'}
-              disabled={busy}
+              disabled={busy || unavailable(action)}
               onClick={() => pick(spaceId, action)}
               className="gap-2"
             >
@@ -92,7 +93,7 @@ export const SpaceActionsSheet: React.FC = () => {
   const { t } = useI18n();
   const spaceId = useSpacesStore((state) => state.actionsSheet);
   const name = useSpacesStore((state) => (spaceId ? state.journey?.get(spaceId)?.name : undefined));
-  const { actions, busy } = useSpaceActions(spaceId ?? '');
+  const { actions, busy, unavailable } = useSpaceActions(spaceId ?? '');
   const close = () => useSpacesStore.getState().closeActionsSheet();
   return (
     <MobileOverlayPanel open={spaceId !== null} title={name ?? t('spaces.actions.menu')} onClose={close}>
@@ -102,7 +103,7 @@ export const SpaceActionsSheet: React.FC = () => {
             key={action}
             variant={action === 'remove' ? 'destructive' : 'ghost'}
             className="justify-start gap-2"
-            disabled={busy}
+            disabled={busy || unavailable(action)}
             onClick={() => {
               close();
               pick(spaceId, action);

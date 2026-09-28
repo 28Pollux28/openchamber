@@ -5,7 +5,9 @@
  * access it lacks (step 4), read from the gatekeeper through the journey list, with the way to the
  * grant dialog. Since 5d-2 (step 8) it also says when a space is stopped, broken or not answering,
  * with the one action that repairs it, and what an action from the group's menu is doing or why it
- * failed. Nothing when the space runs with its access; the group then behaves like any other.
+ * failed. Since 5d-4 it says which of the project's setup commands runs, which one failed, with its
+ * output and a way to run them again, or that a run was cut off. Nothing when the space runs with
+ * its access and its setup done; the group then behaves like any other.
  */
 
 import React from 'react';
@@ -14,7 +16,7 @@ import { Icon } from '@/components/icon/Icon';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
 import { useI18n, type I18nKey } from '@/lib/i18n';
-import type { SpaceCreationStep } from '@/lib/spaces/spaces-api';
+import type { SpaceCreationStep, SpaceSetup } from '@/lib/spaces/spaces-api';
 import { spaceAccessNoticeOf } from '@/lib/spaces/space-access';
 import { runSpaceAction, spaceConditionOf, type SpaceCondition } from '@/lib/spaces/space-repair';
 import { useSpacesStore, type SpaceAction } from '@/lib/spaces/spaces-store';
@@ -34,6 +36,7 @@ const BUSY_TEXT = {
   stop: 'spaces.group.busy.stop',
   restart_opencode: 'spaces.group.busy.restartOpenCode',
   restart: 'spaces.group.busy.restart',
+  setup: 'spaces.group.busy.setup',
   remove: 'spaces.group.busy.remove',
 } satisfies Record<SpaceAction, I18nKey>;
 
@@ -42,6 +45,7 @@ const FAILED_TEXT = {
   stop: 'spaces.group.actionFailed.stop',
   restart_opencode: 'spaces.group.actionFailed.restartOpenCode',
   restart: 'spaces.group.actionFailed.restart',
+  setup: 'spaces.group.actionFailed.setup',
   remove: 'spaces.group.actionFailed.remove',
 } satisfies Record<SpaceAction, I18nKey>;
 
@@ -61,6 +65,53 @@ const Line: React.FC<{ icon: 'loader-4' | 'error-warning' | 'alert' | 'stop'; to
     <span className="min-w-0 whitespace-normal break-words text-[11px] leading-tight">{children}</span>
   </span>
 );
+
+// A command as the line shows it: its first line, cut short; the output window shows it whole.
+const MAX_COMMAND_SHOWN = 80;
+const shownCommand = (command: string): string => {
+  const lines = command.trim().split('\n');
+  const first = lines[0] ?? '';
+  return first.length > MAX_COMMAND_SHOWN || lines.length > 1 ? `${first.slice(0, MAX_COMMAND_SHOWN)}…` : first;
+};
+
+/** The setup commands' line: which runs now, which failed with its output, or a run cut off. */
+const SetupLine: React.FC<{ spaceId: string; setup: SpaceSetup | null }> = ({ spaceId, setup }) => {
+  const { t } = useI18n();
+  if (!setup || setup.state === 'done') return null;
+  const runAgain = (
+    <Button variant="outline" size="xs" onClick={() => void runSpaceAction(spaceId, 'setup')}>
+      {t('spaces.group.setup.runAgain')}
+    </Button>
+  );
+  if (setup.state === 'running') {
+    return (
+      <Line icon="loader-4" tone="muted">
+        {t('spaces.group.setup.running', { current: setup.index + 1, total: setup.total, command: shownCommand(setup.command) })}
+      </Line>
+    );
+  }
+  if (setup.state === 'interrupted') {
+    return (
+      <div className="flex flex-col gap-1">
+        <Line icon="alert" tone="warning">{t('spaces.group.setup.interrupted')}</Line>
+        <div className="flex flex-wrap gap-1">{runAgain}</div>
+      </div>
+    );
+  }
+  return (
+    <div className="flex flex-col gap-1">
+      <Line icon="error-warning" tone="error">
+        {t(setup.timedOut ? 'spaces.group.setup.timedOut' : 'spaces.group.setup.failed', { command: shownCommand(setup.command) })}
+      </Line>
+      <div className="flex flex-wrap gap-1">
+        <Button variant="outline" size="xs" onClick={() => useSpacesStore.getState().openSetupOutputDialog(spaceId)}>
+          {t('spaces.group.setup.output')}
+        </Button>
+        {runAgain}
+      </div>
+    </div>
+  );
+};
 
 export const SpaceGroupStatus: React.FC<{ spaceId: string; className?: string }> = ({ spaceId, className }) => {
   const { t } = useI18n();
@@ -119,6 +170,10 @@ export const SpaceGroupStatus: React.FC<{ spaceId: string; className?: string }>
     );
   }
 
+  if (condition?.kind === 'action_failed' && condition.action === 'setup' && condition.failure.code === 'space_setup_no_commands') {
+    return <div className={className}><Line icon="alert" tone="muted">{t('spaces.group.setup.noCommands')}</Line></div>;
+  }
+
   if (condition?.kind === 'action_failed') {
     return (
       <div className={cn('flex flex-col gap-1', className)}>
@@ -138,45 +193,54 @@ export const SpaceGroupStatus: React.FC<{ spaceId: string; className?: string }>
     );
   }
 
-  if (access?.kind === 'giving') {
-    return <div className={className}><Line icon="loader-4" tone="muted">{t('spaces.group.step.givingAccess')}</Line></div>;
-  }
+  const accessLine = (() => {
+    if (access?.kind === 'giving') {
+      return <div><Line icon="loader-4" tone="muted">{t('spaces.group.step.givingAccess')}</Line></div>;
+    }
 
-  if (access?.kind === 'failed') {
-    return (
-      <div className={cn('flex flex-col gap-1', className)}>
-        {access.failures.map((failure) => (
-          <Line key={failure.provider} icon="alert" tone="warning">
-            {t('spaces.group.accessMissing', { provider: providerName(failure.provider), reason: spaceFailureText(t, failure) })}
-          </Line>
-        ))}
-        {grantButton(access.failures[0]?.provider ?? null)}
-      </div>
-    );
-  }
+    if (access?.kind === 'failed') {
+      return (
+        <div className="flex flex-col gap-1">
+          {access.failures.map((failure) => (
+            <Line key={failure.provider} icon="alert" tone="warning">
+              {t('spaces.group.accessMissing', { provider: providerName(failure.provider), reason: spaceFailureText(t, failure) })}
+            </Line>
+          ))}
+          {grantButton(access.failures[0]?.provider ?? null)}
+        </div>
+      );
+    }
 
-  const notice = spaceAccessNoticeOf(entry);
-  if (notice?.kind === 'needs_again') {
-    return (
-      <div className={cn('flex flex-col gap-1', className)}>
-        {notice.providers.map((providerId) => (
-          <Line key={providerId} icon="alert" tone="warning">{t('spaces.group.access.needsAgain', { provider: providerName(providerId) })}</Line>
-        ))}
-        {grantButton(notice.providers[0])}
-      </div>
-    );
-  }
-  if (notice?.kind === 'no_model') {
-    return (
-      <div className={cn('flex flex-col gap-1', className)}>
-        <Line icon="alert" tone="warning">{t('spaces.group.access.noModel')}</Line>
-        {grantButton()}
-      </div>
-    );
-  }
-  if (notice?.kind === 'unknown') {
-    return <div className={className}><Line icon="alert" tone="muted">{t('spaces.group.access.unknown')}</Line></div>;
-  }
-
-  return null;
+    const notice = spaceAccessNoticeOf(entry);
+    if (notice?.kind === 'needs_again') {
+      return (
+        <div className="flex flex-col gap-1">
+          {notice.providers.map((providerId) => (
+            <Line key={providerId} icon="alert" tone="warning">{t('spaces.group.access.needsAgain', { provider: providerName(providerId) })}</Line>
+          ))}
+          {grantButton(notice.providers[0])}
+        </div>
+      );
+    }
+    if (notice?.kind === 'no_model') {
+      return (
+        <div className="flex flex-col gap-1">
+          <Line icon="alert" tone="warning">{t('spaces.group.access.noModel')}</Line>
+          {grantButton()}
+        </div>
+      );
+    }
+    if (notice?.kind === 'unknown') {
+      return <div><Line icon="alert" tone="muted">{t('spaces.group.access.unknown')}</Line></div>;
+    }
+    return null;
+  })();
+  const setupLine = <SetupLine spaceId={spaceId} setup={entry?.state === 'running' ? entry.setup : null} />;
+  if (!accessLine && (!entry?.setup || entry.setup.state === 'done' || entry.state !== 'running')) return null;
+  return (
+    <div className={cn('flex flex-col gap-1.5', className)}>
+      {setupLine}
+      {accessLine}
+    </div>
+  );
 };

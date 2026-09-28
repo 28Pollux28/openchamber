@@ -23,6 +23,8 @@ const KNOWN: ReadonlyMap<string, I18nKey> = new Map<string, I18nKey>([
   ['too_many_domains', 'spaces.failure.tooManyDomains'],
   ['gatekeeper_missing', 'spaces.failure.gatekeeperGone'],
   ['opencode_restart_failed', 'spaces.failure.openCodeRestart'],
+  ['space_setup_running', 'spaces.failure.setupRunning'],
+  ['space_setup_no_commands', 'spaces.group.setup.noCommands'],
 ]);
 
 type Translate = (key: I18nKey, params?: I18nParams) => string;
