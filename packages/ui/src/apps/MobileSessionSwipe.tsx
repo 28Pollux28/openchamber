@@ -1,16 +1,17 @@
 import React from 'react';
 import { RiArchiveLine, RiDeleteBinLine, RiEdit2Line } from '@remixicon/react';
+import { toast } from 'sonner';
 
 import { Icon } from '@/components/icon/Icon';
+import { copyTextToClipboard } from '@/lib/clipboard';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 
 export const ROW_ACTION_SLOT_WIDTH = 48;
 
-// Three slots every session row has: archive, delete and rename (AI renaming
-// lives inside the rename editor). Top-level rows add one slot each for Pin
-// and Track / Done (while the feature is on).
-export const ROW_ACTIONS_WIDTH = 3 * ROW_ACTION_SLOT_WIDTH;
+// Four slots every session row has: archive, delete, rename and Copy ID.
+// Top-level rows add one slot each for Pin and Track / Done when enabled.
+export const ROW_ACTIONS_WIDTH = 4 * ROW_ACTION_SLOT_WIDTH;
 
 export type MobileSessionWorkAction = { inWork: boolean; onToggle: () => void };
 export type MobileSessionPinAction = { pinned: boolean; onToggle: () => void };
@@ -113,8 +114,9 @@ export const MobileSwipeActionsRow: React.FC<{
 /** The session swipe actions, shared by every mobile session row. Ordered
     left to right by how often they are used on a phone: the leftmost slot is
     the one a short drag exposes first, so archive leads and the destructive
-    delete never sits under a partial swipe. */
+    delete never sits under a partial swipe. Copy ID stays in the final slot. */
 export const MobileSessionRowActions: React.FC<{
+  sessionId: string;
   title: string;
   revealed: boolean;
   confirmingDelete: boolean;
@@ -128,6 +130,7 @@ export const MobileSessionRowActions: React.FC<{
   /** Pin / Unpin, on top-level rows. */
   pin?: MobileSessionPinAction;
 }> = ({
+  sessionId,
   title,
   revealed,
   confirmingDelete,
@@ -141,6 +144,17 @@ export const MobileSessionRowActions: React.FC<{
 }) => {
   const { t } = useI18n();
   const tabIndex = revealed ? 0 : -1;
+
+  const handleCopySessionId = async () => {
+    const result = await copyTextToClipboard(sessionId).catch(() => null);
+    if (!result?.ok) {
+      toast.error(t('sessions.sidebar.session.copyId.error'));
+      return;
+    }
+
+    onRevealedChange?.(false);
+    toast.success(t('sessions.sidebar.session.copyId.success'));
+  };
 
   return (
     <>
@@ -210,6 +224,16 @@ export const MobileSessionRowActions: React.FC<{
         style={{ touchAction: 'manipulation' }}
       >
         <RiEdit2Line className="size-[18px]" />
+      </button>
+      <button
+        type="button"
+        tabIndex={tabIndex}
+        className="flex flex-1 items-center justify-center text-muted-foreground transition-colors active:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+        aria-label={t('sessions.sidebar.session.menu.copyId')}
+        onClick={() => { void handleCopySessionId(); }}
+        style={{ touchAction: 'manipulation' }}
+      >
+        <Icon name="file-copy" className="size-[18px]" />
       </button>
     </>
   );

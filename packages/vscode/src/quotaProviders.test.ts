@@ -714,6 +714,35 @@ describe('Zhipu AI Coding Plan quota provider (VS Code parity)', () => {
     assert.equal(result.usage, null);
   });
 
+  test('treats a null code without success:false as success', async () => {
+    stubFetchReturning(() => Promise.resolve(mockResponse({
+      code: null,
+      data: {
+        limits: [
+          { type: 'CREDIT_LIMIT', unit: 3, number: 5, percentage: 20 },
+        ],
+      },
+    })));
+
+    const result = await fetchQuotaForProvider('zhipuai-coding-plan');
+
+    assert.equal(result.ok, true);
+    assert.equal(result.usage!.windows['5h']!.usedPercent, 20);
+  });
+
+  test('falls back to the code when the envelope message is not text', async () => {
+    stubFetchReturning(() => Promise.resolve(mockResponse({
+      code: 1002,
+      msg: 42,
+      success: false,
+    })));
+
+    const result = await fetchQuotaForProvider('zhipuai-coding-plan');
+
+    assert.equal(result.ok, false);
+    assert.equal(result.error, 'API error: 1002');
+  });
+
   test('falls back to the code when the envelope carries no message', async () => {
     stubFetchReturning(() => Promise.resolve(mockResponse({
       code: 1001,

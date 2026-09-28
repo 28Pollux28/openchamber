@@ -42,6 +42,7 @@ import {
   type CredentialConnection,
 } from './providerAuth';
 import { ProviderGrid } from './ProviderGrid';
+import { useEnterpriseMode } from '@/stores/useEnterprisePolicyStore';
 import { ClassificationProvidersPage } from '@/components/sections/classification/ClassificationProvidersPage';
 import { SettingsBackButton } from '@/components/sections/shared/SettingsCards';
 import { ProviderAccounts } from './ProviderAccounts';
@@ -51,6 +52,7 @@ import { ProviderOAuthMethods } from './ProviderOAuthMethods';
 import {
   buildIntegrationKeyRequest,
   buildProviderUpsertRequest,
+  storeKeyAfterConfigWrite,
   CUSTOM_PROVIDER_ID,
   isConfigDefinedCustomProvider,
   providerToEditFormState,
@@ -220,6 +222,9 @@ export const ProvidersPage: React.FC = () => {
   // "connected" signal in v2) is refetched even when the selection is unchanged.
   const [integrationsRevision, setIntegrationsRevision] = React.useState(0);
   const [showAuthPanel, setShowAuthPanel] = React.useState(false);
+  // An administrator turned on enterprise mode: providers come from the
+  // OpenCode config, and the server refuses new ones and new keys.
+  const enterpriseLocked = useEnterpriseMode();
   const [authPanelDismissedForId, setAuthPanelDismissedForId] = React.useState<string | null>(null);
   const [editingCustomProviderId, setEditingCustomProviderId] = React.useState<string | null>(null);
   const [editingCustomFormInitial, setEditingCustomFormInitial] = React.useState<CustomProviderFormState | null>(null);
@@ -508,13 +513,9 @@ export const ProvidersPage: React.FC = () => {
     setCustomAuthFailureHint(null);
 
     try {
-      // Auth first so a failed key write cannot leave an orphan config that
-      // blocks create validation, and so PUT can pass hasStoredAuth for literal keys.
+      // Config first: OpenCode registers a custom provider's key method only
+      // once the provider is in its config, so the key follows the write.
       const keyRequest = buildIntegrationKeyRequest(plan);
-      if (keyRequest) {
-        await opencodeClient.getSdkClient().integration.connect.key(keyRequest);
-      }
-
       const upsertBody = buildProviderUpsertRequest(plan, {
         // Create defaults to user. Edit must rewrite the winning config layer
         // (custom > project > user) so project/custom providers are not copied
@@ -533,10 +534,15 @@ export const ProvidersPage: React.FC = () => {
       });
       const payload = await response.json().catch(() => null);
       if (!response.ok) {
-        if (keyRequest) {
-          setCustomAuthFailureHint(t('settings.providers.page.custom.authFailure.configAfterAuth'));
-        }
         throw new Error(payload?.error || t('settings.providers.page.toast.customProviderSaveFailed'));
+      }
+      if (keyRequest) {
+        try {
+          await storeKeyAfterConfigWrite(() => opencodeClient.getSdkClient().integration.connect.key(keyRequest));
+        } catch (error) {
+          setCustomAuthFailureHint(t('settings.providers.page.custom.authFailure.keyAfterConfig'));
+          throw error;
+        }
       }
 
       toast.success(t('settings.providers.page.toast.customProviderSaved', { provider: plan.name }));
@@ -679,7 +685,8 @@ export const ProvidersPage: React.FC = () => {
     return <ClassificationProvidersPage titleLeading={backButton} onOpenProvider={openProviderForKey} />;
   }
 
-  if (isAddMode) {
+  // Enterprise mode: the way in stays hidden and the server refuses anyway.
+  if (isAddMode && !enterpriseLocked) {
     return (
       <SettingsPageLayout
         title={t('settings.providers.page.connect.title')}
@@ -1004,7 +1011,7 @@ export const ProvidersPage: React.FC = () => {
         divider={false}
         headerAction={(
           <div className="flex items-center gap-1">
-            {isEditableCustomProvider ? (
+            {isEditableCustomProvider && !enterpriseLocked ? (
               <Button
                 variant="outline"
                 size="xs"
@@ -1022,6 +1029,7 @@ export const ProvidersPage: React.FC = () => {
                 {t('settings.providers.page.actions.edit')}
               </Button>
             ) : null}
+            {enterpriseLocked ? null : (
             <Button
               variant="outline"
               size="xs"
@@ -1043,6 +1051,7 @@ export const ProvidersPage: React.FC = () => {
                 </>
               )}
             </Button>
+            )}
           </div>
         )}
         settingsItem="providers.auth"
@@ -1066,7 +1075,11 @@ export const ProvidersPage: React.FC = () => {
           </div>
         ) : null}
 
-        {!showAuthPanel ? null : authLoading ? (
+        {enterpriseLocked ? (
+          <p className="typography-meta text-muted-foreground">{t('settings.providers.enterpriseMode')}</p>
+        ) : null}
+
+        {!showAuthPanel || enterpriseLocked ? null : authLoading ? (
           <div className="py-1.5 typography-meta text-muted-foreground">{t('settings.providers.page.auth.loadingMethods')}</div>
         ) : (
           <div

@@ -321,7 +321,7 @@ describe('OpenCode lifecycle', () => {
     expect(runtime.testState.lastOpenCodeError).toContain('1.18.32');
   });
 
-  it('warms recently used directories after a successful bootstrap', async () => {
+  it('warms only the last-used directory after a successful bootstrap', async () => {
     const fetchMock = vi.fn(async () => ({
       ok: true,
       json: async () => ({ version: '2.0.15', pid: 1, urls: [], paths: { tmp: '/tmp' } }),
@@ -345,9 +345,9 @@ describe('OpenCode lifecycle', () => {
     const warmupUrls = fetchMock.mock.calls
       .map(([url]) => String(url))
       .filter((url) => url.includes('/api/session?'));
+    // Each warmed directory boots its whole MCP fleet on OpenCode 2 (#4018).
     expect(warmupUrls).toEqual([
       'http://127.0.0.1:45678/api/session?directory=%2Ftmp%2Fworktree-a&limit=1',
-      'http://127.0.0.1:45678/api/session?directory=%2Ftmp%2Fproject-b&limit=1',
     ]);
   });
 

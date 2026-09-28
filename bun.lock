@@ -96,7 +96,7 @@
     },
     "packages/electron": {
       "name": "@openchamber/electron",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "dependencies": {
         "@openchamber/web": "workspace:*",
         "electron-context-menu": "^4.1.2",
@@ -134,7 +134,7 @@
     },
     "packages/sdk": {
       "name": "@openchamber/sdk",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "bin": {
         "openchamber-guest-bundle": "./scripts/bundle-guest.ts",
       },
@@ -144,6 +144,13 @@
     },
     "packages/sdk/examples/browser-provider-stub": {
       "name": "@openchamber/example-browser-provider-stub",
+      "version": "1.0.0",
+      "dependencies": {
+        "@openchamber/sdk": "workspace:*",
+      },
+    },
+    "packages/sdk/examples/checklist-editor": {
+      "name": "@openchamber/example-checklist-editor",
       "version": "1.0.0",
       "dependencies": {
         "@openchamber/sdk": "workspace:*",
@@ -200,7 +207,7 @@
     },
     "packages/ui": {
       "name": "@openchamber/ui",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "dependencies": {
         "@aparajita/capacitor-secure-storage": "^8.0.0",
         "@base-ui/react": "^1.4.0",
@@ -308,7 +315,7 @@
     },
     "packages/vscode": {
       "name": "openchamber",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "dependencies": {
         "@openchamber/ui": "workspace:*",
         "@opencode/client": "2.0.18",
@@ -331,7 +338,7 @@
     },
     "packages/web": {
       "name": "@openchamber/web",
-      "version": "2.0.2",
+      "version": "2.0.3",
       "bin": {
         "openchamber": "./bin/cli.js",
       },
@@ -1086,6 +1093,8 @@
     "@openchamber/electron": ["@openchamber/electron@workspace:packages/electron"],
 
     "@openchamber/example-browser-provider-stub": ["@openchamber/example-browser-provider-stub@workspace:packages/sdk/examples/browser-provider-stub"],
+
+    "@openchamber/example-checklist-editor": ["@openchamber/example-checklist-editor@workspace:packages/sdk/examples/checklist-editor"],
 
     "@openchamber/example-config-editor": ["@openchamber/example-config-editor@workspace:packages/sdk/examples/config-editor"],
 
