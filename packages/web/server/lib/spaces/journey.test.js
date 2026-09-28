@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 /** A journey on fresh stand-ins. `failAt` names a stand-in step that rejects. */
-const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [PROJECT], historyStatus = 'sent', holdCodeIn = false, holdCodeOut = false, hostEnvironment = {}, dataDir = null } = {}) => {
+const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [PROJECT], historyStatus = 'sent', holdCodeIn = false, holdCodeOut = false, holdIdleSave = false, hostEnvironment = {}, dataDir = null } = {}) => {
   // With `holdCodeIn`, code in waits until the test lets it go, so a creation stays under way;
   // `holdCodeOut` does the same for the fetch of an apply.
   let releaseCodeIn = () => {};
@@ -57,8 +57,13 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
     readJournal: async (spaceId) => { calls.push(['readJournal', spaceId]); return { records: [], dropped: 0, since: '2026-09-26T10:00:00.000Z' }; },
     forget: (spaceId) => { held.delete(spaceId); },
   };
+  // The idle stop setting as the host keeps it, and each one said to a server inside, apart from
+  // `calls` so the order of the other steps reads as it did before 5d-3.
+  const idle = { saved: null, writes: [], release: () => {} };
+  const idleSaveHeld = new Promise((resolve) => { idle.release = resolve; });
   const serverInside = {
     writeToken: async (spaceId, token) => { calls.push(['writeToken', spaceId, token]); fail('writeToken'); },
+    writeIdleStop: async (spaceId, setting) => { fail('writeIdleStop'); idle.writes.push([spaceId, setting]); },
   };
   const restartOpenCodeInside = async (spaceId) => { calls.push(['restartOpenCodeInside', spaceId]); fail('restartOpenCodeInside'); };
   const spaceOpenCode = {
@@ -86,12 +91,14 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
     manager, place, gatekeeper, codeIn, codeOut, records, spaceOpenCode, serverInside, restartOpenCodeInside,
     listProjectDirectories: async () => projects,
     readHostSecret: (name) => hostEnvironment[name],
+    readIdleStop: async () => idle.saved ?? { enabled: true, hours: 4 },
+    saveIdleStop: async (setting) => { if (holdIdleSave) await idleSaveHeld; fail('saveIdleStop'); idle.saved = setting; },
     announce: (spaceId, payload) => { events.push({ spaceId, ...payload.properties }); },
     onSpacesChanged: () => { changes.count += 1; },
     logger: quiet,
     now: () => new Date('2026-09-26T10:00:00.000Z'),
   });
-  return { journey, place, records, calls, events, changes, manager, releaseCodeIn, releaseCodeOut, gatekeeper, dataDir };
+  return { journey, place, records, calls, events, changes, manager, releaseCodeIn, releaseCodeOut, gatekeeper, dataDir, idle };
 };
 
 const REQUEST = { projectDirectory: PROJECT, name: ' Fix login ', start: 'uncommitted', network: NETWORK };
@@ -732,5 +739,144 @@ describe('the journey: journal and apply', () => {
     const other = await orphan.manager.createSpace({ placeId: 'memory', projectDirectory: PROJECT, name: 'Orphan' });
     await expect(orphan.journey.previewApply(other.id)).rejects.toMatchObject({ code: 'project_not_registered' });
     expect((await orphan.journey.listSpaces())[0]).toMatchObject({ id: other.id, projectDirectory: null, directory: null });
+  });
+});
+
+describe('the journey: idle stop', () => {
+  const ready = async (options) => {
+    const made = journeyWith(options);
+    const { id } = await made.journey.createSpace(REQUEST);
+    await until(() => steps(made.events, id).includes('ready'));
+    await until(() => made.records.read(id).record?.history !== 'pending');
+    made.calls.splice(0);
+    return { ...made, id };
+  };
+
+  /** The place's own stops, recorded, and its list as an idle stop leaves it: the space exited, its gatekeeper running. */
+  const idleStopped = (place, { gatekeeperRunning = true } = {}) => {
+    const stops = [];
+    const { list, stop } = place;
+    let stray = gatekeeperRunning;
+    place.list = async () => (await list()).map((space) => ({ ...space, state: 'exited', stoppedIdle: true, gatekeeperRunning: stray }));
+    place.stop = async (spaceId) => { stops.push(spaceId); stray = false; return stop(spaceId); };
+    return stops;
+  };
+
+  it('tells the server inside the setting when the space is made and at every start and restart', async () => {
+    const { journey, id, idle } = await ready();
+    expect(idle.writes).toEqual([[id, { enabled: true, hours: 4 }]]);
+    idle.saved = { enabled: true, hours: 9 };
+    await journey.stopSpace(id);
+    await journey.startSpace(id);
+    await journey.restartSpace(id);
+    expect(idle.writes.slice(1)).toEqual([[id, { enabled: true, hours: 9 }], [id, { enabled: true, hours: 9 }]]);
+  });
+
+  it('makes and starts a space whose setting could not be written, because the setting guards nothing', async () => {
+    const { journey, id, idle } = await ready({ failAt: 'writeIdleStop' });
+    expect((await journey.listSpaces())[0]).toMatchObject({ id, state: 'running' });
+    await journey.stopSpace(id);
+    expect(await journey.startSpace(id)).toMatchObject({ id, state: 'running', networkRestored: true });
+    expect(idle.writes).toEqual([]);
+  });
+
+  it('keeps a changed setting and tells every running space, and only the running ones', async () => {
+    const { journey, id, idle } = await ready();
+    const { id: other } = await journey.createSpace(REQUEST);
+    await until(() => idle.writes.some(([spaceId]) => spaceId === other));
+    await journey.stopSpace(other);
+    idle.writes.splice(0);
+
+    expect(await journey.changeIdleStop({ enabled: false, hours: 12 })).toEqual({ enabled: false, hours: 12 });
+    expect(idle.saved).toEqual({ enabled: false, hours: 12 });
+    expect(idle.writes).toEqual([[id, { enabled: false, hours: 12 }]]);
+    expect(await journey.readIdleStopSetting()).toEqual({ enabled: false, hours: 12 });
+  });
+
+  it('applies changes one after the other, so a space ends with the last one', async () => {
+    const { journey, id, idle } = await ready();
+    idle.writes.splice(0);
+    await Promise.all([1, 2, 3].map((hours) => journey.changeIdleStop({ enabled: true, hours })));
+    expect(idle.writes).toEqual([1, 2, 3].map((hours) => [id, { enabled: true, hours }]));
+    expect(idle.saved).toEqual({ enabled: true, hours: 3 });
+  });
+
+  it('refuses a setting outside the whole hours from 1 to 168, and keeps nothing of it', async () => {
+    const { journey, idle } = await ready();
+    for (const request of [{ enabled: true, hours: 0 }, { enabled: true, hours: 169 }, { enabled: true, hours: 1.5 }, { enabled: 'yes', hours: 4 }, { enabled: true }, { enabled: true, hours: 4, extra: 1 }, null]) {
+      await expect(journey.changeIdleStop(request)).rejects.toMatchObject({ code: 'invalid_idle_stop' });
+    }
+    expect(idle.saved).toBeNull();
+  });
+
+  it('writes nothing to the spaces when the setting could not be kept', async () => {
+    const { journey, idle } = await ready({ failAt: 'saveIdleStop' });
+    idle.writes.splice(0);
+    await expect(journey.changeIdleStop({ enabled: true, hours: 2 })).rejects.toMatchObject({ code: 'saveIdleStop_failed' });
+    expect(idle.writes).toEqual([]);
+  });
+
+  it('lists a space that stopped itself as such, and stops the gatekeeper it left running once', async () => {
+    const { journey, place, id } = await ready();
+    const stops = idleStopped(place);
+    expect((await journey.listSpaces())[0]).toMatchObject({ id, state: 'exited', stoppedIdle: true });
+    expect(await until(() => stops.length === 1)).toBe(true);
+    await journey.listSpaces();
+    await sleep(20);
+    expect(stops).toEqual([id]);
+  });
+
+  it('leaves a stopped space alone when its gatekeeper is down already, or while another action holds it', async () => {
+    const quietSpace = await ready();
+    const quietStops = idleStopped(quietSpace.place, { gatekeeperRunning: false });
+    await quietSpace.journey.listSpaces();
+    await sleep(20);
+    expect(quietStops).toEqual([]);
+
+    const held = await ready({ holdCodeOut: true });
+    const heldStops = idleStopped(held.place);
+    const apply = held.journey.previewApply(held.id);
+    await held.journey.listSpaces();
+    await sleep(20);
+    expect(heldStops).toEqual([]);
+    held.releaseCodeOut();
+    await apply;
+  });
+
+  it('lets a start wait for a gatekeeper being stopped beside its space, rather than refusing it as busy', async () => {
+    const { journey, place, id } = await ready();
+    idleStopped(place);
+    const order = [];
+    const { stop, start } = place;
+    let letGo = () => {};
+    place.stop = (spaceId) => new Promise((resolve) => { letGo = resolve; }).then(() => stop(spaceId)).then(() => { order.push('gatekeeper stopped'); });
+    place.start = async (spaceId) => { order.push('start'); return start(spaceId); };
+    await journey.listSpaces();
+    const started = journey.startSpace(id);
+    await sleep(20);
+    expect(order).toEqual([]);
+    letGo();
+    await expect(started).resolves.toMatchObject({ id, networkRestored: true });
+    expect(order).toEqual(['gatekeeper stopped', 'start']);
+  });
+
+  it('gives a space made or started during a change the changed setting, never the one before it', async () => {
+    const { journey, id, idle } = await ready({ holdIdleSave: true });
+    await journey.stopSpace(id);
+    idle.writes.splice(0);
+    const change = journey.changeIdleStop({ enabled: true, hours: 9 });
+    const started = journey.startSpace(id);
+    await sleep(20);
+    idle.release();
+    await Promise.all([change, started]);
+    expect(idle.writes.at(-1)).toEqual([id, { enabled: true, hours: 9 }]);
+    expect(idle.writes.every(([, setting]) => setting.hours === 9)).toBe(true);
+  });
+
+  it('stops a gatekeeper left by an idle stop when the switch goes off, without counting its space as stopped', async () => {
+    const { journey, place, id } = await ready();
+    const stops = idleStopped(place);
+    expect(await journey.stopAllSpaces()).toEqual({ stopped: [], stillRunning: [] });
+    expect(stops).toEqual([id]);
   });
 });

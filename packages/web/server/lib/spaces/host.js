@@ -116,7 +116,8 @@ export function readOrCreateOwner(dataDir) {
  * for the tests; `runCommand` and `openCommandStream` are the two ways this module starts a
  * process, injectable for the same reason. `listProjectDirectories` answers the host's registered
  * project paths, so a space's project label can be resolved to the project it was made for;
- * without it every space is marked as of an unknown project.
+ * without it every space is marked as of an unknown project. `readIdleStop` and `saveIdleStop`
+ * read and keep the user's idle stop setting in the host's settings.
  */
 export function createSpacesHost({
   dataDir,
@@ -124,6 +125,8 @@ export function createSpacesHost({
   gitPath = 'git',
   hostEnvironment = process.env,
   listProjectDirectories = async () => [],
+  readIdleStop,
+  saveIdleStop,
   runCommand = runCommandProcess,
   openCommandStream = openCommandStreamProcess,
   place = null,
@@ -241,6 +244,8 @@ export function createSpacesHost({
     // A key named by an environment variable is read from the host's own environment, now, and
     // its value is kept nowhere (decision 5).
     readHostSecret: (name) => hostEnvironment[name],
+    readIdleStop,
+    saveIdleStop,
     announce: (spaceId, payload) => { hub?.injectEvent({ payload, directory: 'global', spaceId }); },
     onSpacesChanged: () => { void refresh().catch(() => {}); },
     logger,

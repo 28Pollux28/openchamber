@@ -50,6 +50,7 @@ const STATE_LINE = {
   container_gone: { text: 'spaces.group.state.containerGone', tone: 'warning', action: 'remove' },
   gatekeeper_gone: { text: 'spaces.group.state.gatekeeperGone', tone: 'error', action: 'remove' },
   stopped: { text: 'spaces.group.state.stopped', tone: 'muted', action: 'start' },
+  stopped_idle: { text: 'spaces.group.state.stoppedIdle', tone: 'muted', action: 'start' },
   damaged: { text: 'spaces.group.state.damaged', tone: 'warning', action: 'restart' },
   not_answering: { text: 'spaces.group.state.notAnswering', tone: 'warning', action: 'restart' },
 } satisfies Record<Exclude<SpaceCondition['kind'], 'busy' | 'action_failed'>, { text: I18nKey; tone: 'muted' | 'warning' | 'error'; action: SpaceAction }>;

@@ -28,6 +28,7 @@ export type SpaceCondition =
   | { kind: 'container_gone' }
   | { kind: 'gatekeeper_gone' }
   | { kind: 'stopped' }
+  | { kind: 'stopped_idle' }
   | { kind: 'damaged' }
   | { kind: 'not_answering' };
 
@@ -44,7 +45,7 @@ export const spaceConditionOf = (
   if (action?.kind === 'failed' && spaceMenuActionsOf(entry).includes(action.action)) return { kind: 'action_failed', action: action.action, failure: action.failure };
   if (entry.state === 'missing') return { kind: 'container_gone' };
   if (entry.damage === 'gatekeeper_gone') return { kind: 'gatekeeper_gone' };
-  if (entry.state === 'exited') return { kind: 'stopped' };
+  if (entry.state === 'exited') return { kind: entry.stoppedIdle ? 'stopped_idle' : 'stopped' };
   if (entry.damage === 'repairable') return { kind: 'damaged' };
   // The session list did not get an answer from the space the last time the host asked.
   if (mark && (mark.state === 'stale' || mark.state === 'unknown')) return { kind: 'not_answering' };
