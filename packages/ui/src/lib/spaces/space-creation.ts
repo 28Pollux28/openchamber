@@ -71,11 +71,11 @@ const waitForOutcome = (spaceId: string): Promise<CreationOutcome> => new Promis
 
 /**
  * Resolves once the space's setup commands ended, or once they can no longer end: the space left
- * the list or stopped. Right after "ready" the list may not know the run yet; it is waited for.
+ * the list or stopped. Until the list read after "ready" arrives, the run is still `queued`.
  */
 const waitForSetup = (spaceId: string): Promise<void> => new Promise((resolve) => {
   const settled = (entry: SpaceEntry | undefined): boolean => (
-    !entry || entry.state !== 'running' || (entry.setup !== null && entry.setup.state !== 'running')
+    !entry || entry.state !== 'running' || (entry.setup?.state !== 'running' && entry.setup?.state !== 'queued')
   );
   if (settled(useSpacesStore.getState().journey?.get(spaceId))) {
     resolve();
@@ -132,7 +132,8 @@ export const startSpaceCreation = async ({ projectId, request, setup, access, re
   if (sessionStore.newSessionDraft?.open) sessionStore.overrideNewSessionDraftTarget({ projectId, ...target });
   else sessionStore.openNewSessionDraft({ selectedProjectId: projectId, ...target });
 
-  void finishCreation(entry.id, requestId, access, setup.waitBeforeSending, refusalMessage);
+  // Only a host that said it will run the commands is waited for; one before 5d-4 never runs them.
+  void finishCreation(entry.id, requestId, access, setup.waitBeforeSending && entry.setup?.state === 'queued', refusalMessage);
   return entry;
 };
 

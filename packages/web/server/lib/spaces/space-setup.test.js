@@ -52,7 +52,14 @@ const setupWith = (answers = {}) => {
     held.set(command, { promise, release });
     return release;
   };
-  const setup = createSpaceSetup({ exec, records, announce: (spaceId) => announced.push(spaceId), logger: quiet, now: () => new Date('2026-09-28T10:00:00.000Z') });
+  // The clock stands still unless a test moves it.
+  const clock = { at: Date.parse('2026-09-28T10:00:00.000Z') };
+  const exec2 = async (spaceId, argv, options) => {
+    const answer = await exec(spaceId, argv, options);
+    if (answers.advanceMs) clock.at += answers.advanceMs;
+    return answer;
+  };
+  const setup = createSpaceSetup({ exec: exec2, records, announce: (spaceId) => announced.push(spaceId), logger: quiet, now: () => new Date(clock.at) });
   return { setup, records, calls, announced, hold };
 };
 
@@ -101,10 +108,16 @@ describe('setup commands inside a space', () => {
   });
 
   it('counts the time limit inside and a place that failed as the command failing', async () => {
-    const limited = setupWith({ 'sleep 9999': { code: 124, stdout: '', stderr: '' } });
+    const limited = setupWith({ 'sleep 9999': { code: 124, stdout: '', stderr: '' }, advanceMs: 3_600_000 });
     limited.setup.start(ID, { projectPath: PROJECT_PATH, commands: ['sleep 9999'] });
     expect(await until(() => !limited.setup.isRunning(ID))).toBe(true);
     expect(limited.records.read(ID).record.setup).toMatchObject({ exitCode: 124, timedOut: true });
+
+    // A command's own 124 before the hour is its own failure, not the limit.
+    const own = setupWith({ 'timeout 30 curl https://example.com': { code: 124, stdout: '', stderr: '' }, advanceMs: 30_000 });
+    own.setup.start(ID, { projectPath: PROJECT_PATH, commands: ['timeout 30 curl https://example.com'] });
+    expect(await until(() => !own.setup.isRunning(ID))).toBe(true);
+    expect(own.records.read(ID).record.setup).toMatchObject({ exitCode: 124, timedOut: false });
 
     const gone = setupWith({ 'npm ci': new SpaceError('space_not_running', 'Space abcdef012345 is stopped.') });
     gone.setup.start(ID, { projectPath: PROJECT_PATH, commands: ['npm ci'] });
@@ -143,11 +156,18 @@ describe('what the user reads of a command', () => {
     expect(kept).toHaveLength(MAX_KEPT_OUTPUT_LINES);
     expect(kept.at(-1)).toBe('line 499');
     expect(keptOutputOf('y'.repeat(100_000))).toHaveLength(MAX_KEPT_OUTPUT_CHARACTERS);
+    // A link's whole sequence goes, its address with it; so do the one-byte controls and the direction marks.
+    expect(keptOutputOf('see \u001b]8;;https://evil.example/\u0007here\u001b]8;;\u0007 done')).toBe('see here done');
+    expect(keptOutputOf('a\u001b]0;title\u001b\\b')).toBe('ab');
+    expect(keptOutputOf('x\u009b31my\u0085')).toBe('x31my');
+    expect(keptOutputOf('file\u202egnp.exe \u2066z\u2069')).toBe('filegnp.exe z');
   });
 
   it('takes the list of commands as the host keeps it, without blank ones', () => {
     expect(setupCommandsSchema.parse(['npm ci', '  ', ''])).toEqual(['npm ci']);
-    expect(setupCommandsSchema.safeParse(Array.from({ length: 51 }, () => 'true')).success).toBe(false);
+    // 50 shared and 50 personal, as the host keeps them.
+    expect(setupCommandsSchema.safeParse(Array.from({ length: 100 }, () => 'true')).success).toBe(true);
+    expect(setupCommandsSchema.safeParse(Array.from({ length: 101 }, () => 'true')).success).toBe(false);
     expect(setupCommandsSchema.safeParse(['x'.repeat(4001)]).success).toBe(false);
     expect(setupCommandsSchema.safeParse('npm ci').success).toBe(false);
   });

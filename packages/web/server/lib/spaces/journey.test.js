@@ -904,7 +904,10 @@ describe('the journey: setup commands', () => {
   it('runs the setup commands in the project inside once the space is ready, and lists how they went', async () => {
     const { place, ran } = setupPlace({ 'npm ci': { code: 1, stdout: 'npm ERR! 403 Forbidden\n', stderr: '' } });
     const { journey, events } = journeyWith({ place });
-    const { id } = await journey.createSpace({ ...REQUEST, setupCommands: ['echo hi', 'npm ci', '  ', 'npm run build'] });
+    const answer = await journey.createSpace({ ...REQUEST, setupCommands: ['echo hi', 'npm ci', '  ', 'npm run build'] });
+    // The answer says a setup will run, so the client knows to wait for it when the project asks.
+    expect(answer.setup).toEqual({ state: 'queued', total: 3 });
+    const { id } = answer;
     expect(await until(() => ran.length === 2)).toBe(true);
     expect(await until(() => journey.listSpaces().then((spaces) => spaces[0].setup?.state === 'failed'))).toBe(true);
     expect(ran).toEqual([{ spaceId: id, cwd: `/spaces/${id}/project`, command: 'echo hi' }, { spaceId: id, cwd: `/spaces/${id}/project`, command: 'npm ci' }]);
@@ -920,7 +923,8 @@ describe('the journey: setup commands', () => {
   it('runs nothing and lists no setup for a project without setup commands', async () => {
     const { place, ran } = setupPlace();
     const { journey, events } = journeyWith({ place });
-    const { id } = await journey.createSpace(REQUEST);
+    const { id, setup } = await journey.createSpace(REQUEST);
+    expect(setup).toBeNull();
     expect(await until(() => steps(events, id).includes('ready'))).toBe(true);
     expect(ran).toEqual([]);
     expect((await journey.listSpaces()).find((space) => space.id === id).setup).toBeNull();
@@ -930,7 +934,7 @@ describe('the journey: setup commands', () => {
   it('refuses a list of setup commands the host would not keep, and makes no space for it', async () => {
     const { journey, place } = journeyWith();
     await expect(journey.createSpace({ ...REQUEST, setupCommands: 'npm ci' })).rejects.toMatchObject({ code: 'invalid_setup_commands' });
-    await expect(journey.createSpace({ ...REQUEST, setupCommands: Array.from({ length: 51 }, () => 'true') })).rejects.toMatchObject({ code: 'invalid_setup_commands' });
+    await expect(journey.createSpace({ ...REQUEST, setupCommands: Array.from({ length: 101 }, () => 'true') })).rejects.toMatchObject({ code: 'invalid_setup_commands' });
     expect(await place.list()).toEqual([]);
   });
 

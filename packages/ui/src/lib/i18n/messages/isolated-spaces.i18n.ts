@@ -171,6 +171,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Close',
     'spaces.failure.setupRunning': 'The setup commands are still running.',
     'spaces.sharedTrust.description': '{path} in this repository defines commands that run in the isolated space. Trust them once, and OpenChamber asks again only when they change.',
+    'spaces.group.setup.sharedSkipped': 'You skipped the setup commands from the repository, and this project has no others.',
   },
   nl: {
     'spaces.picker.new': '+ Nieuwe geïsoleerde ruimte',
@@ -343,6 +344,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Sluiten',
     'spaces.failure.setupRunning': 'De setupopdrachten lopen nog.',
     'spaces.sharedTrust.description': '{path} in deze repository bevat opdrachten die in de geïsoleerde ruimte worden uitgevoerd. Vertrouw ze één keer en OpenChamber vraagt het alleen opnieuw als ze veranderen.',
+    'spaces.group.setup.sharedSkipped': 'U hebt de setupopdrachten uit de repository overgeslagen, en dit project heeft er geen andere.',
   },
   de: {
     'spaces.picker.new': '+ Neuer isolierter Bereich',
@@ -515,6 +517,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Schließen',
     'spaces.failure.setupRunning': 'Die Setup-Befehle laufen noch.',
     'spaces.sharedTrust.description': '{path} in diesem Repository definiert Befehle, die im isolierten Bereich laufen. Einmal vertrauen, und OpenChamber fragt erst wieder, wenn sie sich ändern.',
+    'spaces.group.setup.sharedSkipped': 'Du hast die Setup-Befehle aus dem Repository übersprungen, und dieses Projekt hat keine weiteren.',
   },
   fr: {
     'spaces.picker.new': '+ Nouvel espace isolé',
@@ -687,6 +690,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Fermer',
     'spaces.failure.setupRunning': 'Les commandes de configuration tournent encore.',
     'spaces.sharedTrust.description': '{path} dans ce dépôt définit des commandes qui s’exécutent dans l’espace isolé. Faites-leur confiance une fois, et OpenChamber ne redemandera que si elles changent.',
+    'spaces.group.setup.sharedSkipped': 'Vous avez ignoré les commandes de configuration du dépôt, et ce projet n’en a pas d’autres.',
   },
   es: {
     'spaces.picker.new': '+ Nuevo espacio aislado',
@@ -859,6 +863,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Cerrar',
     'spaces.failure.setupRunning': 'Los comandos de configuración siguen en marcha.',
     'spaces.sharedTrust.description': '{path} en este repositorio define comandos que se ejecutan en el espacio aislado. Confía una vez y OpenChamber solo volverá a preguntar cuando cambien.',
+    'spaces.group.setup.sharedSkipped': 'Omitiste los comandos de configuración del repositorio y este proyecto no tiene otros.',
   },
   ja: {
     'spaces.picker.new': '+ 新しい隔離スペース',
@@ -1031,6 +1036,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': '閉じる',
     'spaces.failure.setupRunning': 'セットアップコマンドはまだ実行中です。',
     'spaces.sharedTrust.description': 'このリポジトリの {path} には、隔離スペース内で実行されるコマンドが定義されています。一度信頼すると、変更があった場合のみ再度確認します。',
+    'spaces.group.setup.sharedSkipped': 'リポジトリのセットアップコマンドをスキップしました。このプロジェクトには他のコマンドはありません。',
   },
   'pt-BR': {
     'spaces.picker.new': '+ Novo espaço isolado',
@@ -1203,6 +1209,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Fechar',
     'spaces.failure.setupRunning': 'Os comandos de configuração ainda estão rodando.',
     'spaces.sharedTrust.description': '{path} neste repositório define comandos que rodam no espaço isolado. Confie uma vez e o OpenChamber só perguntará de novo quando eles mudarem.',
+    'spaces.group.setup.sharedSkipped': 'Você pulou os comandos de configuração do repositório, e este projeto não tem outros.',
   },
   uk: {
     'spaces.picker.new': '+ Новий ізольований простір',
@@ -1375,6 +1382,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Закрити',
     'spaces.failure.setupRunning': 'Команди налаштування ще працюють.',
     'spaces.sharedTrust.description': '{path} у цьому репозиторії містить команди, які виконуються в ізольованому просторі. Довірте їх один раз, і OpenChamber запитає знову лише тоді, коли вони зміняться.',
+    'spaces.group.setup.sharedSkipped': 'Ви пропустили команди налаштування з репозиторію, а інших у цього проєкту немає.',
   },
   ko: {
     'spaces.picker.new': '+ 새 격리 공간',
@@ -1547,6 +1555,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': '닫기',
     'spaces.failure.setupRunning': '설정 명령어가 아직 실행 중입니다.',
     'spaces.sharedTrust.description': '이 저장소의 {path}에 격리 공간에서 실행되는 명령이 정의되어 있습니다. 한 번 신뢰하면 명령이 바뀔 때만 다시 묻습니다.',
+    'spaces.group.setup.sharedSkipped': '저장소의 설정 명령어를 건너뛰었고, 이 프로젝트에는 다른 명령어가 없습니다.',
   },
   pl: {
     'spaces.picker.new': '+ Nowa izolowana przestrzeń',
@@ -1719,6 +1728,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Zamknij',
     'spaces.failure.setupRunning': 'Polecenia konfiguracji wciąż działają.',
     'spaces.sharedTrust.description': '{path} w tym repozytorium definiuje polecenia uruchamiane w izolowanej przestrzeni. Zaufaj raz, a OpenChamber zapyta ponownie tylko wtedy, gdy się zmienią.',
+    'spaces.group.setup.sharedSkipped': 'Pominięto polecenia konfiguracji z repozytorium, a ten projekt nie ma innych.',
   },
   'zh-CN': {
     'spaces.picker.new': '+ 新建隔离空间',
@@ -1891,6 +1901,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': '关闭',
     'spaces.failure.setupRunning': '初始化命令仍在运行。',
     'spaces.sharedTrust.description': '此仓库中的 {path} 定义了会在隔离空间中运行的命令。信任一次后，只有当命令变更时 OpenChamber 才会再次询问。',
+    'spaces.group.setup.sharedSkipped': '你跳过了仓库中的初始化命令，而此项目没有其他命令。',
   },
   'zh-TW': {
     'spaces.picker.new': '+ 新增隔離空間',
@@ -2063,6 +2074,7 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': '關閉',
     'spaces.failure.setupRunning': '初始化命令仍在執行。',
     'spaces.sharedTrust.description': '此儲存庫中的 {path} 定義了會在隔離空間中執行的命令。信任一次後，只有當命令變更時 OpenChamber 才會再次詢問。',
+    'spaces.group.setup.sharedSkipped': '你略過了儲存庫中的初始化命令，而此專案沒有其他命令。',
   },
   tr: {
     'spaces.picker.new': '+ Yeni yalıtılmış alan',
@@ -2235,5 +2247,6 @@ export const isolatedSpacesI18n = {
     'spaces.setup.output.close': 'Kapat',
     'spaces.failure.setupRunning': 'Kurulum komutları hâlâ çalışıyor.',
     'spaces.sharedTrust.description': 'Bu depodaki {path}, yalıtılmış alanda çalışan komutlar tanımlıyor. Bir kez güvenin; OpenChamber yalnızca değiştiklerinde yeniden sorar.',
+    'spaces.group.setup.sharedSkipped': 'Deponun kurulum komutlarını atladın ve bu projenin başka komutu yok.',
   },
 } as const;

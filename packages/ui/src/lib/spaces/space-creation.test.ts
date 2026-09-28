@@ -33,7 +33,7 @@ const openai: SpaceModelAccess = { kind: 'model', provider: 'openai', upstream: 
 
 // The host: the creation answers the entry, a grant answers what `grantAnswer` says, and the list
 // answers the space running with the grants that went through.
-const host = (grantAnswer: { status: number; body: { grant?: unknown; code?: string; message?: string } }, listedSetup: SpaceEntry['setup'] = null) => {
+const host = (grantAnswer: { status: number; body: { grant?: unknown; code?: string; message?: string } }, listedSetup: SpaceEntry['setup'] = null, createdSetup: SpaceEntry['setup'] = null) => {
   const grants: unknown[] = [];
   const created: unknown[] = [];
   const given: unknown[] = [];
@@ -49,7 +49,7 @@ const host = (grantAnswer: { status: number; body: { grant?: unknown; code?: str
       return new Response(JSON.stringify({ spaces: [listed] }), { status: 200 });
     }
     created.push(JSON.parse(String(init?.body)));
-    return new Response(JSON.stringify(entry), { status: 202 });
+    return new Response(JSON.stringify({ ...entry, setup: createdSetup }), { status: 202 });
   }, originalFetch);
   return Object.assign(grants, { created });
 };
@@ -177,7 +177,7 @@ describe('startSpaceCreation', () => {
   });
 
   test('with the project\'s wait setting the message waits for the setup commands, and goes when they ended, failed or not', async () => {
-    host({ status: 200, body: {} });
+    host({ status: 200, body: {} }, null, { state: 'queued', total: 1 });
     await start([], { commands: ['npm ci'], waitBeforeSending: true });
     const { requestId, outcome } = waitingMessage();
     let settled = false;
@@ -190,5 +190,13 @@ describe('startSpaceCreation', () => {
     useSpacesStore.getState().applyJourney([{ ...running, setup: { state: 'failed', index: 0, total: 1, command: 'npm ci', exitCode: 1, timedOut: false } }], useSpacesStore.getState().progressRevision);
     expect(await outcome).toEqual({ directory: DIRECTORY });
     expect(isSpaceCreationRequest(requestId)).toBe(true);
+  });
+
+  test('a host that did not say it will run the setup commands is not waited for, whatever the wait setting', async () => {
+    host({ status: 200, body: {} });
+    await start([], { commands: ['npm ci'], waitBeforeSending: true });
+    const { outcome } = waitingMessage();
+    useSpacesStore.getState().noteProgress({ spaceId: ID, step: 'ready', failure: null });
+    expect(await outcome).toEqual({ directory: DIRECTORY });
   });
 });

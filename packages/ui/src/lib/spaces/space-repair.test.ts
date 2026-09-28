@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { isSpaceActionUnavailable, runSpaceAction, spaceConditionOf, spaceMenuActionsOf } from './space-repair';
+import { getSharedTrustConfirmationSnapshot, settleSharedTrustConfirmation } from '@/lib/sharedTrustConfirmation';
 import type { SpaceEntry } from './spaces-api';
 import { useSpacesStore, type SpaceMark } from './spaces-store';
 
@@ -195,6 +196,20 @@ describe('the actions of a space', () => {
       await runSpaceAction(ID, 'setup');
       expect(requests.some((request) => request.startsWith('POST'))).toBe(false);
       expect(useSpacesStore.getState().actions.get(ID)).toMatchObject({ kind: 'failed', action: 'setup', failure: { code: 'space_setup_no_commands' } });
+    });
+
+    test('tells a skipped trust prompt apart from a project with no setup commands', async () => {
+      useSpacesStore.getState().applyJourney([entry()], 0);
+      // Shared commands the user has not trusted, no personal ones: the prompt opens, and "skip" leaves nothing.
+      const untrusted = { ...projectSetup([]), trust: { hash: 'sha256:x', trusted: false }, setupWorktree: ['npm ci'], shared: { ...projectSetup([]).shared, status: 'ok', setupWorktree: ['npm ci'] } };
+      host((path) => (path.startsWith('/api/projects/') ? new Response(JSON.stringify(untrusted), { status: 200 }) : listAnswer([entry()])));
+      const run = runSpaceAction(ID, 'setup');
+      for (let i = 0; i < 50 && !getSharedTrustConfirmationSnapshot(); i += 1) await new Promise((resolve) => { setTimeout(resolve, 5); });
+      expect(getSharedTrustConfirmationSnapshot()?.runsIn).toBe('space');
+      settleSharedTrustConfirmation('skip');
+      await run;
+      expect(requests.some((request) => request.startsWith('POST'))).toBe(false);
+      expect(useSpacesStore.getState().actions.get(ID)).toMatchObject({ kind: 'failed', action: 'setup', failure: { code: 'space_setup_shared_skipped' } });
     });
   });
 });

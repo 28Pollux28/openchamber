@@ -17,8 +17,8 @@ import { z } from 'zod';
 import { SpaceError } from './errors.js';
 import { IMAGE_BASH, IMAGE_SH, IMAGE_TIMEOUT } from './layout.js';
 
-// The host's own limits for the list of setup commands, `project-setup.js`.
-export const MAX_SETUP_COMMANDS = 50;
+// The host's own limits, `project-setup.js`: 50 shared commands and 50 personal ones, merged.
+export const MAX_SETUP_COMMANDS = 100;
 export const MAX_SETUP_COMMAND_LENGTH = 4000;
 
 /** The commands of a run, as the client resolved them: blank ones are dropped. */
@@ -49,9 +49,11 @@ const substituteProjectPath = (command, projectPath) => command
   .replace(/\$\{?ROOT_PROJECT_PATH\}?/g, projectPath)
   .replace(/\$\{?ROOT_WORKTREE_PATH\}?/g, projectPath);
 
-// Colour and cursor sequences, and every other control character but a tab and a line break.
+// Whole sequences first: operating-system commands with their text, such as a link, up to their
+// end; colour and cursor sequences; any other escape. Then every control character but a tab and a
+// line break, the one-byte controls of the C1 range, and the marks that turn text direction.
 // eslint-disable-next-line no-control-regex
-const TERMINAL_SEQUENCE = /\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_]|[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g;
+const TERMINAL_SEQUENCE = /\u001b\][^\u0007\u001b]*(?:\u0007|\u001b\\)?|\u001b\[[0-?]*[ -/]*[@-~]|\u001b[@-_]?|[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/g;
 
 /**
  * The end of a command's output as the user reads it: a line that a progress bar rewrote with
@@ -87,6 +89,10 @@ export function createSpaceSetup({ exec, records, announce = () => {}, logger = 
 
   /** One command in the space. Resolves `{ exitCode, timedOut, output }`; a failure of the place is the command's failure. */
   const runOne = async (spaceId, projectPath, command) => {
+    const began = now().getTime();
+    // 124 is also what a command of the project's own may answer, `timeout 30 curl` among them:
+    // it counts as the hour only when the hour has passed.
+    const hourPassed = () => now().getTime() - began >= COMMAND_TIME_LIMIT_SECONDS * 1000;
     const argv = [
       IMAGE_TIMEOUT, '-k', String(COMMAND_KILL_AFTER_SECONDS), String(COMMAND_TIME_LIMIT_SECONDS),
       IMAGE_SH, '-c', RUN_SCRIPT, 'openchamber-setup', projectPath, substituteProjectPath(command, projectPath),
@@ -97,7 +103,7 @@ export function createSpaceSetup({ exec, records, announce = () => {}, logger = 
       const result = await exec(spaceId, argv, { timeoutMs: HOST_WAIT_MS, maxOutputBytes: OUTPUT_WINDOW_BYTES, keepTail: true, killTree: true });
       return {
         exitCode: result.code,
-        timedOut: result.code === TIMED_OUT_EXIT_CODE,
+        timedOut: result.code === TIMED_OUT_EXIT_CODE && hourPassed(),
         // The runtime's own complaint, a container that stopped among them, comes on stderr.
         output: keptOutputOf([result.stdout, result.stderr].filter((part) => part !== '').join('\n')),
       };

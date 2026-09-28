@@ -77,7 +77,7 @@ const shownCommand = (command: string): string => {
 /** The setup commands' line: which runs now, which failed with its output, or a run cut off. */
 const SetupLine: React.FC<{ spaceId: string; setup: SpaceSetup | null }> = ({ spaceId, setup }) => {
   const { t } = useI18n();
-  if (!setup || setup.state === 'done') return null;
+  if (!setup || setup.state === 'done' || setup.state === 'queued') return null;
   const runAgain = (
     <Button variant="outline" size="xs" onClick={() => void runSpaceAction(spaceId, 'setup')}>
       {t('spaces.group.setup.runAgain')}
@@ -170,8 +170,12 @@ export const SpaceGroupStatus: React.FC<{ spaceId: string; className?: string }>
     );
   }
 
-  if (condition?.kind === 'action_failed' && condition.action === 'setup' && condition.failure.code === 'space_setup_no_commands') {
-    return <div className={className}><Line icon="alert" tone="muted">{t('spaces.group.setup.noCommands')}</Line></div>;
+  if (condition?.kind === 'action_failed' && condition.action === 'setup' && (condition.failure.code === 'space_setup_no_commands' || condition.failure.code === 'space_setup_shared_skipped')) {
+    return (
+      <div className={className}>
+        <Line icon="alert" tone="muted">{t(condition.failure.code === 'space_setup_no_commands' ? 'spaces.group.setup.noCommands' : 'spaces.group.setup.sharedSkipped')}</Line>
+      </div>
+    );
   }
 
   if (condition?.kind === 'action_failed') {
@@ -236,7 +240,7 @@ export const SpaceGroupStatus: React.FC<{ spaceId: string; className?: string }>
     return null;
   })();
   const setupLine = <SetupLine spaceId={spaceId} setup={entry?.state === 'running' ? entry.setup : null} />;
-  if (!accessLine && (!entry?.setup || entry.setup.state === 'done' || entry.state !== 'running')) return null;
+  if (!accessLine && (!entry?.setup || entry.setup.state === 'done' || entry.setup.state === 'queued' || entry.state !== 'running')) return null;
   return (
     <div className={cn('flex flex-col gap-1.5', className)}>
       {setupLine}

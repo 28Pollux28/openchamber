@@ -55,7 +55,7 @@ const CREATE_REFUSALS = {
   name: ['invalid_space_name', 'A space needs a name.'],
   start: ['invalid_snapshot_mode', 'A space starts from a clean commit or with the uncommitted changes.'],
   network: ['invalid_network', 'The network of a space is allowlist or open, with a list of domain names for the allowlist.'],
-  setupCommands: ['invalid_setup_commands', 'The setup commands are a list of at most 50 commands of at most 4000 characters each.'],
+  setupCommands: ['invalid_setup_commands', 'The setup commands are a list of at most 100 commands of at most 4000 characters each.'],
 };
 const setupRequestSchema = z.object({ commands: setupCommandsSchema }).strict();
 // The grant dialog's request, parsed at the boundary. A model grant names the provider as the
@@ -309,6 +309,7 @@ export function createSpaceJourney({
       step: 'checking_place',
       failure: null,
       network,
+      setupTotal: setupCommands.length,
     };
     pending.set(entry.id, entry);
     void prepare(entry, { projectDirectory, name, start, network, setupCommands });
@@ -418,7 +419,8 @@ export function createSpaceJourney({
     failure: entry.failure,
     network: entry.network,
     history: 'pending',
-    setup: null,
+    // The client waits for the setup only when the host said it will run one; a host before 5d-4 never says so.
+    setup: entry.setupTotal > 0 ? { state: 'queued', total: entry.setupTotal } : null,
     grants: [],
     access: null,
     needsAccess: [],

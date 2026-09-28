@@ -2,7 +2,7 @@
 // them, the shared ones from the repository only after the trust prompt, and run by the host
 // inside the space. What runs now and how the last run ended is in the journey list.
 
-import { getWorktreeSetupWaitEnabled } from '@/lib/openchamberConfig';
+import { getProjectSetup, getWorktreeSetupWaitEnabled } from '@/lib/openchamberConfig';
 import { resolveWorktreeSetupCommands } from '@/lib/sharedTrustConfirmation';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { runSpaceSetup, SpacesRequestError, type SpaceEntry } from './spaces-api';
@@ -29,13 +29,21 @@ export const resolveSpaceSetupPlan = async (projectDirectory: string): Promise<S
 
 /**
  * Runs the project's setup commands again in a running space, as they are in the project's
- * settings now. A project with none refuses with its own code, so the group can say so.
+ * settings now. Nothing to run refuses with a code of its own, so the group can say why: the
+ * project has none, or the user skipped the repository's at the trust prompt and has none of their own.
  */
 export const runSpaceSetupAgain = async (entry: SpaceEntry): Promise<SpaceEntry> => {
   if (entry.projectDirectory === null) {
     throw new SpacesRequestError('project_not_registered', 'The project of this space is no longer registered.', 0);
   }
-  const commands = await resolveWorktreeSetupCommands(projectRefOf(entry.projectDirectory), 'space');
-  if (commands.length === 0) throw new SpacesRequestError('space_setup_no_commands', 'This project has no setup commands.', 0);
+  const project = projectRefOf(entry.projectDirectory);
+  const commands = await resolveWorktreeSetupCommands(project, 'space');
+  if (commands.length === 0) {
+    const setup = await getProjectSetup(project);
+    const skipped = setup.shared.setupWorktree.length > 0 && setup.personal.setupWorktreeMode !== 'replace';
+    throw skipped
+      ? new SpacesRequestError('space_setup_shared_skipped', 'The setup commands from the repository were skipped.', 0)
+      : new SpacesRequestError('space_setup_no_commands', 'This project has no setup commands.', 0);
+  }
   return runSpaceSetup(entry.id, commands);
 };

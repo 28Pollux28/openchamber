@@ -88,9 +88,11 @@ export type SpaceCreationStep = (typeof SPACE_CREATION_STEPS)[number];
 
 export const spaceCreationStepSchema = z.enum(SPACE_CREATION_STEPS);
 
-// The project's setup commands in the space (5d-4): the command running now, how the last run
-// ended, or a run the host did not live to see end. `command` is the project's text, to show only.
+// The project's setup commands in the space (5d-4): queued until the code arrived, the command
+// running now, how the last run ended, or a run the host did not live to see end. `command` is the
+// project's text, to show only.
 const setupSchema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('queued'), total: z.number().int().min(1) }),
   z.object({ state: z.literal('running'), index: z.number().int().min(0), total: z.number().int().min(1), command: z.string() }),
   z.object({ state: z.literal('done'), total: z.number().int().min(1) }),
   z.object({ state: z.literal('failed'), index: z.number().int().min(0), total: z.number().int().min(1), command: z.string(), exitCode: z.number().int().nullable(), timedOut: z.boolean() }),
