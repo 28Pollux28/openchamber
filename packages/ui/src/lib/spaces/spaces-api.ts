@@ -88,6 +88,19 @@ export type SpaceCreationStep = (typeof SPACE_CREATION_STEPS)[number];
 
 export const spaceCreationStepSchema = z.enum(SPACE_CREATION_STEPS);
 
+// The project's setup commands in the space (5d-4): queued until the code arrived, the command
+// running now, how the last run ended, or a run the host did not live to see end. `command` is the
+// project's text, to show only.
+const setupSchema = z.discriminatedUnion('state', [
+  z.object({ state: z.literal('queued'), total: z.number().int().min(1) }),
+  z.object({ state: z.literal('running'), index: z.number().int().min(0), total: z.number().int().min(1), command: z.string() }),
+  z.object({ state: z.literal('done'), total: z.number().int().min(1) }),
+  z.object({ state: z.literal('failed'), index: z.number().int().min(0), total: z.number().int().min(1), command: z.string(), exitCode: z.number().int().nullable(), timedOut: z.boolean() }),
+  z.object({ state: z.literal('interrupted'), total: z.number().int().min(1) }),
+]);
+
+export type SpaceSetup = z.infer<typeof setupSchema>;
+
 const spaceEntrySchema = z.object({
   id: spaceIdSchema,
   name: z.string(),
@@ -106,6 +119,8 @@ const spaceEntrySchema = z.object({
   // What is broken in a damaged space: `repairable` comes back with a restart of the container,
   // `gatekeeper_gone` never does. Null for a space that is whole.
   damage: z.enum(['repairable', 'gatekeeper_gone']).nullable().default(null),
+  // Null before any run of the setup commands, and from a host before 5d-4.
+  setup: setupSchema.nullable().default(null),
 });
 
 export type SpaceEntry = z.infer<typeof spaceEntrySchema>;
@@ -124,6 +139,8 @@ export type CreateSpaceRequest = {
   name: string;
   start: SpaceStart;
   network: SpaceNetwork;
+  /** The project's setup commands, resolved as for a new worktree, trust included. */
+  setupCommands: string[];
 };
 
 export type GrantRequest =
@@ -236,6 +253,18 @@ export const readSpaceIdleStop = (signal?: AbortSignal): Promise<SpaceIdleStop> 
 /** Keeps the setting and tells every running space; answers the setting as kept. */
 export const setSpaceIdleStop = (setting: SpaceIdleStop): Promise<SpaceIdleStop> =>
   request(`${SPACES_ROUTE}/idle-stop`, idleStopSchema, { method: 'PUT', body: JSON.stringify(setting) });
+
+/** Runs the setup commands again in a running space; answers once they began. */
+export const runSpaceSetup = (spaceId: string, commands: readonly string[]): Promise<SpaceEntry> =>
+  request(`${SPACES_ROUTE}/${spaceId}/setup`, spaceEntrySchema, { method: 'POST', body: JSON.stringify({ commands }) });
+
+// The end of the failed command's output: printed by the project's code, so plain text to show.
+const setupOutputSchema = z.object({ setup: setupSchema.nullable(), output: z.string().nullable() });
+
+export type SpaceSetupOutput = z.infer<typeof setupOutputSchema>;
+
+export const readSpaceSetup = (spaceId: string, signal?: AbortSignal): Promise<SpaceSetupOutput> =>
+  request(`${SPACES_ROUTE}/${spaceId}/setup`, setupOutputSchema, { signal });
 
 export const removeSpace = (spaceId: string): Promise<SpaceRemoval> =>
   request(`${SPACES_ROUTE}/${spaceId}`, removalSchema, { method: 'DELETE' });

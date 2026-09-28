@@ -57,6 +57,8 @@ const STATUS_BY_CODE = new Map([
   ['place_cannot_restrict_network', 409],
   ['space_remove_incomplete', 502],
   ['gatekeeper_missing', 409],
+  ['invalid_setup_commands', 400],
+  ['space_setup_running', 409],
 ]);
 
 /** One JSON answer per failure, with a stable code. Details travel as data; a stack never does. */
@@ -226,6 +228,16 @@ export function registerSpaceRoutes(app, { getJourney, getPlaces = () => [], rea
   // A domain added to the allowlist of a running space, live; the record keeps it for the next start.
   app.post(`${SPACES_ROUTE}/:id/network/domains`, withJourney(async (journey, req, res) => {
     res.json(await journey.openDomain(spaceIdOf(req), requireBody(req)));
+  }));
+
+  // The project's setup commands, again: answers once they began; each step follows as an event.
+  app.post(`${SPACES_ROUTE}/:id/setup`, withJourney(async (journey, req, res) => {
+    res.json(await journey.runSetup(spaceIdOf(req), requireBody(req)));
+  }));
+
+  // How the last run went, with the end of the output of the command that failed.
+  app.get(`${SPACES_ROUTE}/:id/setup`, withJourney(async (journey, req, res) => {
+    res.json(await journey.readSetup(spaceIdOf(req)));
   }));
 
   app.get(`${SPACES_ROUTE}/:id/journal`, withJourney(async (journey, req, res) => {

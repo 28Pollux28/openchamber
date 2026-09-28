@@ -236,11 +236,18 @@ export function createDockerPlace({ runCommand, openCommandStream = openCommandS
   /**
    * Runs argv as the space user in the space or, with `target: 'gatekeeper'`, in its gatekeeper.
    * It does not look at the container first, so it also serves containers this place just made.
+   * `maxOutputBytes`, `keepTail` and `killTree` go to `runCommand` as they are; the setup
+   * commands use them for a long command whose output is shown and whose exit code is the answer.
    */
   const execInContainer = (spaceId, argv, options = {}) => run(
     ['exec', '--interactive', '--user', SPACE_USER, spaceResourceName(spaceId, execRole(options.target)), ...argv],
     options.timeoutMs ?? EXEC_TIMEOUT_MS,
-    { stdin: options.stdin ?? '' },
+    {
+      stdin: options.stdin ?? '',
+      ...(options.maxOutputBytes === undefined ? {} : { maxOutputBytes: options.maxOutputBytes }),
+      ...(options.keepTail === true ? { keepTail: true } : {}),
+      ...(options.killTree === true ? { killTree: true } : {}),
+    },
   );
 
   const server = createSpaceServerChannel({ exec: execInContainer, wait, now: () => now().getTime() });

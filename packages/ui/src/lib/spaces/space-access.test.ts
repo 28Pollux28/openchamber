@@ -21,6 +21,7 @@ const entry = (change: Partial<SpaceEntry> = {}): SpaceEntry => ({
   access: 'granted',
   needsAccess: [],
   damage: null,
+  setup: null,
   ...change,
 });
 

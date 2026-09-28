@@ -15,6 +15,7 @@ import { AppLinkConfirmDialog } from '@/components/chat/AppLinkConfirmDialog';
 import { SharedTrustConfirmDialog } from '@/components/projects/SharedTrustConfirmDialog';
 import { SpaceAccessDialog } from '@/components/session/spaces/SpaceAccessDialog';
 import { SpaceActionsSheet, SpaceDeleteDialog } from '@/components/session/spaces/SpaceActions';
+import { SpaceSetupOutputDialog } from '@/components/session/spaces/SpaceSetupOutput';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
 import { RunOverview } from '@/components/multirun/RunOverview';
 import { RuntimeAPIProvider } from '@/contexts/RuntimeAPIProvider';
@@ -1374,7 +1375,7 @@ function MobileAppContent({ apis }: MobileAppProps) {
               }} />
               <AppLinkConfirmDialog />
               <SharedTrustConfirmDialog />
-              {isolatedSpacesEnabled ? <><SpaceAccessDialog /><SpaceActionsSheet /><SpaceDeleteDialog /></> : null}
+              {isolatedSpacesEnabled ? <><SpaceAccessDialog /><SpaceActionsSheet /><SpaceDeleteDialog /><SpaceSetupOutputDialog /></> : null}
               <Toaster position="top-center" offset="calc(var(--oc-safe-area-top, 0px) + 16px)" />
               {isInitialized ? <ConfigUpdateOverlay /> : null}
             </div>

@@ -23,6 +23,9 @@
 // The host tells it the setting at every start and whenever the user changes it, lists a space
 // that stopped that way as such, and stops the gatekeeper it finds running beside a stopped space,
 // which is what an idle stop leaves while OpenChamber is closed.
+//
+// Setup commands, since 5d-4 (DESIGN.md, "Code in and out"): the project's worktree setup commands
+// run inside the space once its code arrived, in the background, and again when the user asks.
 
 import crypto from 'node:crypto';
 
@@ -34,6 +37,7 @@ import { ROLE_GATEKEEPER, createSpaceId, hashProjectDirectory, spaceResourceName
 import { spaceProjectPath, spaceWindowUrl } from './layout.js';
 import { domainSchema, grantSchema, networkSchema, secretSourceSchema } from './space-records.js';
 import { createSpaceToken } from './space-server.js';
+import { createSpaceSetup, setupCommandsSchema } from './space-setup.js';
 
 // The four choices of the create dialog, parsed at the boundary. Each field refuses with a code
 // of its own, so the dialog can point at the field.
@@ -42,13 +46,18 @@ const createRequestSchema = z.object({
   name: z.string().trim().min(1),
   start: z.enum(['clean', 'uncommitted']).default('uncommitted'),
   network: networkSchema.default({ mode: 'allowlist', domains: [] }),
+  // The project's worktree setup commands as the client resolved them, the shared ones only when
+  // the user trusted them; they run once the code arrived (5d-4).
+  setupCommands: setupCommandsSchema.default([]),
 });
 const CREATE_REFUSALS = {
   projectDirectory: ['project_not_registered', 'A space is made for a project this OpenChamber knows. Add the project first, then create the space.'],
   name: ['invalid_space_name', 'A space needs a name.'],
   start: ['invalid_snapshot_mode', 'A space starts from a clean commit or with the uncommitted changes.'],
   network: ['invalid_network', 'The network of a space is allowlist or open, with a list of domain names for the allowlist.'],
+  setupCommands: ['invalid_setup_commands', 'The setup commands are a list of at most 100 commands of at most 4000 characters each.'],
 };
+const setupRequestSchema = z.object({ commands: setupCommandsSchema }).strict();
 // The grant dialog's request, parsed at the boundary. A model grant names the provider as the
 // host's catalog does, the provider's API as the upstream, and where the key comes from: typed
 // once, or an environment variable of the host's by name. The value of a typed key is used now
@@ -135,6 +144,15 @@ export function createSpaceJourney({
   let idleStopTurn = Promise.resolve();
   // Stops of a gatekeeper left beside a stopped space, under way, by space id; a start waits for one.
   const strayStops = new Map();
+  // The project's setup commands inside a space, since 5d-4; each step is announced so the
+  // clients read the list again.
+  const setup = createSpaceSetup({
+    exec: place.exec,
+    records,
+    announce: (spaceId) => announce(spaceId, { type: 'openchamber:space-setup', properties: { spaceId, timestamp: now().getTime() } }),
+    logger,
+    now,
+  });
 
   const exclusive = async (spaceId, work) => {
     if (busy.has(spaceId)) throw new SpaceError('space_busy', 'Another action on this space is still running. Wait for it to finish.');
@@ -227,7 +245,7 @@ export function createSpaceJourney({
       });
   };
 
-  const prepare = async (entry, { projectDirectory, name, start, network }) => {
+  const prepare = async (entry, { projectDirectory, name, start, network, setupCommands }) => {
     let created = false;
     try {
       progress(entry, 'checking_place');
@@ -250,6 +268,8 @@ export function createSpaceJourney({
       pending.delete(entry.id);
       progress(entry, 'ready');
       onSpacesChanged();
+      // In the background, while the agent can already start (DESIGN.md, journey step 2).
+      if (setupCommands.length > 0) setup.start(entry.id, { projectPath: arrived.spacePath, commands: setupCommands });
       sendHistoryInBackground({ repository: projectDirectory, spaceId: entry.id, spacePath: arrived.spacePath, base: arrived.base });
     } catch (error) {
       const failure = failureOf(error);
@@ -275,7 +295,7 @@ export function createSpaceJourney({
       const [code, message] = CREATE_REFUSALS[parsed.error.issues[0]?.path?.[0]] ?? CREATE_REFUSALS.network;
       throw new SpaceError(code, message);
     }
-    const { name, start, network } = parsed.data;
+    const { name, start, network, setupCommands } = parsed.data;
     const projectDirectory = await requireRegisteredProject(parsed.data.projectDirectory);
     const id = createSpaceId();
     const entry = {
@@ -289,9 +309,10 @@ export function createSpaceJourney({
       step: 'checking_place',
       failure: null,
       network,
+      setupTotal: setupCommands.length,
     };
     pending.set(entry.id, entry);
-    void prepare(entry, { projectDirectory, name, start, network });
+    void prepare(entry, { projectDirectory, name, start, network, setupCommands });
     return describePending(entry);
   };
 
@@ -398,6 +419,8 @@ export function createSpaceJourney({
     failure: entry.failure,
     network: entry.network,
     history: 'pending',
+    // The client waits for the setup only when the host said it will run one; a host before 5d-4 never says so.
+    setup: entry.setupTotal > 0 ? { state: 'queued', total: entry.setupTotal } : null,
     grants: [],
     access: null,
     needsAccess: [],
@@ -433,6 +456,7 @@ export function createSpaceJourney({
         failure: null,
         network: record?.network ?? null,
         history: record?.history ?? 'unknown',
+        setup: setup.describe(space.id, record),
         grants: grants.map(describeGrant),
         ...(access ? await readAccess(space, grants) : { access: null, needsAccess: [] }),
         damaged: space.damaged,
@@ -613,6 +637,29 @@ export function createSpaceJourney({
     return { network: next.data };
   });
 
+  /**
+   * Runs the project's setup commands again in a running space, from the "⋯" menu or after a run
+   * that failed or was interrupted. The client resolves them as for a new space, trust included.
+   * Answers the listed entry once the run began; the run goes on in the background.
+   */
+  const runSetup = (spaceId, request) => exclusive(spaceId, async () => {
+    requireNotPending(spaceId);
+    const parsed = setupRequestSchema.safeParse(request ?? {});
+    if (!parsed.success) throw new SpaceError(...CREATE_REFUSALS.setupCommands);
+    const space = await requireListed(spaceId);
+    if (space.state !== 'running') throw new SpaceError('space_not_running', 'The setup commands run inside a running space. Start the space.');
+    const { record } = records.read(spaceId);
+    if (!record?.spacePath) throw new SpaceError('space_record_unreadable', 'The host\'s record of this space cannot be read, so it does not know where the project is inside. Remove the space and create it again.');
+    setup.start(spaceId, { projectPath: record.spacePath, commands: parsed.data.commands });
+    return requireListed(spaceId);
+  });
+
+  /** The setup as the list carries it, with the end of the failed command's output. */
+  const readSetup = async (spaceId) => {
+    const space = await requireListed(spaceId);
+    return { setup: space.setup, output: setup.outputOf(records.read(spaceId).record) };
+  };
+
   const stopSpace = (spaceId) => exclusive(spaceId, async () => {
     requireNotPending(spaceId);
     await manager.stopSpace({ placeId: place.id, spaceId });
@@ -752,5 +799,5 @@ export function createSpaceJourney({
     return { brought, applied, removal };
   });
 
-  return { createSpace, listSpaces, startSpace, stopSpace, restartSpace, restartOpenCode, removeSpace, stopAllSpaces, reopen, grantAccess, openDomain, readJournal, previewApply, applySpace, readIdleStopSetting, changeIdleStop };
+  return { createSpace, listSpaces, startSpace, stopSpace, restartSpace, restartOpenCode, removeSpace, stopAllSpaces, reopen, grantAccess, openDomain, readJournal, previewApply, applySpace, readIdleStopSetting, changeIdleStop, runSetup, readSetup };
 }

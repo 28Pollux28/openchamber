@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { SpaceError } from './errors.js';
 import { createSpaceJourney } from './journey.js';
 import { ROLE_GATEKEEPER, spaceResourceName } from './labels.js';
+import { IMAGE_TIMEOUT } from './layout.js';
 import { createSpaceManager } from './manager.js';
 import { createMemoryPlace } from './places/memory-place.js';
 import { createPlaceRegistry } from './places/registry.js';
@@ -878,5 +879,93 @@ describe('the journey: idle stop', () => {
     const stops = idleStopped(place);
     expect(await journey.stopAllSpaces()).toEqual({ stopped: [], stillRunning: [] });
     expect(stops).toEqual([id]);
+  });
+});
+
+describe('the journey: setup commands', () => {
+  /** A memory place whose space answers the setup commands from `answers`, by the command, and holds the named one. */
+  const setupPlace = (answers = {}) => {
+    const place = createMemoryPlace();
+    const exec = place.exec;
+    const ran = [];
+    let release = () => {};
+    const held = new Promise((resolve) => { release = resolve; });
+    place.exec = async (spaceId, argv, options) => {
+      if (argv[0] !== IMAGE_TIMEOUT) return exec(spaceId, argv, options);
+      const command = argv.at(-1);
+      ran.push({ spaceId, cwd: argv.at(-2), command });
+      if (command === 'hold') await held;
+      return answers[command] ?? { code: 0, stdout: '', stderr: '' };
+    };
+    return { place, ran, release: () => release() };
+  };
+  const setupEvents = (events, spaceId) => events.filter((event) => event.spaceId === spaceId && event.step === undefined);
+
+  it('runs the setup commands in the project inside once the space is ready, and lists how they went', async () => {
+    const { place, ran } = setupPlace({ 'npm ci': { code: 1, stdout: 'npm ERR! 403 Forbidden\n', stderr: '' } });
+    const { journey, events } = journeyWith({ place });
+    const answer = await journey.createSpace({ ...REQUEST, setupCommands: ['echo hi', 'npm ci', '  ', 'npm run build'] });
+    // The answer says a setup will run, so the client knows to wait for it when the project asks.
+    expect(answer.setup).toEqual({ state: 'queued', total: 3 });
+    const { id } = answer;
+    expect(await until(() => ran.length === 2)).toBe(true);
+    expect(await until(() => journey.listSpaces().then((spaces) => spaces[0].setup?.state === 'failed'))).toBe(true);
+    expect(ran).toEqual([{ spaceId: id, cwd: `/spaces/${id}/project`, command: 'echo hi' }, { spaceId: id, cwd: `/spaces/${id}/project`, command: 'npm ci' }]);
+    // Only after the space was ready: the agent can already start.
+    const mine = events.filter((event) => event.spaceId === id);
+    expect(mine.findIndex((event) => event.step === 'ready')).toBeLessThan(mine.findIndex((event) => event.step === undefined));
+    const listed = (await journey.listSpaces()).find((space) => space.id === id);
+    expect(listed.setup).toEqual({ state: 'failed', index: 1, total: 3, command: 'npm ci', exitCode: 1, timedOut: false });
+    expect(await journey.readSetup(id)).toEqual({ setup: listed.setup, output: 'npm ERR! 403 Forbidden' });
+    expect(setupEvents(events, id).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('runs nothing and lists no setup for a project without setup commands', async () => {
+    const { place, ran } = setupPlace();
+    const { journey, events } = journeyWith({ place });
+    const { id, setup } = await journey.createSpace(REQUEST);
+    expect(setup).toBeNull();
+    expect(await until(() => steps(events, id).includes('ready'))).toBe(true);
+    expect(ran).toEqual([]);
+    expect((await journey.listSpaces()).find((space) => space.id === id).setup).toBeNull();
+    expect(await journey.readSetup(id)).toEqual({ setup: null, output: null });
+  });
+
+  it('refuses a list of setup commands the host would not keep, and makes no space for it', async () => {
+    const { journey, place } = journeyWith();
+    await expect(journey.createSpace({ ...REQUEST, setupCommands: 'npm ci' })).rejects.toMatchObject({ code: 'invalid_setup_commands' });
+    await expect(journey.createSpace({ ...REQUEST, setupCommands: Array.from({ length: 101 }, () => 'true') })).rejects.toMatchObject({ code: 'invalid_setup_commands' });
+    expect(await place.list()).toEqual([]);
+  });
+
+  it('runs them again in a running space when asked, once at a time, and never in a stopped one', async () => {
+    const { place, ran, release } = setupPlace();
+    const { journey, events } = journeyWith({ place });
+    const { id } = await journey.createSpace(REQUEST);
+    expect(await until(() => steps(events, id).includes('ready'))).toBe(true);
+
+    const answer = await journey.runSetup(id, { commands: ['hold', 'npm ci'] });
+    expect(answer.setup).toEqual({ state: 'running', index: 0, total: 2, command: 'hold' });
+    await expect(journey.runSetup(id, { commands: ['npm ci'] })).rejects.toMatchObject({ code: 'space_setup_running' });
+    release();
+    expect(await until(() => ran.length === 2)).toBe(true);
+    expect(await until(() => journey.listSpaces().then((spaces) => spaces[0].setup?.state === 'done'))).toBe(true);
+
+    await expect(journey.runSetup(id, { commands: [] })).rejects.toMatchObject({ code: 'invalid_setup_commands' });
+    await expect(journey.runSetup(id, {})).rejects.toMatchObject({ code: 'invalid_setup_commands' });
+    await journey.stopSpace(id);
+    await expect(journey.runSetup(id, { commands: ['npm ci'] })).rejects.toMatchObject({ code: 'space_not_running' });
+    expect(ran).toHaveLength(2);
+  });
+
+  it('lists a run that a restart of the host cut off as interrupted', async () => {
+    const { place } = setupPlace();
+    const first = journeyWith({ place });
+    const { id } = await first.journey.createSpace(REQUEST);
+    expect(await until(() => steps(first.events, id).includes('ready'))).toBe(true);
+    first.records.update(id, { setup: { state: 'running', total: 2, startedAt: '2026-09-26T09:00:00.000Z' } });
+    // Another process on the same data: it has no run in its memory.
+    const second = journeyWith({ place, dataDir: first.dataDir });
+    expect((await second.journey.listSpaces()).find((space) => space.id === id).setup).toEqual({ state: 'interrupted', total: 2 });
   });
 });

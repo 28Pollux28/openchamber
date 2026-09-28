@@ -2,7 +2,8 @@
 // says about a space that is stopped, broken or not answering, which actions its menu offers, and
 // the actions themselves, from soft to hard: start, restart OpenCode, restart the container, stop,
 // delete. What the host lists is the authority; this window only adds the action it has under way
-// or the one that failed, so the line can say so.
+// or the one that failed, so the line can say so. Since 5d-4 the menu of a running space also runs
+// the project's setup commands again.
 
 import { failureOfError } from '@/components/session/spaces/spaceFailureText';
 import { refreshGlobalSessions } from '@/stores/useGlobalSessionsStore';
@@ -16,6 +17,7 @@ import {
   type SpaceFailure,
 } from './spaces-api';
 import { refreshSpacesJourney, spacesRuntimeGeneration, useSpacesStore, type SpaceAction, type SpaceActionState, type SpaceMark } from './spaces-store';
+import { runSpaceSetupAgain } from './space-setup';
 
 /**
  * What is wrong with a space that exists, in the order the status line tells it: an action under
@@ -62,8 +64,13 @@ export const spaceMenuActionsOf = (entry: SpaceEntry | undefined): SpaceAction[]
   if (entry.state === 'missing') return ['remove'];
   const gone = entry.damage === 'gatekeeper_gone';
   if (entry.state === 'exited') return gone ? ['remove'] : ['start', 'remove'];
-  return gone ? ['stop', 'remove'] : ['restart_opencode', 'restart', 'stop', 'remove'];
+  return gone ? ['stop', 'remove'] : ['restart_opencode', 'restart', 'setup', 'stop', 'remove'];
 };
+
+/** An action of the menu that cannot run now: the setup commands again while they still run. */
+export const isSpaceActionUnavailable = (entry: SpaceEntry | undefined, action: SpaceAction): boolean => (
+  action === 'setup' && entry?.setup?.state === 'running'
+);
 
 const call = (spaceId: string, action: SpaceAction): Promise<SpaceFailure | null> => {
   switch (action) {
@@ -71,6 +78,11 @@ const call = (spaceId: string, action: SpaceAction): Promise<SpaceFailure | null
     case 'stop': return stopSpace(spaceId).then(() => null);
     case 'restart': return restartSpace(spaceId).then(() => null);
     case 'restart_opencode': return restartSpaceOpenCode(spaceId).then(() => null);
+    case 'setup': {
+      const entry = useSpacesStore.getState().journey?.get(spaceId);
+      if (!entry) return Promise.resolve({ code: 'space_not_found', message: '' });
+      return runSpaceSetupAgain(entry).then(() => null);
+    }
     // A removal can go through in part; what stayed is the failure the line shows.
     case 'remove': return removeSpace(spaceId).then((outcome) => outcome.failures[0] ?? null);
   }
@@ -103,7 +115,7 @@ export const runSpaceAction = async (spaceId: string, action: SpaceAction): Prom
     if (after.accessDialog?.spaceId === spaceId) after.closeAccessDialog();
     if (after.actionsSheet === spaceId) after.closeActionsSheet();
   }
-  if (!failure && action !== 'stop' && action !== 'remove') after.noteReachable(spaceId);
+  if (!failure && action !== 'stop' && action !== 'remove' && action !== 'setup') after.noteReachable(spaceId);
   // The action's outcome stands on its own: a list that cannot be read now is read at the next turn.
   await refreshSpacesJourney().catch(() => {});
   // The sidebar's group of a space comes from the session list's mark as well, which the host
