@@ -181,6 +181,21 @@ copy.
 
 ## The editor
 
+`editor/bidi.ts` gives each rendered logical line native `dir="auto"` and
+enables CodeMirror's `perLineTextDirection`, so browser layout and cursor
+movement use the same direction. The content root stays LTR; automatic
+direction there would depend on which lines virtualization has mounted.
+Only visible lines get decorations, rebuilt on document or viewport changes.
+
+`composerLanguage.ts` reuses the tokenizer's technical ranges to isolate code,
+paths and references as LTR. The same merged ranges feed `outerDecorations`
+and `bidiIsolatedRanges`: syntax colors cannot split a technical fragment, and
+CodeMirror knows the boundaries the browser draws. Shell mode isolates the
+whole input. Direction handling never inserts Unicode controls or changes the
+source string. Browser checks must cover punctuation, cursor movement across
+isolates, wrapped RTL lines and navigation through a virtualized document;
+DOM-only tests cannot verify these.
+
 `editor/` wraps CodeMirror. The document is a plain string: `getValue()` is
 exactly what gets sent, so nothing downstream serializes a rich document model
 back into a prompt.
