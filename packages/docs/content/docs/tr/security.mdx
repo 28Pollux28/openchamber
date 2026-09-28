@@ -36,6 +36,48 @@ Passkey'ler geçerli parolaya bağlıdır. Parolayı değiştirir ya da kaldır�
 - Bir genel URL gerekiyorsa, internete bir port açmak yerine bir [tunnel](/tunnels/) ya da özel ağ, örneğin VPN, kullanın.
 - OpenChamber'ı kendi HTTPS sunucunuzun arkasına koyuyorsanız [Reverse Proxy](/reverse-proxy/) sayfasına bakın.
 
+## Kurumsal mod
+
+Ekibiniz konuşma içeriğini yalnızca OpenCode'da yapılandırdığınız model sağlayıcılarına gönderebiliyorsa, OpenChamber sunucusu için bir ortam değişkeni ayarlayarak kurumsal modu açın:
+
+```bash
+OPENCHAMBER_ENTERPRISE_MODE=1
+```
+
+Masaüstü uygulaması için bunu oturum açma kabuğunuzun profiline yazın (örneğin `~/.zshrc`); OpenChamber bu ortamı başlangıçta okur. Ayarlar'dan bu mod kapatılamaz. Mod açıkken:
+
+- Model sağlayıcıları yalnızca OpenCode yapılandırmanızdan gelir. OpenChamber'da sağlayıcı bağlamak, bir sağlayıcıda oturum açmak, anahtar eklemek ya da özel sağlayıcı oluşturmak kapalıdır; var olan hesapları kaldırmak veya aralarında geçiş yapmak çalışmaya devam eder. Bu yalnızca uygulama üzerinden girişi kapatır; asıl kilit aşağıda anlatılan OpenCode politikasıdır.
+- [Sınıflandırma sağlayıcıları (Jev)](/classification-providers/) kapalı kalır; birinin Ayarlar'a yazdığı özel bir uç nokta da buna dahildir. Güvenlik ağı ve Auto sunulmaz, oturumlar da yalnızca elle devam edenlere geçer. Jev'i kendi altyapınız üzerinden kullanmak için sunucuda `OPENCHAMBER_JEV_URL` ile bir uç nokta sabitleyin (ayrıca `OPENCHAMBER_JEV_MODEL` ve gerekiyorsa `OPENCHAMBER_JEV_API_KEY`). Bu uç nokta varsayılan olur, yine de kapatılabilir ve başka bir şey seçilemez.
+- OpenAI üzerinden sesli okuma kapalıdır. Özel bir konuşma sentezi ya da transkripsiyon sunucusu aynı makinede çalışmalıdır. Yerel sesler ve yerel dikte modelleri çalışmaya devam eder.
+- Telefonlara ve tarayıcılara giden push bildirimleri yalnızca "Agent response is ready" gibi genel bir başlık taşır; mesaj metni ya da oturum adı içermez. Masaüstü bildirimleri makinenizde kalır ve metnin tamamını korur.
+- Güncelleme kontrolleri çalışmaya devam eder, böylece güvenlik düzeltmeleri size ulaşmaya devam eder; ama kullanım bilgisi asla bildirilmez, anonim kurulum kimliği bile gönderilmez.
+- [Harici tüneller](/tunnels/) (Cloudflare, ngrok) kapalıdır. Bir tünel sağlayıcısı trafiği kendi ucunda çözer ve her isteği düz metin olarak görür.
+- [Private Relay](/private-relay/) yalnızca kendi relay'iniz üzerinden çalışır. Bir [kendi barındırdığınız relay](https://github.com/openchamber/openchamber-relay) çalıştırın ve sunucuyu `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws` ile ona yönlendirin. Ortak relay de uçtan uca şifreli olduğu için trafiğinizi okuyamaz, ama kendi relay'iniz bağlantı meta verilerini ve bu makineye giden yolu ağınızın içinde tutar. Yerel ağınızda cihaz eşleştirme çalışmaya devam eder.
+
+Küçük model görevleri (oturum başlıkları, özetler, commit mesajları, değişikliklerin adım adım incelemesi) özel bir mod gerektirmez. Her zaman Ayarlar'da seçtiğiniz küçük modelde, çalıştığınız sağlayıcının küçük bir modelinde ya da OpenCode yapılandırmanızdaki varsayılan modelde çalışır. Sadece bağlı olduğu için başka bir sağlayıcıya asla geçmez.
+
+Hangi model sağlayıcılarının kullanılabileceğine OpenChamber değil, OpenCode karar verir. Bunu [OpenCode politikaları](https://opencode.ai/v2/docs/policies/) ile kilitleyin: tüm sağlayıcıları reddedin, sonra onayladıklarınıza izin verin.
+
+```jsonc
+{
+  "experimental": {
+    "policies": [
+      { "action": "provider.use", "resource": "*", "effect": "deny" },
+      { "action": "provider.use", "resource": "anthropic", "effect": "allow" }
+    ]
+  }
+}
+```
+
+Reddedilen bir sağlayıcı, biri ona anahtar eklese bile görünmez. Politikaları bir projenin kaldıramayacağı genel `~/.config/opencode/opencode.jsonc` dosyasına koyun ya da son sözü söyleyen bir OpenCode Console çalışma alanından dağıtın. Kurumsal mod, OpenChamber'ın kendisinin bunun üzerine gönderdiklerini kapsar.
+
+Ajanın web aramaları ve sayfa getirmeleri de OpenCode üzerinden arama hizmetine ve sayfaların kendisine gider. Ağınızdan çıkmamaları gerekiyorsa, bunları aynı türden bir politikayla reddedin:
+
+```jsonc
+{ "action": "permission", "resource": "websearch:*", "effect": "deny" },
+{ "action": "permission", "resource": "webfetch:*", "effect": "deny" }
+```
+
 ## İlgili
 
 - [Cihaz bağlama](/connect-devices/) — tek seferlik eşleştirme ve cihaza özel belirteçler

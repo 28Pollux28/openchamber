@@ -15,6 +15,7 @@ import express from 'express';
 
 import { createRelayIdentityRuntime } from './identity.js';
 import { startRelayHost } from './host-client.js';
+import { isEnterpriseMode } from '../enterprise-mode.js';
 
 export const DEFAULT_RELAY_URL = 'wss://relay.openchamber.dev/ws';
 
@@ -44,6 +45,13 @@ const envRelayUrlOverride = () => {
   if (typeof raw !== 'string' || !raw.trim() || !isValidRelayUrl(raw)) return null;
   return raw.trim();
 };
+
+// Enterprise mode keeps remote access inside the company: the relay runs only
+// on a self-hosted endpoint pinned by OPENCHAMBER_RELAY_URL, never on ours.
+// Traffic is end-to-end encrypted either way; what stays in-house is the
+// metadata and the path into this machine.
+const RELAY_BLOCKED_ERROR = 'In enterprise mode the relay runs on your own endpoint: set OPENCHAMBER_RELAY_URL to a self-hosted relay.';
+export const relayBlockedByEnterprise = () => isEnterpriseMode() && envRelayUrlOverride() === null;
 
 /**
  * @param {{
@@ -177,6 +185,11 @@ export const createRelayService = ({
 
   const start = async (relayUrl, { claim = 'try' } = {}) => {
     if (hostClient) return;
+    // Every path into the relay host passes here: boot, demand, enable, pairing.
+    if (relayBlockedByEnterprise()) {
+      status = { state: 'disabled', lastError: RELAY_BLOCKED_ERROR, connectedClients: 0 };
+      return;
+    }
     if (claim !== 'force' && !allowPassiveHost) {
       status = {
         state: 'standby',
@@ -269,6 +282,7 @@ export const createRelayService = ({
       connectedClients: live.connectedClients,
       relayUrl: config.relayUrl,
       relayUrlLocked: config.relayUrlLocked,
+      blockedByEnterprise: relayBlockedByEnterprise(),
       ...(live.lastError ? { lastError: live.lastError } : {}),
     };
   };
@@ -293,7 +307,7 @@ export const createRelayService = ({
 
   const getPairingCandidate = async () => {
     const config = await readConfig();
-    if (!config.enabled) return null;
+    if (!config.enabled || relayBlockedByEnterprise()) return null;
     return buildPairingCandidate();
   };
 
@@ -302,6 +316,8 @@ export const createRelayService = ({
   // rather than requiring a separate manual toggle. Idempotent: a no-op when the
   // relay is already enabled and running.
   const ensureEnabledForPairing = async () => {
+    // Direct pairing still works: the pairing route drops a failed relay candidate.
+    if (relayBlockedByEnterprise()) throw Object.assign(new Error(RELAY_BLOCKED_ERROR), { statusCode: 403 });
     const config = await readConfig();
     if (!config.enabled) {
       await writeConfig({ enabled: true, relayUrl: config.relayUrl });
@@ -327,6 +343,9 @@ export const createRelayService = ({
     });
 
     app.post('/api/openchamber/relay/enable', express.json({ limit: '16kb' }), async (req, res) => {
+      if (relayBlockedByEnterprise()) {
+        return res.status(403).json({ error: RELAY_BLOCKED_ERROR, code: 'enterprise_mode' });
+      }
       try {
         const current = await readConfig();
         const relayUrl = typeof req.body?.relayUrl === 'string' ? normalizeRelayUrl(req.body.relayUrl) : current.relayUrl;

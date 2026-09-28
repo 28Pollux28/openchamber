@@ -36,6 +36,48 @@ Devices paired through [Connect a Device](/connect-devices/) authenticate with t
 - If you need a public URL, prefer a [tunnel](/tunnels/) or a private network (like a VPN) over opening a port to the internet.
 - If you put OpenChamber behind your own HTTPS server, see [Reverse Proxy](/reverse-proxy/).
 
+## Enterprise mode
+
+If your team may only send conversation content to the model providers you configured in OpenCode, turn on enterprise mode by setting an environment variable for the OpenChamber server:
+
+```bash
+OPENCHAMBER_ENTERPRISE_MODE=1
+```
+
+For the desktop app, put it in the login shell profile (for example `~/.zshrc`); OpenChamber reads that environment at startup. Nothing in Settings can turn the mode off. With it on:
+
+- Model providers come only from your OpenCode config. Connecting a provider, signing in to one, adding a key or creating a custom provider is turned off in OpenChamber; removing or switching accounts that already exist still works. This only closes the way in through the app; the lock itself is the OpenCode policy described below.
+- [Classification providers (Jev)](/classification-providers/) stay off, including a custom endpoint someone types in Settings. The safety net and Auto aren't offered, and sessions move into work only by hand. To use Jev through your own infrastructure, pin an endpoint on the server with `OPENCHAMBER_JEV_URL` (plus `OPENCHAMBER_JEV_MODEL` and, if it needs one, `OPENCHAMBER_JEV_API_KEY`). It becomes the default, people can still turn it off, and nothing else can be picked.
+- Read-aloud through OpenAI is off. A custom speech or transcription server has to run on the same machine. Local voices and local dictation models keep working.
+- Push notifications to phones and browsers carry only a generic title like "Agent response is ready", with no message text or session name. Desktop notifications stay on your machine and keep the full text.
+- Update checks keep running, so security fixes still reach you, but they never report usage, not even the anonymous install ID.
+- [External tunnels](/tunnels/) (Cloudflare, ngrok) are off. A tunnel provider decrypts traffic at its edge and sees every request in plain text.
+- The [Private Relay](/private-relay/) works only through your own relay. Run a [self-hosted relay](https://github.com/openchamber/openchamber-relay) and point the server at it with `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws`. The shared relay can't read your traffic either, since it's end-to-end encrypted, but your own keeps the connection metadata and the way into this machine inside your network. Pairing devices on your local network keeps working.
+
+Small-model tasks (session titles, recaps, commit messages, the diff walkthrough) need no special mode. They always run on the small model you chose in Settings, or on a small model of the provider you're working with, or on the default model from your OpenCode config. They never fall back to some other provider you happen to have connected.
+
+Which model providers may be used at all is decided by OpenCode, not OpenChamber. Lock it with [OpenCode policies](https://opencode.ai/v2/docs/policies/): deny every provider, then allow the ones you approved.
+
+```jsonc
+{
+  "experimental": {
+    "policies": [
+      { "action": "provider.use", "resource": "*", "effect": "deny" },
+      { "action": "provider.use", "resource": "anthropic", "effect": "allow" }
+    ]
+  }
+}
+```
+
+A denied provider disappears even if someone adds a key for it. Put the policies in the global `~/.config/opencode/opencode.jsonc`, where a project can't lift them, or deliver them from an OpenCode Console workspace, which has the final say. Enterprise mode covers what OpenChamber itself sends on top of that.
+
+The agent's web searches and page fetches also go through OpenCode, to the search service and to the pages themselves. If they shouldn't leave your network, deny them with the same kind of policy:
+
+```jsonc
+{ "action": "permission", "resource": "websearch:*", "effect": "deny" },
+{ "action": "permission", "resource": "webfetch:*", "effect": "deny" }
+```
+
 ## Related
 
 - [Connect a Device](/connect-devices/) — one-time pairing and per-device tokens

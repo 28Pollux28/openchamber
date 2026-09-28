@@ -36,6 +36,48 @@ passkey 与当前密码绑定。如果你更改或移除密码，已保存的 pa
 - 如果你需要一个公开 URL，相比向互联网开放一个端口，更推荐使用 [隧道](/zh-cn/tunnels/) 或专用网络（比如 VPN）。
 - 如果你把 OpenChamber 放在你自己的 HTTPS 服务器后面，请参阅 [反向代理](/zh-cn/reverse-proxy/)。
 
+## 企业模式
+
+如果你的团队只能把对话内容发送给你在 OpenCode 中配置的模型提供商，可以为 OpenChamber 服务器设置一个环境变量来开启企业模式：
+
+```bash
+OPENCHAMBER_ENTERPRISE_MODE=1
+```
+
+对于桌面应用，把它写进登录 shell 的配置文件（例如 `~/.zshrc`）；OpenChamber 会在启动时读取这个环境。设置里没有任何选项能关闭这个模式。开启后：
+
+- 模型提供商只来自你的 OpenCode 配置。在 OpenChamber 中连接提供商、登录提供商、添加密钥或创建自定义提供商都会关闭；移除或切换已有账户仍然可用。这只是关上了经由应用的入口；真正的锁是下文所述的 OpenCode 策略。
+- [分类提供方（Jev）](/zh-cn/classification-providers/)保持关闭，有人在设置里填写的自定义端点也一样。安全网和 Auto 不会提供，会话只能手动移入进行中。要通过你自己的基础设施使用 Jev，请在服务器上用 `OPENCHAMBER_JEV_URL` 固定一个端点（再加上 `OPENCHAMBER_JEV_MODEL`，如有需要还有 `OPENCHAMBER_JEV_API_KEY`）。它会成为默认选项，仍然可以关闭，但不能选择其他任何来源。
+- 通过 OpenAI 朗读的功能会关闭。自定义的语音合成或转写服务器必须运行在同一台机器上。本地语音和本地口述模型照常工作。
+- 发往手机和浏览器的推送通知只带一个通用标题，例如“Agent response is ready”，不含消息文本或会话名称。桌面通知留在你的机器上，保留完整文本。
+- 更新检查照常运行，安全修复仍能送达，但它从不上报使用情况，连匿名安装 ID 也不上报。
+- [外部隧道](/zh-cn/tunnels/)（Cloudflare、ngrok）会关闭。隧道提供商会在其边缘解密流量，能以明文看到每一个请求。
+- [Private Relay](/zh-cn/private-relay/) 只能通过你自己的中继使用。运行一个[自托管中继](https://github.com/openchamber/openchamber-relay)，并用 `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws` 让服务器指向它。共享中继同样无法读取你的流量，因为它是端到端加密的，但你自己的中继能把连接元数据和进入这台机器的通道留在你的网络内。在本地网络中配对设备照常工作。
+
+小模型任务（会话标题、摘要、提交信息、变更讲解）不需要任何特殊模式。它们始终使用你在设置中选择的小模型、你当前所用提供商的小模型，或你的 OpenCode 配置中的默认模型。它们绝不会退而使用你恰好连接着的其他提供商。
+
+到底能使用哪些模型提供商，由 OpenCode 决定，而不是 OpenChamber。用 [OpenCode 策略](https://opencode.ai/v2/docs/policies/)锁定它：先拒绝所有提供商，再允许你批准的那些。
+
+```jsonc
+{
+  "experimental": {
+    "policies": [
+      { "action": "provider.use", "resource": "*", "effect": "deny" },
+      { "action": "provider.use", "resource": "anthropic", "effect": "allow" }
+    ]
+  }
+}
+```
+
+被拒绝的提供商即使有人为它添加了密钥也会消失。把策略放在全局的 `~/.config/opencode/opencode.jsonc` 中，项目无法解除它们；或者从拥有最终决定权的 OpenCode Console 工作区下发。企业模式在此之上负责 OpenChamber 自身发送的内容。
+
+智能体的网页搜索和网页抓取同样经由 OpenCode，发往搜索服务和页面本身。如果它们不应离开你的网络，用同类策略拒绝它们：
+
+```jsonc
+{ "action": "permission", "resource": "websearch:*", "effect": "deny" },
+{ "action": "permission", "resource": "webfetch:*", "effect": "deny" }
+```
+
 ## 相关内容
 
 - [连接设备](/zh-cn/connect-devices/) — 一次性配对与设备级令牌
