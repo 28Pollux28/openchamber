@@ -1,16 +1,18 @@
 ---
-title: Enterprise mode and Excalidraw extension
+title: Enterprise mode for teams
 ---
 
 ## App
 
 ### New
 - **Enterprise mode for teams.** An administrator turns it on with a policy file on the machine or `OPENCHAMBER_ENTERPRISE_MODE=1` on a server, and conversations stay with the model providers in your OpenCode config: Jev, OpenAI speech, external tunnels, the shared relay and access from other devices are off, and providers are managed only in the config. Settings shows who manages it, and people can't turn it off. [See how to set it up](https://docs.openchamber.dev/security/#enterprise-mode).
-- **Settings/Integrations: a new OpenChamber extensions section installs extras from the OpenChamber team in one click.** Excalidraw is the first one: drawing in `.excalidraw` files and Obsidian drawings now comes from this extension, and opening a drawing without it offers to install it. [Read how it works](https://docs.openchamber.dev/integrations/).
 - Dutch interface: OpenChamber can be used in Dutch (thanks to @herbkk).
 - Goal: Jev can check whether the agent reached your goal. After each turn it decides whether the work is done, whether work is left, or whether the agent is waiting for you. Pick it in Settings → Chat → Goal; the small model checks by default.
 - Settings/Providers: Jev can run on your own endpoint. Enter its URL, model and an optional key under Classification providers, or set it for a whole team in the enterprise policy file or with `OPENCHAMBER_JEV_URL`.
 - Sidebar: Timeline rows and the mobile session list show a session's goal and its waiting permission or question requests.
+
+### Improvements
+- **Excalidraw is now an extension.** Drawing in `.excalidraw` files and Obsidian drawings comes from the Excalidraw extension: opening a drawing without it offers to install it, or add it in one click under Settings/Integrations → OpenChamber extensions. [Read how it works](https://docs.openchamber.dev/integrations/).
 
 ### Fixes
 - **Settings/Providers: Jev stays off until you pick a classification provider.** Your messages were reaching OpenCode Zen without you choosing it. Off is now its own option and the default.
