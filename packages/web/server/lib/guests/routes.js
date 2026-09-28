@@ -875,7 +875,12 @@ export const registerGuestRoutes = (app, {
       // The sandboxed frame's origin is `null`, and fonts (always) and fetch
       // are CORS requests: without this its own package fonts and files are
       // refused. `null`, not `*`: only opaque-origin documents may read them.
-      res.setHeader('Access-Control-Allow-Origin', 'null');
+      // The app UI's own origin, already allowed by the server's CORS layer,
+      // keeps its answer: the rail draws a package icon as a CSS mask, which is
+      // a CORS fetch from openchamber-ui:// or the dev origin.
+      if (!res.getHeader('Access-Control-Allow-Origin')) {
+        res.setHeader('Access-Control-Allow-Origin', 'null');
+      }
       res.send(body);
     } catch (error) {
       console.error('Failed to serve guest asset:', error);
