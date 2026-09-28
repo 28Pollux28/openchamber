@@ -55,6 +55,7 @@ const STATUS_BY_CODE = new Map([
   ['nothing_to_apply', 409],
   ['place_cannot_restrict_network', 409],
   ['space_remove_incomplete', 502],
+  ['gatekeeper_missing', 409],
 ]);
 
 /** One JSON answer per failure, with a stable code. Details travel as data; a stack never does. */
@@ -193,6 +194,15 @@ export function registerSpaceRoutes(app, { getJourney, getPlaces = () => [], rea
 
   app.post(`${SPACES_ROUTE}/:id/stop`, withJourney(async (journey, req, res) => {
     res.json(await journey.stopSpace(spaceIdOf(req)));
+  }));
+
+  // The repair actions, from soft to hard: OpenCode inside, then the container with a fresh token.
+  app.post(`${SPACES_ROUTE}/:id/restart-opencode`, withJourney(async (journey, req, res) => {
+    res.json(await journey.restartOpenCode(spaceIdOf(req)));
+  }));
+
+  app.post(`${SPACES_ROUTE}/:id/restart`, withJourney(async (journey, req, res) => {
+    res.json(await journey.restartSpace(spaceIdOf(req)));
   }));
 
   app.delete(`${SPACES_ROUTE}/:id`, withJourney(async (journey, req, res) => {

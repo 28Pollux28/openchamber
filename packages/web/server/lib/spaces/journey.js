@@ -14,15 +14,20 @@
 // opened domain the window forwards to with no credential. The host keeps the grant without its
 // value (decision 5) and says it again to the gatekeeper after every start; a value it cannot
 // find again leaves the space "needs access" until the user grants once more.
+//
+// Repair, since 5d-2 (DESIGN.md, journey step 8 and decision 10): restart OpenCode inside, and
+// restart the container with a fresh token for the server inside. A space whose gatekeeper is gone
+// is listed as such, because no restart brings it back.
 
 import crypto from 'node:crypto';
 
 import { z } from 'zod';
 
 import { SpaceError } from './errors.js';
-import { createSpaceId, hashProjectDirectory } from './labels.js';
+import { ROLE_GATEKEEPER, createSpaceId, hashProjectDirectory, spaceResourceName } from './labels.js';
 import { spaceProjectPath, spaceWindowUrl } from './layout.js';
 import { domainSchema, grantSchema, networkSchema, secretSourceSchema } from './space-records.js';
+import { createSpaceToken } from './space-server.js';
 
 // The four choices of the create dialog, parsed at the boundary. Each field refuses with a code
 // of its own, so the dialog can point at the field.
@@ -87,6 +92,8 @@ const failureOf = (error) => ({
  * host's hub, `onSpacesChanged()` tells the host to read its list again at once. `spaceOpenCode`
  * writes OpenCode's files inside a space, and `readHostSecret(name)` is how a key named by an
  * environment variable of the host's is found again: its value or undefined, never stored.
+ * `serverInside.writeToken(spaceId, token)` replaces the token the server inside reads when it
+ * starts, and `restartOpenCodeInside(spaceId)` asks the server inside to restart its OpenCode.
  */
 export function createSpaceJourney({
   manager,
@@ -96,6 +103,8 @@ export function createSpaceJourney({
   codeOut,
   records,
   spaceOpenCode,
+  serverInside,
+  restartOpenCodeInside,
   listProjectDirectories,
   readHostSecret = () => undefined,
   announce = () => {},
@@ -316,6 +325,28 @@ export function createSpaceJourney({
     }
   };
 
+  /**
+   * What is broken in a damaged space, for the group's status line: `gatekeeper_gone` when its
+   * gatekeeper container no longer exists, which no start makes again (STAGES.md, "Things stage 2
+   * leaves"), and `repairable` for the rest, a gatekeeper that stopped while the space runs among
+   * them, which the next start brings back. The place's list names the gatekeeper as missing in
+   * both cases; its verification tells them apart, and is asked only for a space that is damaged
+   * that way. A verification that cannot answer leaves it `repairable`, so the user is offered
+   * the restart rather than told the space is lost on a guess.
+   */
+  const readDamage = async (space) => {
+    if (!space.damaged) return null;
+    if (!space.missing.includes(spaceResourceName(space.id, ROLE_GATEKEEPER))) return 'repairable';
+    try {
+      const violations = await place.verify(space.id);
+      return violations.some((violation) => violation.check === 'gatekeeper_missing') ? 'gatekeeper_gone' : 'repairable';
+    } catch (error) {
+      if (error instanceof SpaceError && error.code === 'gatekeeper_missing') return 'gatekeeper_gone';
+      logger.warn?.(`[spaces] space ${space.id} could not be verified: ${error?.code ?? error?.message ?? error}`);
+      return 'repairable';
+    }
+  };
+
   const describePending = (entry) => ({
     id: entry.id,
     name: entry.name,
@@ -332,6 +363,7 @@ export function createSpaceJourney({
     access: null,
     needsAccess: [],
     damaged: false,
+    damage: null,
     missing: [],
     orphans: [],
   });
@@ -364,6 +396,7 @@ export function createSpaceJourney({
         grants: grants.map(describeGrant),
         ...(access ? await readAccess(space, grants) : { access: null, needsAccess: [] }),
         damaged: space.damaged,
+        damage: await readDamage(space),
         missing: space.missing,
         orphans: space.orphans,
       };
@@ -386,7 +419,7 @@ export function createSpaceJourney({
    * chose is said again from the record; without a readable record the space stays closed, and
    * the answer says so with `networkRestored` false.
    */
-  const startSpace = (spaceId) => exclusive(spaceId, async () => {
+  const startUnlocked = async (spaceId) => {
     // As for a creation: no start may slip in while the switch is stopping the spaces one by one.
     if (closing) throw new SpaceError('isolated_spaces_off', 'Isolated spaces are being turned off.');
     requireNotPending(spaceId);
@@ -407,6 +440,43 @@ export function createSpaceJourney({
     }
     onSpacesChanged();
     return { ...(await requireListed(spaceId)), networkRestored, grantsRestored: grants.restored, needsAccess: grants.needsAccess };
+  };
+  const startSpace = (spaceId) => exclusive(spaceId, () => startUnlocked(spaceId));
+
+  /**
+   * Restarts the container of a running space, the second of the repair actions, and gives the
+   * server inside a fresh token on the way (DESIGN.md, "Dispatcher, sessions, events"): the new
+   * token is written while the space runs, and the server reads it when it starts again. The
+   * token is not a secret from the agent, so one that cannot be written is logged and the restart
+   * goes on; the dispatcher reads the token again when the server inside refuses the old one.
+   * A stop, then a start with the network and the grants said again, exactly as the two apart.
+   */
+  const restartSpace = (spaceId) => exclusive(spaceId, async () => {
+    if (closing) throw new SpaceError('isolated_spaces_off', 'Isolated spaces are being turned off.');
+    requireNotPending(spaceId);
+    const space = await requireListed(spaceId);
+    if (space.state !== 'running') throw new SpaceError('space_not_running', 'This space is stopped. Start it instead.');
+    try {
+      await serverInside.writeToken(spaceId, createSpaceToken());
+    } catch (error) {
+      logger.warn?.(`[spaces] the server inside space ${spaceId} keeps its token: ${error?.code ?? error?.message ?? error}`);
+    }
+    await manager.stopSpace({ placeId: place.id, spaceId });
+    return startUnlocked(spaceId);
+  });
+
+  /**
+   * Restarts OpenCode inside a running space, the softest of the repair actions: the server inside
+   * restarts the OpenCode it manages and answers once it is ready again. The container, its
+   * gatekeeper and the grants stay as they are.
+   */
+  const restartOpenCode = (spaceId) => exclusive(spaceId, async () => {
+    requireNotPending(spaceId);
+    const space = await requireListed(spaceId);
+    if (space.state !== 'running') throw new SpaceError('space_not_running', 'OpenCode runs inside a running space. Start the space.');
+    await restartOpenCodeInside(spaceId);
+    onSpacesChanged();
+    return requireListed(spaceId);
   });
 
   /**
@@ -591,5 +661,5 @@ export function createSpaceJourney({
     return { brought, applied, removal };
   });
 
-  return { createSpace, listSpaces, startSpace, stopSpace, removeSpace, stopAllSpaces, reopen, grantAccess, openDomain, readJournal, previewApply, applySpace };
+  return { createSpace, listSpaces, startSpace, stopSpace, restartSpace, restartOpenCode, removeSpace, stopAllSpaces, reopen, grantAccess, openDomain, readJournal, previewApply, applySpace };
 }

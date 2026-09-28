@@ -20,6 +20,7 @@ const running = (change: Partial<SpaceEntry> = {}): SpaceEntry => ({
   grants: [anthropic],
   access: 'granted',
   needsAccess: [],
+  damage: null,
   ...change,
 });
 

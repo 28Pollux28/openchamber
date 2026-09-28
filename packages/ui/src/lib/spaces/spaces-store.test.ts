@@ -57,6 +57,7 @@ describe('the journey list and creation progress', () => {
     grants: [],
     access: null,
     needsAccess: [],
+    damage: null,
     ...overrides,
   });
   // One list answer the test releases by hand, so a progress event can land while the read is out.
@@ -135,7 +136,7 @@ describe('the grant dialog and access given through it', () => {
     const grant = { kind: 'model' as const, id: 'openai', provider: 'openai', upstream: 'https://api.openai.com/v1', source: { kind: 'typed' as const }, url: 'http://gatekeeper:8080/model/openai' };
     const running: SpaceEntry = {
       id: ID, name: 'One', projectDirectory: '/home/me/app', directory: `/spaces/${ID}/app`, state: 'running', step: null,
-      failure: null, network: { mode: 'allowlist', domains: [] }, grants: [], access: 'needs_access', needsAccess: ['openai'],
+      failure: null, network: { mode: 'allowlist', domains: [] }, grants: [], access: 'needs_access', needsAccess: ['openai'], damage: null,
     };
     useSpacesStore.getState().applyJourney([running], 0);
     const before = useSpacesStore.getState().progressRevision;

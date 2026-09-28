@@ -19,6 +19,7 @@ const entry = (change: Partial<SpaceEntry> = {}): SpaceEntry => ({
   grants: [anthropic, openai],
   access: 'granted',
   needsAccess: [],
+  damage: null,
   ...change,
 });
 

@@ -24,6 +24,7 @@ const entry: SpaceEntry = {
   grants: [],
   access: null,
   needsAccess: [],
+  damage: null,
 };
 
 const openai: SpaceModelAccess = { kind: 'model', provider: 'openai', upstream: 'https://api.openai.com/v1', secret: { kind: 'env', name: 'OPENAI_API_KEY' } };
