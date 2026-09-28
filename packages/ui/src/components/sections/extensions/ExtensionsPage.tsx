@@ -23,6 +23,7 @@ import { GuestApprovalDialog } from './GuestApprovalDialog';
 import { toast } from '@/components/ui';
 import { setGuestServiceSocketPath } from '@/lib/guests/service';
 import { guestNeedsApproval } from '@/lib/guests/capabilities';
+import { useEnterpriseMode } from '@/stores/useEnterprisePolicyStore';
 import { guestPackageIconSrc, resolveGuestIconName } from '@/lib/guests/icon';
 import { getGuestSourceUrl } from '@/lib/guests/source-url';
 import { approveGuestCapabilities, installGuest, setGuestEnabled, uninstallGuest, uploadGuestZip } from '@/lib/guests/install';
@@ -210,7 +211,9 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
   const { t } = useI18n();
   const [open, setOpen] = React.useState(false);
   const enabled = guest.enabled !== false;
-  const needsApproval = guestNeedsApproval(guest);
+  // Enterprise mode refuses what this package asks for; approving cannot change that.
+  const enterpriseBlocked = (guest.enterpriseBlocked?.length ?? 0) > 0;
+  const needsApproval = !enterpriseBlocked && guestNeedsApproval(guest);
   const permissions = servicePermissionList(guest);
   const canRemove = Boolean(guest.source && guest.source !== 'bundled');
   const builtIn = guest.source === 'bundled';
@@ -229,12 +232,14 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
     guest.entry ? null : t('settings.extensions.source.noPanel'),
   ].filter(Boolean).join(' · ');
   const location = guest.path || guest.id;
-  const statusLabel = needsApproval
+  const statusLabel = enterpriseBlocked
+    ? t('settings.extensions.status.enterpriseBlocked')
+    : needsApproval
     ? t('settings.extensions.status.needsApproval')
     : enabled
       ? t('settings.extensions.status.enabled')
       : t('settings.extensions.status.disabled');
-  const statusClassName = needsApproval
+  const statusClassName = enterpriseBlocked || needsApproval
     ? 'bg-[var(--status-warning)]/15 text-[var(--status-warning)]'
     : enabled
       ? 'bg-[var(--status-success)]/15 text-[var(--status-success)]'
@@ -288,6 +293,7 @@ const ExtensionCard: React.FC<ExtensionCardProps> = ({
             <p className="typography-meta truncate font-mono text-muted-foreground" title={location}>
               {location}
             </p>
+            {enterpriseBlocked ? <p className="typography-meta text-foreground">{t('settings.extensions.enterpriseBlocked')}</p> : null}
             {builtIn ? <p className="typography-meta text-muted-foreground">{t('settings.extensions.builtIn.info')}</p> : null}
             {permissions ? (
               <p className="typography-meta truncate text-muted-foreground">
@@ -402,6 +408,7 @@ export const ExtensionsPage: React.FC = () => {
   const [selectedGitIdentityId, setSelectedGitIdentityId] = React.useState('global');
   const unsupported = status === 'unsupported';
   const [installValue, setInstallValue] = React.useState('');
+  const enterpriseMode = useEnterpriseMode();
   const [busy, setBusy] = React.useState(false);
   const [checking, setChecking] = React.useState(false);
   const checkedOnOpen = React.useRef(false);
@@ -715,7 +722,12 @@ export const ExtensionsPage: React.FC = () => {
       {unsupported ? null : (
         <SettingsSection
           title={t('settings.extensions.add.action')}
-          info={t('settings.extensions.add.info')}
+          info={enterpriseMode ? (
+            <>
+              <span className="block">{t('settings.extensions.add.enterpriseRule')}</span>
+              <span className="mt-2 block">{t('settings.extensions.add.info')}</span>
+            </>
+          ) : t('settings.extensions.add.info')}
         >
           <SettingsStackedField
             label={t('settings.extensions.add.label')}

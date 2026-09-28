@@ -46,6 +46,11 @@ import { z } from 'zod';
  *   to start on a network address and drops connections from other machines
  *   (`../index.js`); the desktop shell binds loopback (`packages/electron`).
  *   Pairing a device then goes through a pinned relay only.
+ * - Extensions that could send what they see elsewhere (`network`, `origins`,
+ *   `service`) install and run only from a Git repository the administrator
+ *   listed (`allowedExtensions` / `OPENCHAMBER_ALLOWED_EXTENSIONS`), or from a
+ *   local folder where `allowLocalExtensions` /
+ *   `OPENCHAMBER_ALLOW_LOCAL_EXTENSIONS` allows it; see `guests/enterprise.js`.
  * The VS Code extension host, which runs no OpenChamber server, reads the
  * same policy through this module for the parts it has (provider connection,
  * update checks).
@@ -79,6 +84,10 @@ const policyFileSchema = z.object({
   organization: optionalText,
   relayUrl: optionalText,
   allowNetworkAccess: z.boolean().optional(),
+  // Git repository URLs, not package ids: a package names its own id, so a
+  // user could ship any code under an allowed one.
+  allowedExtensions: z.array(z.string().trim().min(1)).max(200).optional(),
+  allowLocalExtensions: z.boolean().optional(),
   jev: z.object({ url: optionalText, model: optionalText, apiKey: optionalText }).optional(),
 }).refine((policy) => !policy.jev || policy.jev.url || (!policy.jev.model && !policy.jev.apiKey), {
   message: '"jev" needs a "url"',
@@ -89,7 +98,8 @@ const policyFileSchema = z.object({
 const parsePolicyFile = (text) => {
   let raw;
   try {
-    raw = JSON.parse(text);
+    // Windows PowerShell 5 writes UTF-8 with a byte-order mark.
+    raw = JSON.parse(text.replace(/^\uFEFF/, ''));
   } catch (error) {
     throw new Error(`not valid JSON (${error.message})`);
   }
@@ -99,12 +109,14 @@ const parsePolicyFile = (text) => {
     const field = issue.path.length > 0 ? `"${issue.path.join('.')}": ` : '';
     throw new Error(`${field}${issue.message}`);
   }
-  const { enterpriseMode, organization, relayUrl, allowNetworkAccess, jev } = parsed.data;
+  const { enterpriseMode, organization, relayUrl, allowNetworkAccess, allowedExtensions, allowLocalExtensions, jev } = parsed.data;
   return {
     enterpriseMode: enterpriseMode === true,
     organization: organization ?? null,
     relayUrl,
     allowNetworkAccess,
+    allowedExtensions,
+    allowLocalExtensions,
     jev: jev?.url ? { url: jev.url, model: jev.model ?? null, apiKey: jev.apiKey ?? null } : undefined,
   };
 };
@@ -152,6 +164,8 @@ const envFlag = (env, name) => {
 
 const envString = (env, name) => (env[name] ?? '').trim() || null;
 
+const envList = (env, name) => (env[name] ?? '').split(',').map((entry) => entry.trim()).filter(Boolean);
+
 /**
  * The policy in effect, from the file and the environment together.
  * `relayUrl` and `jev` are the raw pinned values; their consumers validate
@@ -171,6 +185,8 @@ export const readEnterprisePolicy = (options = {}) => {
       relayUrl: null,
       jev: null,
       allowNetworkAccess: false,
+      allowedExtensions: [],
+      allowLocalExtensions: false,
     };
   }
 
@@ -187,6 +203,10 @@ export const readEnterprisePolicy = (options = {}) => {
   const relayUrl = fromFile?.relayUrl ?? (fileGoverns ? null : envString(env, 'OPENCHAMBER_RELAY_URL'));
   const allowNetworkAccess = fromFile?.allowNetworkAccess
     ?? (fileGoverns ? false : envFlag(env, 'OPENCHAMBER_ALLOW_NETWORK_ACCESS'));
+  const allowedExtensions = fromFile?.allowedExtensions
+    ?? (fileGoverns ? [] : envList(env, 'OPENCHAMBER_ALLOWED_EXTENSIONS'));
+  const allowLocalExtensions = fromFile?.allowLocalExtensions
+    ?? (fileGoverns ? false : envFlag(env, 'OPENCHAMBER_ALLOW_LOCAL_EXTENSIONS'));
 
   return {
     enterpriseMode,
@@ -196,6 +216,8 @@ export const readEnterprisePolicy = (options = {}) => {
     relayUrl,
     jev,
     allowNetworkAccess,
+    allowedExtensions,
+    allowLocalExtensions,
   };
 };
 

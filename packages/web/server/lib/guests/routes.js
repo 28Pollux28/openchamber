@@ -189,6 +189,10 @@ const sendInstallResult = (res, result) => {
     if (result.code === 'host-too-old' && result.required) {
       body.required = result.required;
     }
+    if (result.code === 'enterprise-mode') {
+      body.capabilities = result.capabilities;
+      return res.status(403).json(body);
+    }
     if (conflict && result.id) {
       body.id = result.id;
     }
@@ -729,6 +733,10 @@ export const registerGuestRoutes = (app, {
       // partial grant would leave the guest half-working, so both are refused.
       const requested = requestedGuestCapabilities(guest);
       const granted = parsed.data.granted;
+      // Enterprise mode refuses these for this package; approving cannot lift that.
+      if (guest.enterpriseBlocked?.some((capability) => granted.includes(capability))) {
+        return res.status(403).json({ error: 'enterprise-mode', capabilities: guest.enterpriseBlocked });
+      }
       const matchesRequest = granted.length === requested.length && requested.every((capability) => granted.includes(capability));
       if (granted.length > 0 && !matchesRequest) {
         return res.status(400).json({ error: 'invalid-request' });
