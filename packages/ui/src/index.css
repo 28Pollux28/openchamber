@@ -1063,6 +1063,13 @@ html:not(.dark) .chat-scroll {
   line-height: inherit;
 }
 
+/* Documents rendered with their raw HTML (the Files preview) lay images out
+   the way GitHub does: inline beside text and other badges, not one block per
+   line as Tailwind preflight makes them. */
+.markdown-content[data-markdown-html] img {
+  display: inline;
+}
+
 /* Block rhythm: every block carries the same margin on both sides, so the
    gap between any two neighbours is one paragraph spacing (margins collapse)
    and the first/last block of a message adds nothing. Tailwind preflight

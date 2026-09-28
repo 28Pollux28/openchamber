@@ -142,7 +142,10 @@ finished with `stop`, so no tool patch is parsed while the turn streams.
 - Assistant markdown treats raw HTML as inert visible text. The final generated
   HTML is sanitized as defense in depth, with script and style elements
   forbidden, so message content cannot inject active DOM or application-wide
-  CSS into any runtime surface. Safe custom application links go through the
+  CSS into any runtime surface. Link text goes through the same inline
+  renderer, so raw HTML inside `[...]` stays text too. Only the Files
+  Markdown preview opts into rendering raw HTML (`allowRawHtml`, see
+  `components/views/files/DOCUMENTATION.md`). Safe custom application links go through the
   app-link confirmation flow in every supported renderer, including VS Code.
 - Final assistant Markdown rendering is independent from image gallery
   extraction: gallery presence never changes the chat body. Assistant image
