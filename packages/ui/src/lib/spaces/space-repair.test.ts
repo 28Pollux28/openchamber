@@ -15,6 +15,7 @@ const entry = (change: Partial<SpaceEntry> = {}): SpaceEntry => ({
   projectDirectory: '/home/me/app',
   directory: `/spaces/${ID}/app`,
   state: 'running',
+  stoppedIdle: false,
   step: null,
   failure: null,
   network: { mode: 'allowlist', domains: [] },
@@ -38,6 +39,8 @@ describe('the state of a space', () => {
     expect(spaceConditionOf(entry({ state: 'missing' }), undefined, undefined)).toEqual({ kind: 'container_gone' });
     expect(spaceConditionOf(entry({ state: 'exited', damage: 'gatekeeper_gone' }), undefined, undefined)).toEqual({ kind: 'gatekeeper_gone' });
     expect(spaceConditionOf(entry({ state: 'exited' }), undefined, undefined)).toEqual({ kind: 'stopped' });
+    expect(spaceConditionOf(entry({ state: 'exited', stoppedIdle: true }), mark('stale'), undefined)).toEqual({ kind: 'stopped_idle' });
+    expect(spaceMenuActionsOf(entry({ state: 'exited', stoppedIdle: true }))).toEqual(['start', 'remove']);
     expect(spaceConditionOf(entry({ damage: 'repairable' }), mark('stale'), undefined)).toEqual({ kind: 'damaged' });
     expect(spaceConditionOf(entry(), mark('stale'), undefined)).toEqual({ kind: 'not_answering' });
     expect(spaceConditionOf(entry(), mark('unknown'), undefined)).toEqual({ kind: 'not_answering' });

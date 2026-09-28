@@ -18,12 +18,18 @@
 // Repair, since 5d-2 (DESIGN.md, journey step 8 and decision 10): restart OpenCode inside, and
 // restart the container with a fresh token for the server inside. A space whose gatekeeper is gone
 // is listed as such, because no restart brings it back.
+//
+// Idle stop, since 5d-3 (decision 11): the server inside stops itself after the user's idle hours.
+// The host tells it the setting at every start and whenever the user changes it, lists a space
+// that stopped that way as such, and stops the gatekeeper it finds running beside a stopped space,
+// which is what an idle stop leaves while OpenChamber is closed.
 
 import crypto from 'node:crypto';
 
 import { z } from 'zod';
 
 import { SpaceError } from './errors.js';
+import { DEFAULT_IDLE_STOP, idleStopSchema } from './idle-stop.js';
 import { ROLE_GATEKEEPER, createSpaceId, hashProjectDirectory, spaceResourceName } from './labels.js';
 import { spaceProjectPath, spaceWindowUrl } from './layout.js';
 import { domainSchema, grantSchema, networkSchema, secretSourceSchema } from './space-records.js';
@@ -94,6 +100,8 @@ const failureOf = (error) => ({
  * environment variable of the host's is found again: its value or undefined, never stored.
  * `serverInside.writeToken(spaceId, token)` replaces the token the server inside reads when it
  * starts, and `restartOpenCodeInside(spaceId)` asks the server inside to restart its OpenCode.
+ * `readIdleStop()` and `saveIdleStop(setting)` read and keep the user's idle stop setting, and
+ * `serverInside.writeIdleStop(spaceId, setting)` tells it to the server inside.
  */
 export function createSpaceJourney({
   manager,
@@ -107,6 +115,8 @@ export function createSpaceJourney({
   restartOpenCodeInside,
   listProjectDirectories,
   readHostSecret = () => undefined,
+  readIdleStop = async () => ({ ...DEFAULT_IDLE_STOP }),
+  saveIdleStop = async () => {},
   announce = () => {},
   onSpacesChanged = () => {},
   logger = console,
@@ -120,6 +130,8 @@ export function createSpaceJourney({
   // Set while the switch is being turned off: no creation may slip in between the stop of the
   // spaces and the moment the feature is gone.
   let closing = false;
+  // Changes of the idle stop setting, one after the other, so a space never ends up with an older one.
+  let idleStopTurn = Promise.resolve();
 
   const exclusive = async (spaceId, work) => {
     if (busy.has(spaceId)) throw new SpaceError('space_busy', 'Another action on this space is still running. Wait for it to finish.');
@@ -181,6 +193,21 @@ export function createSpaceJourney({
     return outcome;
   };
 
+  /**
+   * Tells the server inside the idle stop setting, now or the one given. It saves memory and
+   * guards nothing, so a write that fails is logged and the space runs with what it had: the
+   * setting of its last start, or none, which stops nothing.
+   */
+  const deliverIdleStop = async (spaceId, setting = null) => {
+    try {
+      await serverInside.writeIdleStop(spaceId, setting ?? await readIdleStop());
+      return true;
+    } catch (error) {
+      logger.warn?.(`[spaces] space ${spaceId} keeps its idle stop setting: ${error?.code ?? error?.message ?? error}`);
+      return false;
+    }
+  };
+
   const sendHistoryInBackground = ({ repository, spaceId, spacePath, base }) => {
     codeIn.sendHistory({ repository, spaceId, spacePath, base })
       .then((result) => { records.update(spaceId, { history: result.status }); })
@@ -209,6 +236,7 @@ export function createSpaceJourney({
       const arrived = await codeIn.bringCodeIn({ repository: projectDirectory, spaceId: entry.id, mode: start });
       records.update(entry.id, { spacePath: arrived.spacePath, base: arrived.base });
       entry.identityCopied = arrived.identityCopied;
+      await deliverIdleStop(entry.id);
       pending.delete(entry.id);
       progress(entry, 'ready');
       onSpacesChanged();
@@ -355,6 +383,7 @@ export function createSpaceJourney({
     directory: entry.directory,
     created: entry.created,
     state: entry.state,
+    stoppedIdle: false,
     step: entry.step,
     failure: entry.failure,
     network: entry.network,
@@ -389,6 +418,7 @@ export function createSpaceJourney({
         directory: projectDirectory === null ? null : spaceProjectPath(space.id, projectDirectory),
         created: space.created,
         state: space.state,
+        stoppedIdle: space.stoppedIdle === true,
         step: null,
         failure: null,
         network: record?.network ?? null,
@@ -401,12 +431,28 @@ export function createSpaceJourney({
         orphans: space.orphans,
       };
     }));
+    for (const space of spaces) {
+      if (space.state === 'exited' && space.gatekeeperRunning === true && !pending.has(space.id)) void stopStrayGatekeeper(space.id);
+    }
     // A creation under way wins over the place's view of it: the containers run before the code is there.
     const waiting = new Map(Array.from(pending.values(), (entry) => [entry.id, describePending(entry)]));
     const merged = listed.map((space) => waiting.get(space.id) ?? space);
     const known = new Set(listed.map((space) => space.id));
     return [...merged, ...Array.from(waiting.values()).filter((entry) => !known.has(entry.id))];
   };
+
+  /**
+   * Stops the gatekeeper found running beside a stopped space: a space that stopped itself for the
+   * idle stop leaves it running, because it cannot reach it (the maintainer's call of 2026-09-28).
+   * It serves nobody then, and a key typed into it goes with it, as with a stop by hand. The place's
+   * stop of a stopped space stops only what still runs. A space that another action holds is left
+   * for the next look, since a start is what brings a gatekeeper up before its space.
+   */
+  const stopStrayGatekeeper = (spaceId) => exclusive(spaceId, () => manager.stopSpace({ placeId: place.id, spaceId }))
+    .catch((error) => {
+      if (error instanceof SpaceError && error.code === 'space_busy') return;
+      logger.warn?.(`[spaces] the gatekeeper beside stopped space ${spaceId} still runs: ${error?.code ?? error?.message ?? error}`);
+    });
 
   const requireListed = async (spaceId) => {
     const space = (await listSpaces()).find((entry) => entry.id === spaceId);
@@ -438,6 +484,7 @@ export function createSpaceJourney({
         sendHistoryInBackground({ repository: record.repository, spaceId, spacePath: record.spacePath, base: record.base });
       }
     }
+    await deliverIdleStop(spaceId);
     onSpacesChanged();
     return { ...(await requireListed(spaceId)), networkRestored, grantsRestored: grants.restored, needsAccess: grants.needsAccess };
   };
@@ -602,7 +649,11 @@ export function createSpaceJourney({
     const stopped = [];
     const stillRunning = [];
     for (const space of spaces) {
-      if (space.state !== 'running') continue;
+      if (space.state !== 'running') {
+        // A gatekeeper left by an idle stop goes too, and the space is not counted: it was stopped.
+        if (space.gatekeeperRunning === true) await manager.stopSpace({ placeId: place.id, spaceId: space.id }).catch(() => {});
+        continue;
+      }
       try {
         await manager.stopSpace({ placeId: place.id, spaceId: space.id });
         stopped.push({ id: space.id, name: space.name });
@@ -611,6 +662,30 @@ export function createSpaceJourney({
       }
     }
     return { stopped, stillRunning };
+  };
+
+  /** The user's idle stop setting, as the settings screen shows it. */
+  const readIdleStopSetting = () => readIdleStop();
+
+  /**
+   * Keeps a new idle stop setting and tells every running space, one change after the other. A
+   * space that cannot be told keeps its old setting until its next start, which says the new one;
+   * a stopped space hears it at its start. Answers the setting as kept.
+   */
+  const changeIdleStop = (request) => {
+    const parsed = idleStopSchema.safeParse(request ?? {});
+    if (!parsed.success) return Promise.reject(new SpaceError('invalid_idle_stop', 'The idle stop is on or off, with a whole number of hours from 1 to 168.'));
+    const setting = parsed.data;
+    const change = idleStopTurn.then(async () => {
+      await saveIdleStop(setting);
+      const spaces = await manager.listSpaces({ placeId: place.id });
+      for (const space of spaces) {
+        if (space.state === 'running' && !pending.has(space.id)) await deliverIdleStop(space.id, setting);
+      }
+      return setting;
+    });
+    idleStopTurn = change.catch(() => {});
+    return change;
   };
 
   /** For a turn-off that did not go through after the spaces were stopped: creations are taken again. */
@@ -661,5 +736,5 @@ export function createSpaceJourney({
     return { brought, applied, removal };
   });
 
-  return { createSpace, listSpaces, startSpace, stopSpace, restartSpace, restartOpenCode, removeSpace, stopAllSpaces, reopen, grantAccess, openDomain, readJournal, previewApply, applySpace };
+  return { createSpace, listSpaces, startSpace, stopSpace, restartSpace, restartOpenCode, removeSpace, stopAllSpaces, reopen, grantAccess, openDomain, readJournal, previewApply, applySpace, readIdleStopSetting, changeIdleStop };
 }

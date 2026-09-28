@@ -33,6 +33,7 @@ const STATUS_BY_CODE = new Map([
   ['invalid_grant_request', 400],
   ['provider_not_supported', 400],
   ['invalid_domain', 400],
+  ['invalid_idle_stop', 400],
   ['network_is_open', 409],
   ['too_many_domains', 409],
   ['secret_source_missing', 409],
@@ -172,6 +173,14 @@ export function registerSpaceRoutes(app, { getJourney, getPlaces = () => [], rea
       answerFailure(res, error);
     }
   });
+
+  // The idle stop setting (decision 11): kept in the settings and told to every running space.
+  app.get(`${SPACES_ROUTE}/idle-stop`, withJourney(async (journey, _req, res) => {
+    res.json(await journey.readIdleStopSetting());
+  }));
+  app.put(`${SPACES_ROUTE}/idle-stop`, withJourney(async (journey, req, res) => {
+    res.json(await journey.changeIdleStop(requireBody(req)));
+  }));
 
   // The places funnel: each place asked what it can do, now, because the user is looking.
   app.get(`${SPACES_ROUTE}/places`, withJourney(async (_journey, _req, res) => {

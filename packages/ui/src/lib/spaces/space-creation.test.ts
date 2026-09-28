@@ -18,6 +18,7 @@ const entry: SpaceEntry = {
   projectDirectory: PROJECT,
   directory: DIRECTORY,
   state: 'preparing',
+  stoppedIdle: false,
   step: 'checking_place',
   failure: null,
   network: { mode: 'allowlist', domains: [] },

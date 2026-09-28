@@ -62,6 +62,8 @@ const journeyOf = (overrides = {}) => {
     previewApply: record('previewApply', { changedPaths: 2 }),
     applySpace: record('applySpace', { applied: { status: 'applied' } }),
     stopAllSpaces: record('stopAllSpaces', { stopped: [], stillRunning: [] }),
+    readIdleStopSetting: record('readIdleStopSetting', { enabled: true, hours: 4 }),
+    changeIdleStop: record('changeIdleStop', { enabled: false, hours: 8 }),
     ...overrides,
   };
 };
@@ -69,7 +71,7 @@ const journeyOf = (overrides = {}) => {
 describe('space routes', () => {
   it('answers every journey route with 404 and isolated_spaces_off while the feature is off, and the switch still works', async () => {
     const { call, calls } = await serve({ journey: null, switchState: { enabled: false } });
-    for (const [method, path] of [['GET', ''], ['POST', ''], ['GET', '/places'], ['POST', `/${ID}/start`], ['POST', `/${ID}/stop`], ['POST', `/${ID}/restart`], ['POST', `/${ID}/restart-opencode`], ['POST', `/${ID}/grants`], ['DELETE', `/${ID}`], ['GET', `/${ID}/journal`], ['GET', `/${ID}/apply`], ['POST', `/${ID}/apply`]]) {
+    for (const [method, path] of [['GET', ''], ['POST', ''], ['GET', '/places'], ['POST', `/${ID}/start`], ['POST', `/${ID}/stop`], ['POST', `/${ID}/restart`], ['POST', `/${ID}/restart-opencode`], ['POST', `/${ID}/grants`], ['DELETE', `/${ID}`], ['GET', `/${ID}/journal`], ['GET', `/${ID}/apply`], ['POST', `/${ID}/apply`], ['GET', '/idle-stop'], ['PUT', '/idle-stop']]) {
       expect(await call(method, `${SPACES_ROUTE}${path}`, method === 'GET' || method === 'DELETE' ? undefined : {}), `${method} ${path}`).toEqual({ status: 404, body: { code: 'isolated_spaces_off', message: 'Isolated spaces are turned off.', details: null } });
     }
     expect(await call('GET', `${SPACES_ROUTE}/switch`)).toEqual({ status: 200, body: { enabled: false, spaces: [] } });
@@ -114,6 +116,19 @@ describe('space routes', () => {
     expect(journey.calls).toEqual([
       ['listSpaces', { access: true }], ['createSpace', request], ['startSpace', ID], ['stopSpace', ID], ['restartSpace', ID], ['restartOpenCode', ID], ['grantAccess', ID, { kind: 'domain', upstream: 'https://registry.example.com/' }], ['openDomain', ID, { domain: 'registry.npmjs.org' }], ['readJournal', ID], ['previewApply', ID], ['applySpace', ID, { as: 'branch', branch: 'b' }], ['removeSpace', ID],
     ]);
+  });
+
+  it('reads and changes the idle stop setting through the journey, and refuses a body that is not an object', async () => {
+    const journey = journeyOf();
+    const { call } = await serve({ journey });
+    expect(await call('GET', `${SPACES_ROUTE}/idle-stop`)).toEqual({ status: 200, body: { enabled: true, hours: 4 } });
+    expect(await call('PUT', `${SPACES_ROUTE}/idle-stop`, { enabled: false, hours: 8 })).toEqual({ status: 200, body: { enabled: false, hours: 8 } });
+    expect(await call('PUT', `${SPACES_ROUTE}/idle-stop`, [8])).toMatchObject({ status: 400, body: { code: 'invalid_request_body' } });
+    expect(journey.calls).toEqual([['readIdleStopSetting'], ['changeIdleStop', { enabled: false, hours: 8 }]]);
+
+    const refusing = journeyOf({ changeIdleStop: async () => { throw new SpaceError('invalid_idle_stop', 'whole hours from 1 to 168'); } });
+    const second = await serve({ journey: refusing });
+    expect(await second.call('PUT', `${SPACES_ROUTE}/idle-stop`, { enabled: true, hours: 0 })).toMatchObject({ status: 400, body: { code: 'invalid_idle_stop' } });
   });
 
   it('refuses an id that is not a space id before the journey is asked, and a body that is not an object', async () => {

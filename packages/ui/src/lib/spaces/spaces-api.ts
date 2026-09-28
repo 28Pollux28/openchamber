@@ -94,6 +94,8 @@ const spaceEntrySchema = z.object({
   projectDirectory: z.string().nullable(),
   directory: z.string().nullable(),
   state: z.enum(['preparing', 'running', 'exited', 'missing', 'failed']),
+  // A stopped space that stopped itself after the idle hours, rather than by a hand or a crash.
+  stoppedIdle: z.boolean().default(false),
   step: spaceCreationStepSchema.nullable(),
   failure: failureSchema.nullable(),
   // Null when the host could not read what the user chose: unknown, never "open".
@@ -216,6 +218,24 @@ export const restartSpace = (spaceId: string): Promise<SpaceEntry> =>
 /** Restarts OpenCode inside a running space and answers once it is ready again. */
 export const restartSpaceOpenCode = (spaceId: string): Promise<SpaceEntry> =>
   request(`${SPACES_ROUTE}/${spaceId}/restart-opencode`, spaceEntrySchema, { method: 'POST' });
+
+// The idle stop (decision 11): on or off, and after how many whole hours with no session working.
+export const SPACE_IDLE_STOP_MIN_HOURS = 1;
+export const SPACE_IDLE_STOP_MAX_HOURS = 168;
+
+const idleStopSchema = z.object({
+  enabled: z.boolean(),
+  hours: z.number().int().min(SPACE_IDLE_STOP_MIN_HOURS).max(SPACE_IDLE_STOP_MAX_HOURS),
+});
+
+export type SpaceIdleStop = z.infer<typeof idleStopSchema>;
+
+export const readSpaceIdleStop = (signal?: AbortSignal): Promise<SpaceIdleStop> =>
+  request(`${SPACES_ROUTE}/idle-stop`, idleStopSchema, { signal });
+
+/** Keeps the setting and tells every running space; answers the setting as kept. */
+export const setSpaceIdleStop = (setting: SpaceIdleStop): Promise<SpaceIdleStop> =>
+  request(`${SPACES_ROUTE}/idle-stop`, idleStopSchema, { method: 'PUT', body: JSON.stringify(setting) });
 
 export const removeSpace = (spaceId: string): Promise<SpaceRemoval> =>
   request(`${SPACES_ROUTE}/${spaceId}`, removalSchema, { method: 'DELETE' });
