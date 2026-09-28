@@ -27,17 +27,19 @@ const timerWith = (setting = { enabled: true, hours: 4 }, { raw = null } = {}) =
   else if (setting !== null) write(setting);
   const clock = { now: 0 };
   const sessions = {};
+  const pending = {};
   const stops = { count: 0 };
   const idleStop = createIdleStop({
     settingsPath,
     readSessionStates: () => sessions,
+    readPendingRequests: () => pending,
     stopSpace: async () => { stops.count += 1; },
     now: () => clock.now,
     logger: { log: () => {} },
   });
   /** Moves the clock to that hour and runs one check. */
   const at = (hours) => { clock.now = hours * HOUR; return idleStop.check(); };
-  return { at, sessions, stops, write, settingsPath, folder };
+  return { at, sessions, pending, stops, write, settingsPath, folder };
 };
 
 describe('the idle stop inside a space', () => {
@@ -60,6 +62,20 @@ describe('the idle stop inside a space', () => {
     sessions.a = { status: 'idle', lastUpdateAt: 8.5 * HOUR };
     expect(await at(10)).toBe(false);
     expect(await at(10.5)).toBe(true);
+  });
+
+  it('counts a session waiting for the user\'s answer as idle, though OpenCode keeps it busy', async () => {
+    const { at, sessions, pending } = timerWith({ enabled: true, hours: 2 });
+    sessions.q = { status: 'busy', lastUpdateAt: 0 };
+    expect(await at(1)).toBe(false);
+    pending.q = { permissions: [], forms: [{ id: 'form-1' }] };
+    expect(await at(2.5)).toBe(false);
+    expect(await at(3)).toBe(true);
+
+    const asked = timerWith({ enabled: true, hours: 2 });
+    asked.sessions.p = { status: 'busy', lastUpdateAt: 0 };
+    asked.pending.p = { permissions: [{ id: 'per-1' }], forms: [] };
+    expect(await asked.at(2)).toBe(true);
   });
 
   it('counts a turn that began and ended between two checks, at the time it ended', async () => {

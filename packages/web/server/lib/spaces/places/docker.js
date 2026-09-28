@@ -404,7 +404,7 @@ export function createDockerPlace({ runCommand, openCommandStream = openCommandS
     const entry = await inspectOwnContainer(spaceId, spaceResourceName(spaceId, ROLE_GATEKEEPER));
     const address = String(entry?.NetworkSettings?.Networks?.[spaceResourceName(spaceId, ROLE_NETWORK)]?.IPAddress ?? '');
     if (net.isIP(address) === 0) {
-      throw new SpaceError('gatekeeper_address_unknown', `The runtime reports no address for the gatekeeper of space ${spaceId} on the space's network, so its listeners cannot be bound.`);
+      throw new SpaceError('gatekeeper_address_unknown', `The runtime reports no address for the network filter of space ${spaceId} on the space's network, so its listeners cannot be bound.`);
     }
     return address;
   };

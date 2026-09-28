@@ -39,12 +39,15 @@ const WORKING = new Set(['busy', 'retry']);
 
 /**
  * `settingsPath` is the file the host writes, `readSessionStates()` the server's own live status
- * by session, `{ [id]: { status, lastUpdateAt } }`, and `stopSpace()` ends the server. A session
+ * by session, `{ [id]: { status, lastUpdateAt } }`, `readPendingRequests()` the permission asks
+ * and forms still waiting for an answer by session, and `stopSpace()` ends the server. A session
  * that is working counts as activity now, and every status change counts at the time it came, so
- * a turn that began and ended between two checks is not missed. A missing or unreadable file
+ * a turn that began and ended between two checks is not missed. A session that waits for the
+ * user's answer stays busy in OpenCode's status the whole time; it counts as idle (the
+ * maintainer's call of 2026-09-28), so its memory is given back when nobody answers. A missing or unreadable file
  * stops nothing: the host writes it at every start, and a space must never stop on a guess.
  */
-export function createIdleStop({ settingsPath, readSessionStates, stopSpace, now = Date.now, logger = console }) {
+export function createIdleStop({ settingsPath, readSessionStates, readPendingRequests = () => ({}), stopSpace, now = Date.now, logger = console }) {
   let lastActive = now();
   let stopping = false;
 
@@ -61,8 +64,10 @@ export function createIdleStop({ settingsPath, readSessionStates, stopSpace, now
 
   const noteActivity = () => {
     const current = now();
-    for (const state of Object.values(readSessionStates())) {
-      if (WORKING.has(state.status)) lastActive = current;
+    const pending = readPendingRequests();
+    const waiting = (sessionId) => (pending[sessionId]?.permissions?.length ?? 0) + (pending[sessionId]?.forms?.length ?? 0) > 0;
+    for (const [sessionId, state] of Object.entries(readSessionStates())) {
+      if (WORKING.has(state.status) && !waiting(sessionId)) lastActive = current;
       else if (state.lastUpdateAt > lastActive) lastActive = Math.min(state.lastUpdateAt, current);
     }
   };

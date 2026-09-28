@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 /** A journey on fresh stand-ins. `failAt` names a stand-in step that rejects. */
-const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [PROJECT], historyStatus = 'sent', holdCodeIn = false, holdCodeOut = false, hostEnvironment = {}, dataDir = null } = {}) => {
+const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [PROJECT], historyStatus = 'sent', holdCodeIn = false, holdCodeOut = false, holdIdleSave = false, hostEnvironment = {}, dataDir = null } = {}) => {
   // With `holdCodeIn`, code in waits until the test lets it go, so a creation stays under way;
   // `holdCodeOut` does the same for the fetch of an apply.
   let releaseCodeIn = () => {};
@@ -59,7 +59,8 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
   };
   // The idle stop setting as the host keeps it, and each one said to a server inside, apart from
   // `calls` so the order of the other steps reads as it did before 5d-3.
-  const idle = { saved: null, writes: [] };
+  const idle = { saved: null, writes: [], release: () => {} };
+  const idleSaveHeld = new Promise((resolve) => { idle.release = resolve; });
   const serverInside = {
     writeToken: async (spaceId, token) => { calls.push(['writeToken', spaceId, token]); fail('writeToken'); },
     writeIdleStop: async (spaceId, setting) => { fail('writeIdleStop'); idle.writes.push([spaceId, setting]); },
@@ -91,7 +92,7 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
     listProjectDirectories: async () => projects,
     readHostSecret: (name) => hostEnvironment[name],
     readIdleStop: async () => idle.saved ?? { enabled: true, hours: 4 },
-    saveIdleStop: async (setting) => { fail('saveIdleStop'); idle.saved = setting; },
+    saveIdleStop: async (setting) => { if (holdIdleSave) await idleSaveHeld; fail('saveIdleStop'); idle.saved = setting; },
     announce: (spaceId, payload) => { events.push({ spaceId, ...payload.properties }); },
     onSpacesChanged: () => { changes.count += 1; },
     logger: quiet,
@@ -840,6 +841,36 @@ describe('the journey: idle stop', () => {
     expect(heldStops).toEqual([]);
     held.releaseCodeOut();
     await apply;
+  });
+
+  it('lets a start wait for a gatekeeper being stopped beside its space, rather than refusing it as busy', async () => {
+    const { journey, place, id } = await ready();
+    idleStopped(place);
+    const order = [];
+    const { stop, start } = place;
+    let letGo = () => {};
+    place.stop = (spaceId) => new Promise((resolve) => { letGo = resolve; }).then(() => stop(spaceId)).then(() => { order.push('gatekeeper stopped'); });
+    place.start = async (spaceId) => { order.push('start'); return start(spaceId); };
+    await journey.listSpaces();
+    const started = journey.startSpace(id);
+    await sleep(20);
+    expect(order).toEqual([]);
+    letGo();
+    await expect(started).resolves.toMatchObject({ id, networkRestored: true });
+    expect(order).toEqual(['gatekeeper stopped', 'start']);
+  });
+
+  it('gives a space made or started during a change the changed setting, never the one before it', async () => {
+    const { journey, id, idle } = await ready({ holdIdleSave: true });
+    await journey.stopSpace(id);
+    idle.writes.splice(0);
+    const change = journey.changeIdleStop({ enabled: true, hours: 9 });
+    const started = journey.startSpace(id);
+    await sleep(20);
+    idle.release();
+    await Promise.all([change, started]);
+    expect(idle.writes.at(-1)).toEqual([id, { enabled: true, hours: 9 }]);
+    expect(idle.writes.every(([, setting]) => setting.hours === 9)).toBe(true);
   });
 
   it('stops a gatekeeper left by an idle stop when the switch goes off, without counting its space as stopped', async () => {

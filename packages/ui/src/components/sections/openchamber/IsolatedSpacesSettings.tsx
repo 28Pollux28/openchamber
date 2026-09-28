@@ -95,6 +95,8 @@ const SpaceIdleStopSettings: React.FC = () => {
               min={SPACE_IDLE_STOP_MIN_HOURS}
               max={SPACE_IDLE_STOP_MAX_HOURS}
               step={1}
+              // Typing "12" must not save 1 on the way and send it to every running space.
+              deferExternalValueWhileFocused
               aria-label={t('settings.openchamber.spaces.idleStop.afterAria')}
               className={cn(SETTINGS_NUMBER_INPUT_CLASS, 'tabular-nums')}
             />

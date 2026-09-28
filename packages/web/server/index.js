@@ -2388,6 +2388,7 @@ async function main(options = {}) {
     startIdleStop({
       settingsPath: spaceIdleStopFile,
       readSessionStates: () => sessionRuntime.getSessionStateSnapshot(),
+      readPendingRequests: () => sessionRuntime.getPendingBlockingRequestsSnapshot(),
       stopSpace: async () => {
         await gracefulShutdown({ exitProcess: false }).catch(() => {});
         process.exit(SPACE_IDLE_EXIT_CODE);

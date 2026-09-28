@@ -130,8 +130,11 @@ export function createSpaceJourney({
   // Set while the switch is being turned off: no creation may slip in between the stop of the
   // spaces and the moment the feature is gone.
   let closing = false;
-  // Changes of the idle stop setting, one after the other, so a space never ends up with an older one.
+  // Every write of the idle stop setting, a change's and a start's, one after the other, so a
+  // space never ends up with an older one.
   let idleStopTurn = Promise.resolve();
+  // Stops of a gatekeeper left beside a stopped space, under way, by space id; a start waits for one.
+  const strayStops = new Map();
 
   const exclusive = async (spaceId, work) => {
     if (busy.has(spaceId)) throw new SpaceError('space_busy', 'Another action on this space is still running. Wait for it to finish.');
@@ -194,18 +197,25 @@ export function createSpaceJourney({
   };
 
   /**
-   * Tells the server inside the idle stop setting, now or the one given. It saves memory and
-   * guards nothing, so a write that fails is logged and the space runs with what it had: the
-   * setting of its last start, or none, which stops nothing.
+   * Tells the server inside the idle stop setting. It saves memory and guards nothing, so a write
+   * that fails is logged and the space runs with what it had: the setting of its last start, or
+   * none, which stops nothing.
    */
-  const deliverIdleStop = async (spaceId, setting = null) => {
+  const writeIdleStop = async (spaceId, setting) => {
     try {
-      await serverInside.writeIdleStop(spaceId, setting ?? await readIdleStop());
-      return true;
+      await serverInside.writeIdleStop(spaceId, setting);
     } catch (error) {
       logger.warn?.(`[spaces] space ${spaceId} keeps its idle stop setting: ${error?.code ?? error?.message ?? error}`);
-      return false;
     }
+  };
+
+  /** The setting as kept now, told to a space that was made or started, in turn with the changes. */
+  const deliverIdleStop = (spaceId) => {
+    const delivery = idleStopTurn.then(async () => writeIdleStop(spaceId, await readIdleStop()));
+    idleStopTurn = delivery.catch(() => {});
+    return delivery.catch((error) => {
+      logger.warn?.(`[spaces] space ${spaceId} keeps its idle stop setting: ${error?.code ?? error?.message ?? error}`);
+    });
   };
 
   const sendHistoryInBackground = ({ repository, spaceId, spacePath, base }) => {
@@ -432,7 +442,7 @@ export function createSpaceJourney({
       };
     }));
     for (const space of spaces) {
-      if (space.state === 'exited' && space.gatekeeperRunning === true && !pending.has(space.id)) void stopStrayGatekeeper(space.id);
+      if (space.state === 'exited' && space.gatekeeperRunning === true && !pending.has(space.id)) stopStrayGatekeeper(space.id);
     }
     // A creation under way wins over the place's view of it: the containers run before the code is there.
     const waiting = new Map(Array.from(pending.values(), (entry) => [entry.id, describePending(entry)]));
@@ -446,13 +456,18 @@ export function createSpaceJourney({
    * idle stop leaves it running, because it cannot reach it (the maintainer's call of 2026-09-28).
    * It serves nobody then, and a key typed into it goes with it, as with a stop by hand. The place's
    * stop of a stopped space stops only what still runs. A space that another action holds is left
-   * for the next look, since a start is what brings a gatekeeper up before its space.
+   * for the next look, since a start is what brings a gatekeeper up before its space; a start that
+   * comes while this runs waits for it, rather than being refused as busy.
    */
-  const stopStrayGatekeeper = (spaceId) => exclusive(spaceId, () => manager.stopSpace({ placeId: place.id, spaceId }))
-    .catch((error) => {
-      if (error instanceof SpaceError && error.code === 'space_busy') return;
-      logger.warn?.(`[spaces] the gatekeeper beside stopped space ${spaceId} still runs: ${error?.code ?? error?.message ?? error}`);
-    });
+  const stopStrayGatekeeper = (spaceId) => {
+    if (busy.has(spaceId) || strayStops.has(spaceId)) return;
+    const stopping = manager.stopSpace({ placeId: place.id, spaceId })
+      .catch((error) => {
+        logger.warn?.(`[spaces] the gatekeeper beside stopped space ${spaceId} still runs: ${error?.code ?? error?.message ?? error}`);
+      })
+      .finally(() => { strayStops.delete(spaceId); });
+    strayStops.set(spaceId, stopping);
+  };
 
   const requireListed = async (spaceId) => {
     const space = (await listSpaces()).find((entry) => entry.id === spaceId);
@@ -469,6 +484,7 @@ export function createSpaceJourney({
     // As for a creation: no start may slip in while the switch is stopping the spaces one by one.
     if (closing) throw new SpaceError('isolated_spaces_off', 'Isolated spaces are being turned off.');
     requireNotPending(spaceId);
+    await strayStops.get(spaceId);
     await manager.startSpace({ placeId: place.id, spaceId });
     const { record } = records.read(spaceId);
     let networkRestored = false;
@@ -544,7 +560,7 @@ export function createSpaceJourney({
 
     const asked = parsed.data;
     if (asked.kind === 'model' && !HEADER_BY_PROVIDER.has(asked.provider)) {
-      throw new SpaceError('provider_not_supported', `A key for ${asked.provider} cannot be given through the gatekeeper yet: it reads its key in a way the gatekeeper does not know.`);
+      throw new SpaceError('provider_not_supported', `A key for ${asked.provider} cannot be given through the network filter yet: it reads its key in a way the network filter does not know.`);
     }
     let grant;
     let secret = null;
@@ -561,7 +577,7 @@ export function createSpaceJourney({
     await gatekeeper.addGrant(spaceId, { id: grant.id, upstream: grant.upstream, header: grant.kind === 'model' ? grant.header : null, secret });
     const grants = [...current.record.grants.filter((entry) => entry.id !== grant.id), grant];
     if (records.update(spaceId, { grants }).status !== 'ok') {
-      throw new SpaceError('space_record_unreadable', 'The grant reached the gatekeeper and could not be remembered, so it is gone at the next start. Remove the space and create it again.');
+      throw new SpaceError('space_record_unreadable', 'The grant reached the network filter and could not be remembered, so it is gone at the next start. Remove the space and create it again.');
     }
     // A failure here answers the grant with it; the key is in the gatekeeper and the record, and
     // the next start writes the configuration again.
@@ -651,7 +667,7 @@ export function createSpaceJourney({
     for (const space of spaces) {
       if (space.state !== 'running') {
         // A gatekeeper left by an idle stop goes too, and the space is not counted: it was stopped.
-        if (space.gatekeeperRunning === true) await manager.stopSpace({ placeId: place.id, spaceId: space.id }).catch(() => {});
+        if (space.gatekeeperRunning === true && !busy.has(space.id)) await manager.stopSpace({ placeId: place.id, spaceId: space.id }).catch(() => {});
         continue;
       }
       try {
@@ -680,7 +696,7 @@ export function createSpaceJourney({
       await saveIdleStop(setting);
       const spaces = await manager.listSpaces({ placeId: place.id });
       for (const space of spaces) {
-        if (space.state === 'running' && !pending.has(space.id)) await deliverIdleStop(space.id, setting);
+        if (space.state === 'running' && !pending.has(space.id)) await writeIdleStop(space.id, setting);
       }
       return setting;
     });
