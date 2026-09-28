@@ -274,8 +274,18 @@ const toLoopMessage = (message) => {
       // from. Its model must not be inherited either (v1: "the compaction
       // summary carries the summarize model").
       if (message.status !== 'completed') return null;
+      // v2 records only `time.created` on a compaction; `status` is what says
+      // it finished. The loop reads "finished" from `time.completed`, so a
+      // completed compaction gets one, or it would count as still running.
       return {
-        info: { ...base, role: 'assistant', summary: true, tokens: message.tokens, finish: 'stop' },
+        info: {
+          ...base,
+          time: { ...time, completed: time.completed ?? time.created },
+          role: 'assistant',
+          summary: true,
+          tokens: message.tokens,
+          finish: 'stop',
+        },
         parts: message.summary ? [{ type: 'text', text: String(message.summary) }] : [],
       };
     }

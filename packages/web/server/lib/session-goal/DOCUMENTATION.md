@@ -104,7 +104,10 @@ before touching the filesystem). Rationale: metadata rides every
      (`type`, `content[]`, `model`, `finish`, `tokens`); `toLoopMessage`
      projects them into the `{ info, parts }` view the rest of the tick reads,
      and a completed `compaction` record plays v1's `summary: true` assistant
-     turn. Other plumbing roles are dropped from the view;
+     turn. v2 gives a compaction only `time.created`, so the projection
+     stamps `time.completed` from it: every "finished" check in the tick reads
+     `time.completed`, and without it a compaction looks still running. Other
+     plumbing roles are dropped from the view;
    - quiescence check via the message tail (trailing user message or
      unfinished assistant reply → bail; the next idle transition re-arms);
    - token accounting as a SNAPSHOT of the latest completed assistant turn:

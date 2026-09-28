@@ -177,7 +177,7 @@ describe('session goal tick on v2 messages', () => {
     const { calls } = v2OpenCode({
       messages: [
         assistantRecord(),
-        { id: 'msg_c1', sessionID: SESSION_ID, type: 'compaction', status: 'completed', summary: 'Summary so far', time: { created: 30, completed: 40 } },
+        { id: 'msg_c1', sessionID: SESSION_ID, type: 'compaction', status: 'completed', summary: 'Summary so far', time: { created: 30 } },
       ],
     });
     const seam = wired({ openchamber: { goal: activeGoal() } });
@@ -188,6 +188,26 @@ describe('session goal tick on v2 messages', () => {
 
     expect(generate).not.toHaveBeenCalled();
     expect(calls.some((call) => call.path.endsWith('/prompt') && call.method === 'POST')).toBe(true);
+    runtime.stop();
+  });
+
+  it('a compaction closes the token segment, so the goal keeps counting what came before it', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    v2OpenCode({
+      messages: [
+        assistantRecord(),
+        { id: 'msg_c1', sessionID: SESSION_ID, type: 'compaction', status: 'completed', summary: 'Summary so far', time: { created: 30 } },
+        assistantRecord({ id: 'msg_d1', tokens: { input: 30, output: 20, reasoning: 0, cache: { read: 0, write: 0 } }, time: { created: 40, completed: 50 } }),
+      ],
+    });
+    const seam = wired({ openchamber: { goal: activeGoal() } });
+    const { runtime } = makeRuntime(seam);
+
+    await runTick(runtime);
+
+    // 170 from the turn before the compaction, 50 from the one after it.
+    expect(seam.persistSessionGoal.mock.calls.at(-1)[2]).toMatchObject({ tokensUsed: 220 });
     runtime.stop();
   });
 
