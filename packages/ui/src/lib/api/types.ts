@@ -1471,6 +1471,10 @@ export interface ClientAuthAPI {
   getPairingTransports(): Promise<{ local: string | null; lan: string | null; relayAvailable: boolean }>;
 }
 
+export interface TelemetryAPI {
+  trackEvent(name: string, properties?: Record<string, string | number | boolean>): void;
+}
+
 export interface RuntimeAPIs {
   /** Native local picker. Web/mobile fall back to their browser file input; VS Code does not import themes. */
   themeFiles?: {
@@ -1489,6 +1493,7 @@ export interface RuntimeAPIs {
   diagnostics?: DiagnosticsAPI;
   clientAuth?: ClientAuthAPI;
   tools: ToolsAPI;
+  telemetry?: TelemetryAPI;
   editor?: EditorAPI;
   vscode?: VSCodeAPI;
   worktrees?: WorktreeMetadata[];

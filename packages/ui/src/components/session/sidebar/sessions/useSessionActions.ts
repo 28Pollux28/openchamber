@@ -3,6 +3,7 @@ import type { Session } from '@opencode-ai/sdk/v2';
 import { toast } from '@/components/ui';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { useI18n } from '@/lib/i18n';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import { useUIStore } from '@/stores/useUIStore';
 import { streamPerfMark } from '@/stores/utils/streamDebug';
 import { useSessionUIStore } from '@/sync/session-ui-store';
@@ -124,6 +125,7 @@ export const useSessionActions = (args: Args) => {
     const trimmed = (titleOverride ?? editTitleRef.current).trim();
     if (trimmed) {
       await updateSessionTitle(editingSessionId, trimmed);
+      trackTelemetryEvent('session_renamed');
     }
     setEditingId(null);
     setEditingRowKey(null);

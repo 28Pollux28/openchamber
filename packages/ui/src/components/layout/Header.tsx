@@ -70,6 +70,7 @@ import { useShallow } from 'zustand/react/shallow';
 import type { IconName } from "@/components/icon/icons";
 import { toast } from '@/components/ui';
 import { copyTextToClipboard } from '@/lib/clipboard';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import { buildExportFilename, downloadAsMarkdown, formatSessionAsMarkdown, saveAsMarkdownDesktop } from '@/lib/exportSession';
 import { GuestIcon } from '@/components/layout/GuestRailIcon';
 import { useGuestActions } from '@/hooks/useGuestSurfaces';
@@ -797,6 +798,7 @@ export const Header: React.FC = () => {
     const title = headerSessionTitleDraft.trim();
     if (title && title !== currentSession?.title?.trim()) {
       await updateSessionTitle(currentSessionId, title);
+      trackTelemetryEvent('session_renamed');
     }
     setIsRenamingHeaderSession(false);
   }, [currentSession?.title, currentSessionId, headerSessionTitleDraft, updateSessionTitle]);

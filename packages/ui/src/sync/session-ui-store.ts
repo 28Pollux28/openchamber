@@ -39,6 +39,7 @@ import { waitForPendingDraftWorktreeRequest } from "@/lib/worktrees/pendingDraft
 import { waitForWorktreeBootstrap } from "@/lib/worktrees/worktreeBootstrap"
 import { getWorktreeSetupWaitEnabled } from "@/lib/openchamberConfig"
 import { resolveProjectForSessionDirectory } from "@/lib/projectResolution"
+import { trackTelemetryEvent } from "@/lib/telemetry"
 import {
   getSyncSessions,
   getAllSyncSessions,
@@ -244,6 +245,7 @@ export async function routeMessage(params: {
   }
 
   // Normal prompt — optimistic insert so message appears instantly
+  trackTelemetryEvent('prompt_sent')
   await optimisticSend({
     runtimeKey: params.runtimeKey,
     sessionId: params.sessionId,
@@ -891,6 +893,11 @@ const createSessionWithDraftLifecycle = async (
     )
     if (!session) return null
 
+    if (parentID) {
+      trackTelemetryEvent('session_forked')
+    } else {
+      trackTelemetryEvent('session_created')
+    }
     useSessionUIStore.getState().closeNewSessionDraft()
 
     if (targetFolderId) {
@@ -1928,7 +1935,10 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
   // ---------------------------------------------------------------------------
   // deleteSession — calls SDK, SSE event updates child store
   // ---------------------------------------------------------------------------
-  deleteSession: async (id, options) => deleteSessionAction(id, options),
+  deleteSession: async (id, options) => {
+    trackTelemetryEvent('session_deleted')
+    return deleteSessionAction(id, options)
+  },
 
   deleteSessions: async (ids, options) => {
     const result = await deleteSessionsAction(ids, options)
@@ -1936,13 +1946,25 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
     return result
   },
 
-  archiveSession: (id) => archiveSessionAction(id),
+  archiveSession: (id) => {
+    trackTelemetryEvent('session_archived')
+    return archiveSessionAction(id)
+  },
 
-  archiveSessions: (ids, options) => archiveSessionsAction(ids, options),
+  archiveSessions: (ids, options) => {
+    trackTelemetryEvent('session_archived')
+    return archiveSessionsAction(ids, options)
+  },
 
-  unarchiveSession: (id) => unarchiveSessionAction(id),
+  unarchiveSession: (id) => {
+    trackTelemetryEvent('session_restored')
+    return unarchiveSessionAction(id)
+  },
 
-  unarchiveSessions: (ids, options) => unarchiveSessionsAction(ids, options),
+  unarchiveSessions: (ids, options) => {
+    trackTelemetryEvent('session_restored')
+    return unarchiveSessionsAction(ids, options)
+  },
 
   // ---------------------------------------------------------------------------
   // updateSessionTitle — calls SDK, SSE event updates child store
@@ -1952,11 +1974,15 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
   },
 
   shareSession: async (sessionId) => {
-    return shareSessionAction(sessionId)
+    const session = await shareSessionAction(sessionId)
+    trackTelemetryEvent('session_shared')
+    return session
   },
 
   unshareSession: async (sessionId) => {
-    return unshareSessionAction(sessionId)
+    const session = await unshareSessionAction(sessionId)
+    trackTelemetryEvent('session_unshared')
+    return session
   },
 
   // ---------------------------------------------------------------------------
@@ -1965,6 +1991,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
   revertToMessage: async (sessionId, messageId) => {
     // Ensure the complete message range is present before applying the revert
     // marker. Reverted UI is derived from session.revert + stored messages.
+    trackTelemetryEvent('turn_rewound')
     await refetchSessionMessages(sessionId)
     await revertToMessageAction(sessionId, messageId)
   },
@@ -2016,6 +2043,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
     if (options?.fullUnrevert) {
       const { unrevertSession } = await import("./session-actions")
       await unrevertSession(sessionId)
+      trackTelemetryEvent('turn_redone')
       const { toast } = await import("sonner")
       const { useI18nStore, formatMessage } = await import("@/lib/i18n/store")
       const { dictionary } = useI18nStore.getState()
@@ -2044,6 +2072,7 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
     }
 
     await unrevertSessionAction(sessionId)
+    trackTelemetryEvent('turn_redone')
     const { toast } = await import("sonner")
     const { useI18nStore, formatMessage } = await import("@/lib/i18n/store")
     const { dictionary } = useI18nStore.getState()
@@ -2060,6 +2089,9 @@ export const useSessionUIStore = create<SessionUIState>()((set, get) => ({
 
     try {
       await forkFromMessageAction(sessionId, messageId)
+      // Fork-from-message bypasses the store's createSession path, which is
+      // where the parentID-keyed session_forked event lives — report it here.
+      trackTelemetryEvent('session_forked')
 
       const { toast } = await import("sonner")
       toast.success(`Forked from ${existingSession.title}`)

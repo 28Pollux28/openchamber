@@ -41,6 +41,7 @@ import { getRuntimeUrlResolver } from '@/lib/runtime-url';
 import { cn } from '@/lib/utils';
 import { openExternalUrl } from '@/lib/url';
 import { canRequestNativeDirectoryAccess, pathForDroppedFile, requestDirectoryAccess, requestFileAccess } from '@/lib/desktop';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import type { PublicSocketBinding } from '@openchamber/sdk';
 
 const errorToastKey = (code: InstallGuestErrorCode): I18nKey => {
@@ -719,6 +720,7 @@ export const ExtensionsPage: React.FC = () => {
       toast.error(t('settings.extensions.toast.enabledFailed'));
       return;
     }
+    trackTelemetryEvent('extension_toggled', { extensionId: id, enabled });
     if (!enabled) {
       closeGuestTabsById(id);
     }

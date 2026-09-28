@@ -517,6 +517,9 @@
     "reportUsage": {
       "scope": "profile"
     },
+    "telemetryConsentVersion": {
+      "scope": "profile"
+    },
     "usageDisplayMode": {
       "scope": "profile"
     },

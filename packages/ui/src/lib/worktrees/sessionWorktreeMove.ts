@@ -11,6 +11,7 @@ import { getSessionLiveActivity, isSessionBusyNow, moveSessionToDirectory } from
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import type { WorktreeMetadata } from '@/types/worktree';
 import { waitForWorktreeGitReady } from '@/lib/worktrees/worktreeBootstrap';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import { create } from 'zustand';
 
 export type SessionTreeMoveMessages = {
@@ -289,6 +290,7 @@ const moveSessionTreeTransaction = async (
         const movesChanges = session.id === input.root.id && input.moveChanges;
         try {
           await moveSessionToDirectory(session, input.sourceDirectory, destination.directory, movesChanges);
+          trackTelemetryEvent('worktree_switched');
         } catch (error) {
           // A transport failure on the change-carrying request leaves the
           // destination unknown: the server may have applied the patch before

@@ -3408,4 +3408,8 @@ export const dict: Record<I18nKey, string> = {
   'settings.mcp.page.connection.kindLink': '連結',
   'settings.mcp.page.connection.hintCommand': '在本機執行。貼上完整指令後會依每行一個參數拆分。',
   'settings.mcp.page.connection.hintLink': '連線到他人代管的伺服器。貼上其 https 位址。',
+  'telemetry.banner.title': '匿名遙測',
+  'telemetry.banner.description': 'OpenChamber 只收集嚴格匿名的遙測（事件名稱、介面、管道、連線類型），以協助改善穩定性與效能。不會收集個人資料、提示文字、程式碼或 IP 位址。',
+  'telemetry.banner.accept': '接受',
+  'telemetry.banner.decline': '拒絕',
 };

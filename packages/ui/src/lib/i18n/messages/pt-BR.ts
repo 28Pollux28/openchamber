@@ -3409,4 +3409,8 @@ export const dict: Record<I18nKey, string> = {
   'settings.mcp.page.connection.kindLink': 'Link',
   'settings.mcp.page.connection.hintCommand': 'Executa nesta máquina. Cole um comando inteiro e ele será dividido em um argumento por linha.',
   'settings.mcp.page.connection.hintLink': 'Conecta a um servidor hospedado por outra pessoa. Cole o endereço https dele.',
+  'telemetry.banner.title': 'Telemetria anônima',
+  'telemetry.banner.description': 'O OpenChamber coleta telemetria estritamente anônima (nomes de eventos, superfície, canal, tipo de conexão) para ajudar a melhorar a estabilidade e o desempenho. Nenhum dado pessoal, texto de prompt, código ou endereço IP é coletado.',
+  'telemetry.banner.accept': 'Aceitar',
+  'telemetry.banner.decline': 'Recusar',
 };

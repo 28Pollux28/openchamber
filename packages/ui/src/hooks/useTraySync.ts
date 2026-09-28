@@ -10,6 +10,7 @@ import { compareSessionsByLifecycleOrder, useSessionOrderingStore } from '@/sync
 import { useNotificationStore } from '@/sync/notification-store';
 import { useSessionPinnedStore } from '@/stores/useSessionPinnedStore';
 import { respondToPermission } from '@/sync/session-actions';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import {
   useGlobalSessionsStore,
   resolveGlobalSessionDirectory,
@@ -562,7 +563,9 @@ export const useTraySync = (): void => {
     const handle = (action: TrayAction) => {
       switch (action.type) {
         case 'respond-permission':
-          void respondToPermission(action.sessionId, action.id, action.response).catch(() => {
+          void respondToPermission(action.sessionId, action.id, action.response).then(() => {
+            trackTelemetryEvent('permission_responded', { decision: action.response });
+          }).catch(() => {
             toast.error('Failed to respond to permission request');
           });
           break;

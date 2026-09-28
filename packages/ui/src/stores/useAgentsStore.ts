@@ -17,6 +17,7 @@ import { useProjectsStore } from "@/stores/useProjectsStore";
 import { useSkillsCatalogStore } from "@/stores/useSkillsCatalogStore";
 import { invalidateSkillsLoadCache, useSkillsStore } from "@/stores/useSkillsStore";
 import { runtimeFetch } from "@/lib/runtime-fetch";
+import { trackTelemetryEvent } from "@/lib/telemetry";
 
 // Note: useDirectoryStore cannot be imported at top level to avoid circular dependency
 // useDirectoryStore -> useAgentsStore (for refreshAfterOpenCodeRestart)
@@ -475,6 +476,7 @@ export const useAgentsStore = create<AgentsStore>()(
             }
 
             invalidateAgentsLoadCache(configDirectory);
+            trackTelemetryEvent('agent_config_changed', { action: 'create' });
 
             if (payload?.requiresManualRestart) {
               upsertOptimisticAgentLocal(set, get, config.name, config);
@@ -545,6 +547,7 @@ export const useAgentsStore = create<AgentsStore>()(
             }
 
             invalidateAgentsLoadCache(configDirectory);
+            trackTelemetryEvent('agent_config_changed', { action: 'update' });
 
             if (payload?.requiresManualRestart) {
               upsertOptimisticAgentLocal(set, get, name, config);
@@ -603,6 +606,7 @@ export const useAgentsStore = create<AgentsStore>()(
             }
 
             invalidateAgentsLoadCache(configDirectory);
+            trackTelemetryEvent('agent_config_changed', { action: 'delete' });
 
             if (get().selectedAgentName === name) {
               set({ selectedAgentName: null });

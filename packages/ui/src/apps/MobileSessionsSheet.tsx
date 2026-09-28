@@ -48,6 +48,7 @@ import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useI18n } from '@/lib/i18n';
 import { matchesRankQuery, rankByQuery } from '@/lib/search/fuzzySearch';
 import { updateDesktopSettings } from '@/lib/persistence';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import { PROJECT_COLOR_MAP, PROJECT_ICON_MAP, ProjectIconImage } from '@/lib/projectMeta';
 import { cn } from '@/lib/utils';
 import {
@@ -1416,6 +1417,7 @@ export const MobileSessionsSheet: React.FC<MobileSessionsSheetProps> = ({ open, 
     setRenamingSessionId(null);
     try {
       await updateSessionTitle(sessionId, title);
+      trackTelemetryEvent('session_renamed');
     } catch {
       toast.error(t('mobile.sessions.renameError'));
     }

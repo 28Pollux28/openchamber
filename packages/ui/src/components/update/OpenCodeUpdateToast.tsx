@@ -8,6 +8,7 @@ import { runtimeFetch } from '@/lib/runtime-fetch';
 import { getRuntimeKey, subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
 import { updateDesktopSettings } from '@/lib/persistence';
 import { getDeferredSafeStorage } from '@/stores/utils/safeStorage';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import {
   resolveOpenCodeUpdateVersion,
   resolveOpenCodeUpgradeStatusVersion,
@@ -67,6 +68,7 @@ export const OpenCodeUpdateToast: React.FC = () => {
         throw new Error(payload?.error || response.statusText || t('opencodeUpdate.toast.failed.description'));
       }
 
+      trackTelemetryEvent('opencode_update_installed', { targetVersion: payload?.version || '' });
       toast.success(t('opencodeUpdate.toast.updated.title'), {
         id: UPGRADE_TOAST_ID,
         description: payload?.version
@@ -108,6 +110,7 @@ export const OpenCodeUpdateToast: React.FC = () => {
         return;
       }
       seenVersionsRef.current.add(version);
+      trackTelemetryEvent('opencode_update_available', { targetVersion: version });
 
       toast.info(t('opencodeUpdate.toast.available.title'), {
         id: UPDATE_TOAST_ID,

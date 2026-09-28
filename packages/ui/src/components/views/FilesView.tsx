@@ -87,6 +87,7 @@ import { isEditableEventTarget } from '@/hooks/keyboard-shortcut-dom';
 import { formatShortcutForDisplay, getEffectiveShortcutCombo } from '@/lib/shortcuts';
 import { useI18n } from '@/lib/i18n';
 import { sessionEvents } from '@/lib/sessionEvents';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import { syncScheduledTaskLoops } from '@/lib/scheduledTasksApi';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 
@@ -1409,6 +1410,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
         .then(async (result) => {
           if (result.success) {
             toast.success(t('sidebarFilesTree.toast.fileCreated'));
+            trackTelemetryEvent('file_created');
             await refreshDirectory(parentPath);
           }
           finishDialogOperation();
@@ -1703,6 +1705,7 @@ export const FilesView: React.FC<FilesViewProps> = ({ mode = 'full', visible = t
       setFileContent(draftContent);
       lastLoadedFileContentRef.current = contentToWrite;
       lastLoadedFileRevisionRef.current += 1;
+      trackTelemetryEvent('file_saved');
       if (root && isPathWithinRoot(selectedFile.path, root)) {
         const relativePath = getDisplayPath(root, selectedFile.path);
         if (relativePath) {

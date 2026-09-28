@@ -12,6 +12,7 @@ import { DiffPreview, WritePreview } from './DiffPreview';
 import { useI18n, type I18nKey } from '@/lib/i18n';
 import { getVisiblePermissionPatterns } from './permissionCardPatterns';
 import { permissionFilePreviewsSchema } from './permissionFilePreviews';
+import { trackTelemetryEvent } from '@/lib/telemetry';
 import { formatShortcutForDisplay } from '@/lib/shortcuts';
 
 // Newest pending card owns the keyboard; older cards wait their turn.
@@ -139,6 +140,7 @@ export const PermissionCard: React.FC<PermissionCardProps> = ({
       await respondToPermission(permission.sessionID, permission.id, response);
       setHasResponded(true);
       onResponse?.(response);
+      trackTelemetryEvent('permission_responded', { decision: response });
     } catch (error) {
       console.error('[PermissionCard] Failed to respond to permission:', error);
     } finally {
