@@ -11,7 +11,6 @@ import { DiffPreview, WritePreview } from './DiffPreview';
 import { useI18n, type I18nKey } from '@/lib/i18n';
 import { getVisiblePermissionPatterns } from './permissionCardPatterns';
 import { permissionFilePreviewsSchema } from './permissionFilePreviews';
-import { trackTelemetryEvent } from '@/lib/telemetry';
 import { formatShortcutForDisplay } from '@/lib/shortcuts';
 import { toolFileDiffs } from '@/lib/opencode/tools';
 import { getPermissionToolPresentation, getToolDisplayName } from './permissionToolPresentation';

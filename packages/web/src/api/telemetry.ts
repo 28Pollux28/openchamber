@@ -51,7 +51,10 @@ const loadPostHogClient = (): Promise<PostHogTelemetryClient | null> => {
   return posthogClientPromise;
 };
 
-export function createWebTelemetryAPI(posthogClient?: PostHogTelemetryClient): TelemetryAPI {
+export function createWebTelemetryAPI(
+  posthogClient?: PostHogTelemetryClient,
+  config?: { appKey: string; hostUrl: string },
+): TelemetryAPI {
   // Per-API-instance state: the API is created once per app, and keeping the
   // flags here (not module-level) lets tests build isolated instances.
   let isInitialized = false;
@@ -59,7 +62,7 @@ export function createWebTelemetryAPI(posthogClient?: PostHogTelemetryClient): T
 
   const initIfNeeded = async (): Promise<PostHogTelemetryClient | null> => {
     if (isInitialized) return posthogClient ?? (await loadPostHogClient());
-    const { appKey, hostUrl } = getPostHogConfig();
+    const { appKey, hostUrl } = config ?? getPostHogConfig();
 
     if (appKey && globalThis.window !== undefined) {
       const client = posthogClient ?? (await loadPostHogClient());

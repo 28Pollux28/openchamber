@@ -2,10 +2,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { createWebTelemetryAPI } from './telemetry';
 
-const makeApi = () => {
+const makeApi = (config?: { appKey: string; hostUrl: string }) => {
   const init = vi.fn();
   const capture = vi.fn();
-  const api = createWebTelemetryAPI({ init, capture });
+  const api = createWebTelemetryAPI({ init, capture }, config ?? { appKey: 'test-app-key', hostUrl: 'https://eu.i.posthog.com' });
   return { api, init, capture };
 };
 
@@ -43,7 +43,7 @@ describe('createWebTelemetryAPI', () => {
     // capture runs on a microtask after the lazy init resolves.
     await vi.waitFor(() => expect(capture).toHaveBeenCalledTimes(1));
     expect(init).toHaveBeenCalledTimes(1);
-    expect(init).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({
+    expect(init).toHaveBeenCalledWith('test-app-key', expect.objectContaining({
       ip: false,
       autocapture: false,
       capture_pageview: false,
@@ -69,6 +69,15 @@ describe('createWebTelemetryAPI', () => {
     const { api, init, capture } = makeApi();
     api.trackEvent('bridged', { a: 1 });
     expect(desktopTrack).toHaveBeenCalledWith('bridged', { a: 1 });
+    expect(init).not.toHaveBeenCalled();
+    expect(capture).not.toHaveBeenCalled();
+  });
+
+  test('does nothing without a configured app key', async () => {
+    const { api, init, capture } = makeApi({ appKey: '', hostUrl: 'https://eu.i.posthog.com' });
+    api.trackEvent('test_event');
+    // Drain the microtask chain: initIfNeeded resolves null and capture never fires.
+    await new Promise((resolve) => setImmediate(resolve));
     expect(init).not.toHaveBeenCalled();
     expect(capture).not.toHaveBeenCalled();
   });
