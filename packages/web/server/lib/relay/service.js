@@ -15,7 +15,7 @@ import express from 'express';
 
 import { createRelayIdentityRuntime } from './identity.js';
 import { startRelayHost } from './host-client.js';
-import { isEnterpriseMode } from '../enterprise-mode.js';
+import { isEnterpriseMode, readEnterprisePolicy } from '../enterprise-mode.js';
 
 export const DEFAULT_RELAY_URL = 'wss://relay.openchamber.dev/ws';
 
@@ -36,22 +36,23 @@ const normalizeRelayUrl = (value) => {
   return trimmed;
 };
 
-// A deployment can pin the relay endpoint via env (e.g. a self-hosted relay on
-// your own Cloudflare account/domain). When set and valid it overrides the
-// stored setting entirely, so the host connection, the pairing offer, and the
-// status all point at it — clients then inherit it from the offer automatically.
-const envRelayUrlOverride = () => {
-  const raw = process.env.OPENCHAMBER_RELAY_URL;
-  if (typeof raw !== 'string' || !raw.trim() || !isValidRelayUrl(raw)) return null;
-  return raw.trim();
+// A deployment can pin the relay endpoint (e.g. a self-hosted relay on your
+// own Cloudflare account/domain): `relayUrl` in the machine policy file, else
+// OPENCHAMBER_RELAY_URL (see ../enterprise-mode.js). When set and valid it
+// overrides the stored setting entirely, so the host connection, the pairing
+// offer, and the status all point at it — clients then inherit it from the
+// offer automatically. An invalid pinned value pins nothing.
+export const pinnedRelayUrl = () => {
+  const raw = readEnterprisePolicy().relayUrl;
+  return raw && isValidRelayUrl(raw) ? raw.trim() : null;
 };
 
 // Enterprise mode keeps remote access inside the company: the relay runs only
-// on a self-hosted endpoint pinned by OPENCHAMBER_RELAY_URL, never on ours.
+// on a pinned self-hosted endpoint, never on ours.
 // Traffic is end-to-end encrypted either way; what stays in-house is the
 // metadata and the path into this machine.
-const RELAY_BLOCKED_ERROR = 'In enterprise mode the relay runs on your own endpoint: set OPENCHAMBER_RELAY_URL to a self-hosted relay.';
-export const relayBlockedByEnterprise = () => isEnterpriseMode() && envRelayUrlOverride() === null;
+const RELAY_BLOCKED_ERROR = 'In enterprise mode the relay runs on your own endpoint: set relayUrl in the policy file or OPENCHAMBER_RELAY_URL to a self-hosted relay.';
+export const relayBlockedByEnterprise = () => isEnterpriseMode() && pinnedRelayUrl() === null;
 
 /**
  * @param {{
@@ -104,12 +105,12 @@ export const createRelayService = ({
   const readConfig = async () => {
     const settings = await readSettingsFromDiskMigrated();
     const stored = settings?.privateRelay;
-    const override = envRelayUrlOverride();
+    const override = pinnedRelayUrl();
     return {
       enabled: stored?.enabled === true,
       relayUrl: override ?? normalizeRelayUrl(stored?.relayUrl),
-      // True when the endpoint is pinned by OPENCHAMBER_RELAY_URL (a self-hosted
-      // relay); the stored setting is ignored while it is set.
+      // True when an administrator pinned the endpoint (a self-hosted relay);
+      // the stored setting is ignored while it is set.
       relayUrlLocked: override !== null,
     };
   };

@@ -42,7 +42,7 @@ import {
   type CredentialConnection,
 } from './providerAuth';
 import { ProviderGrid } from './ProviderGrid';
-import { useRoutingStore } from '@/stores/useRoutingStore';
+import { useEnterpriseMode } from '@/stores/useEnterprisePolicyStore';
 import { ClassificationProvidersPage } from '@/components/sections/classification/ClassificationProvidersPage';
 import { SettingsBackButton } from '@/components/sections/shared/SettingsCards';
 import { ProviderAccounts } from './ProviderAccounts';
@@ -224,7 +224,7 @@ export const ProvidersPage: React.FC = () => {
   const [showAuthPanel, setShowAuthPanel] = React.useState(false);
   // An administrator turned on enterprise mode: providers come from the
   // OpenCode config, and the server refuses new ones and new keys.
-  const enterpriseLocked = useRoutingStore((state) => state.enterpriseMode);
+  const enterpriseLocked = useEnterpriseMode();
   const [authPanelDismissedForId, setAuthPanelDismissedForId] = React.useState<string | null>(null);
   const [editingCustomProviderId, setEditingCustomProviderId] = React.useState<string | null>(null);
   const [editingCustomFormInitial, setEditingCustomFormInitial] = React.useState<CustomProviderFormState | null>(null);

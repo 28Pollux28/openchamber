@@ -129,13 +129,14 @@ Classification providers:
   the user's explicit choice, the same as the hosted sources. Saving picks it;
   a missing `key` keeps the saved one, null removes it without changing the
   pick.
-  An administrator can pin the endpoint in the server environment
-  (`readPinnedCustomEndpoint`: `OPENCHAMBER_JEV_URL`, `OPENCHAMBER_JEV_MODEL`
-  defaulting to `jev-latest`, optional `OPENCHAMBER_JEV_API_KEY`). The pin
+  An administrator can pin the endpoint (`readPinnedCustomEndpoint`): `jev` in
+  the machine policy file, else `OPENCHAMBER_JEV_URL`, `OPENCHAMBER_JEV_MODEL`
+  defaulting to `jev-latest`, optional `OPENCHAMBER_JEV_API_KEY` (source rules
+  in `../enterprise-mode.js`). The pin
   replaces the saved endpoint, `customEndpoint.pinned` tells the page to show
   it read-only, and `setCustomEndpoint` / `clearCustomEndpoint` answer 409.
 
-In enterprise mode (`OPENCHAMBER_ENTERPRISE_MODE`, `../enterprise-mode.js`)
+In enterprise mode (policy file or `OPENCHAMBER_ENTERPRISE_MODE`, `../enterprise-mode.js`)
 `resolveAccess` treats the pick as `off` whatever is stored (the stored pick is
 kept for when the mode is lifted), `setClassifierSource` refuses anything but
 `off` and `setToken` and `setCustomEndpoint` refuse every write with 403, and `describe` reports

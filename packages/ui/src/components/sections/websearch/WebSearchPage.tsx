@@ -14,7 +14,7 @@ import {
   SETTINGS_HELPER_CLASS,
 } from '@/components/sections/shared/SettingsSection';
 import { getWebSearchScopeKey, useWebSearchStore, type WebSearchSnapshot } from '@/stores/useWebSearchStore';
-import { useRoutingStore } from '@/stores/useRoutingStore';
+import { useEnterpriseMode } from '@/stores/useEnterprisePolicyStore';
 
 /**
  * Settings → Web search: which provider OpenCode's `websearch` tool uses, and
@@ -178,7 +178,7 @@ const KeysSection: React.FC<{ snapshot: WebSearchSnapshot }> = ({ snapshot }) =>
   const { t } = useI18n();
   // Enterprise mode: the server refuses new keys (they connect through the
   // same OpenCode route as model providers); saved ones can still be removed.
-  const locked = useRoutingStore((state) => state.enterpriseMode);
+  const locked = useEnterpriseMode();
   const access = snapshot.access;
   const keyed = access
     ? snapshot.providers.flatMap((provider) => {

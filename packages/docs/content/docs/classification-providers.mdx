@@ -82,7 +82,9 @@ OPENCHAMBER_JEV_MODEL=jev-latest        # optional, this is the default
 OPENCHAMBER_JEV_API_KEY=...             # optional
 ```
 
-It then replaces the endpoint saved in Settings, and Settings shows it without letting anyone edit it. In [enterprise mode](/security/#enterprise-mode) it's the one Jev source allowed besides **Off**, and it's selected by default.
+On laptops you manage, put the same endpoint under `jev` in the machine [policy file](/security/#a-policy-file-on-the-machine) instead. It wins over the environment.
+
+Either way, it replaces the endpoint saved in Settings, and Settings shows it without letting anyone edit it. In [enterprise mode](/security/#enterprise-mode) it's the one Jev source allowed besides **Off**, and it's selected by default.
 
 The card on **Settings → Providers** shows **Ready** once a provider works.
 

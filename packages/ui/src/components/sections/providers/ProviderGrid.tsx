@@ -20,6 +20,7 @@ import {
 import { findIntegrationForProvider, getProviderCardStatus, readProviderApiKeySetting, type ProviderCardStatus } from './providerAuth';
 import { SETTINGS_CALLOUT_TITLE_CLASS } from '@/components/sections/shared/SettingsSection';
 import { cn } from '@/lib/utils';
+import { useEnterpriseMode, useEnterprisePolicyStore } from '@/stores/useEnterprisePolicyStore';
 import { useRoutingStore } from '@/stores/useRoutingStore';
 import { opencodeClient } from '@/lib/opencode/client';
 import { openExternalUrl } from '@/lib/url';
@@ -57,6 +58,8 @@ const useConfigDeniesAnyProvider = (directory: string | null): boolean | null =>
 const EnterpriseProvidersNotice: React.FC<{ directory: string | null; integrations: readonly IntegrationInfo[] | null }> = ({ directory, integrations }) => {
   const { t } = useI18n();
   const restricted = useConfigDeniesAnyProvider(directory);
+  const organization = useEnterprisePolicyStore((state) => state.organization);
+  const policyUnreadable = useEnterprisePolicyStore((state) => state.policyError !== null);
   const consoleConnected = integrations === null
     ? null
     : (findIntegrationForProvider(integrations, 'opencode')?.connections?.length ?? 0) > 0;
@@ -85,6 +88,12 @@ const EnterpriseProvidersNotice: React.FC<{ directory: string | null; integratio
       />
       <div className="min-w-0 space-y-1.5">
         <p className={SETTINGS_CALLOUT_TITLE_CLASS}>{t('settings.providers.enterpriseTitle')}</p>
+        {organization ? (
+          <p className="typography-meta text-foreground">{t('settings.providers.enterpriseManagedBy', { organization })}</p>
+        ) : null}
+        {policyUnreadable ? (
+          <p className="typography-meta text-foreground">{t('settings.providers.enterprisePolicyUnreadable')}</p>
+        ) : null}
         <p className="typography-meta text-muted-foreground">{t('settings.providers.enterpriseMode')}</p>
         {gap === 'open' ? (
           <p className="typography-meta text-foreground">
@@ -205,7 +214,7 @@ export const ProviderGrid: React.FC<ProviderGridProps> = ({ providers, integrati
   const filtered = rankByQuery([...providers], query, (provider) => [provider.name || provider.id, provider.id]);
   const hasQuery = query.trim().length > 0;
   // The server refuses new providers and keys; this only keeps the way in hidden.
-  const locked = useRoutingStore((state) => state.enterpriseMode);
+  const locked = useEnterpriseMode();
 
   return (
     <SettingsPageLayout

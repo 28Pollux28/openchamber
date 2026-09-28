@@ -5,7 +5,7 @@ import {
   getEffectiveShortcutCombo,
 } from '@/lib/shortcuts';
 import { useUIStore } from '@/stores/useUIStore';
-import { useRoutingStore } from '@/stores/useRoutingStore';
+import { useEnterpriseMode } from '@/stores/useEnterprisePolicyStore';
 import { useSettingsDirectory } from '@/hooks/useSettingsDirectory';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useAgentsStore } from '@/stores/useAgentsStore';
@@ -242,7 +242,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ onClose, forceMobile
   // keep platform check available for future window chrome tweaks
 
   const routingAvailable = useUIStore((state) => state.routingFeatureAvailable);
-  const enterpriseMode = useRoutingStore((state) => state.enterpriseMode);
+  const enterpriseMode = useEnterpriseMode();
   const runtimeCtx = React.useMemo(() => buildRuntimeContext(isDesktopApp, isMobile, routingAvailable, enterpriseMode), [isDesktopApp, isMobile, routingAvailable, enterpriseMode]);
 
   const visiblePages = React.useMemo(() => {

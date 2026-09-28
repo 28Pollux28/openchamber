@@ -15,9 +15,11 @@ const createApp = (getProviderSources) => {
 
 describe('provider writes in enterprise mode', () => {
   const writes = (agent) => [
-    agent.post('/api/integration/openai/connect').send({ key: 'sk-test' }),
-    agent.post('/api/integration/anthropic/oauth/claude-pro/connect').send({}),
-    agent.post('/api/integration/anthropic/oauth/att_1/complete').send({ code: 'x' }),
+    agent.post('/api/integration/openai/connect/key').send({ key: 'sk-test' }),
+    agent.post('/api/integration/anthropic/connect/oauth').send({ methodID: 'claude-pro' }),
+    agent.post('/api/integration/anthropic/connect/oauth/att_1/complete').send({ code: 'x' }),
+    agent.post('/api/integration/github-copilot/connect/command').send({ methodID: 'cli' }),
+    agent.post('/api/experimental/integration/wellknown').send({ url: 'https://example.test' }),
     agent.put('/api/provider').send({ providerID: 'company-ai', config: {}, scope: 'user' }),
   ];
 
@@ -37,7 +39,7 @@ describe('provider writes in enterprise mode', () => {
   });
 
   it('passes the OpenCode writes on to the proxy otherwise', async () => {
-    const connect = await request(createApp(vi.fn())).post('/api/integration/openai/connect').send({ key: 'sk-test' });
+    const connect = await request(createApp(vi.fn())).post('/api/integration/openai/connect/key').send({ key: 'sk-test' });
     // No proxy in this app: falling through reads as Express's 404.
     expect(connect.status).toBe(404);
   });

@@ -160,7 +160,7 @@ export function createRoutingRuntime({
     : null);
 
   const pinnedEndpointError = () => Object.assign(
-    new Error('The custom endpoint is set by the server environment (OPENCHAMBER_JEV_URL) and cannot be changed here'),
+    new Error('The custom endpoint is set by your administrator and cannot be changed here'),
     { status: 409 },
   );
 

@@ -32,6 +32,7 @@ import {
   ZEN_JEV_MODEL,
   ZEN_JEV_PAID_MODEL,
 } from './defaults.js';
+import { readEnterprisePolicy } from '../enterprise-mode.js';
 
 export const CLASSIFIER_SOURCES = ['off', 'zen-promo', 'zen-key', 'openrouter', 'vercel', 'typesafe', 'custom'];
 // What the user set up in OpenChamber for Jev comes before keys borrowed from OpenCode.
@@ -67,27 +68,26 @@ export const normalizeCustomEndpointUrl = (input) => {
 let warnedInvalidPin = false;
 
 /**
- * A custom endpoint an administrator pinned in the server's environment:
- * `OPENCHAMBER_JEV_URL` (any form `normalizeCustomEndpointUrl` accepts),
+ * A custom endpoint an administrator pinned: `jev` in the machine policy file,
+ * else `OPENCHAMBER_JEV_URL` (any form `normalizeCustomEndpointUrl` accepts),
  * `OPENCHAMBER_JEV_MODEL` (default `jev-latest`) and an optional
- * `OPENCHAMBER_JEV_API_KEY`. It replaces the one saved in Settings, which
- * then cannot be edited, and it is the one Jev source enterprise mode allows.
- * Null when unset or not a valid URL.
+ * `OPENCHAMBER_JEV_API_KEY` (see ../enterprise-mode.js). It replaces the one
+ * saved in Settings, which then cannot be edited, and it is the one Jev source
+ * enterprise mode allows. Null when unset or not a valid URL.
  */
-export const readPinnedCustomEndpoint = (env = process.env) => {
-  const raw = (env.OPENCHAMBER_JEV_URL ?? '').trim();
-  if (!raw) return null;
+export const readPinnedCustomEndpoint = (options) => {
+  const pinned = readEnterprisePolicy(options).jev;
+  if (!pinned) return null;
   let url;
   try {
-    url = normalizeCustomEndpointUrl(raw);
+    url = normalizeCustomEndpointUrl(pinned.url);
   } catch (error) {
-    if (!warnedInvalidPin) console.warn('[routing] OPENCHAMBER_JEV_URL is ignored:', error.message);
+    if (!warnedInvalidPin) console.warn('[routing] the pinned Jev endpoint is ignored:', error.message);
     warnedInvalidPin = true;
     return null;
   }
-  const model = (env.OPENCHAMBER_JEV_MODEL ?? '').trim() || JEV_MODEL;
-  const key = (env.OPENCHAMBER_JEV_API_KEY ?? '').trim();
-  return key ? { url, model, key } : { url, model };
+  const model = pinned.model || JEV_MODEL;
+  return pinned.apiKey ? { url, model, key: pinned.apiKey } : { url, model };
 };
 
 /** The sources clients from v2.0.2 parse; any other id fails their whole routing state. */
