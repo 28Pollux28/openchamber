@@ -21,9 +21,11 @@ import { createNgrokTunnelProvider } from './lib/tunnels/providers/ngrok.js';
 import { createRequestSecurityRuntime } from './lib/security/request-security.js';
 import {
   getUnauthenticatedLanErrorMessage,
+  isLoopbackBindHost,
   isNetworkExposedBindHost,
   isUnsafeUnauthenticatedLanAllowed,
 } from './lib/security/bind-host.js';
+import { isNetworkAccessBlocked, NETWORK_ACCESS_BLOCKED_ERROR } from './lib/enterprise-mode.js';
 import {
   TUNNEL_MODE_MANAGED_LOCAL,
   TUNNEL_MODE_MANAGED_REMOTE,
@@ -1867,6 +1869,12 @@ async function main(options = {}) {
   ) {
     throw new Error(getUnauthenticatedLanErrorMessage(effectiveBindHost));
   }
+  // Enterprise mode keeps the server on this machine unless the administrator
+  // allowed network access. The server is a package anyone can install, so
+  // this holds for the CLI and --host as much as for the desktop toggle.
+  if (isNetworkExposedBindHost(effectiveBindHost) && isNetworkAccessBlocked()) {
+    throw new Error(NETWORK_ACCESS_BLOCKED_ERROR);
+  }
   const tryCfTunnel = options.tryCfTunnel === true;
   const apiOnly = options.apiOnly === true || isEnvFlagEnabled(process.env.OPENCHAMBER_API_ONLY);
   const shouldUseCanonicalTunnelConfig = typeof options.tunnelMode === 'string'
@@ -1996,6 +2004,13 @@ async function main(options = {}) {
   expressApp = app;
   server = http.createServer(app);
   gracefulShutdownRuntime.trackServerConnections(server);
+  // A policy placed while the server runs cannot rebind it, so connections
+  // from other machines are dropped until the next start binds loopback.
+  if (isNetworkExposedBindHost(effectiveBindHost)) {
+    server.on('connection', (socket) => {
+      if (!isLoopbackBindHost(socket.remoteAddress ?? '') && isNetworkAccessBlocked()) socket.destroy();
+    });
+  }
   // Same pattern for the tunnel runtime: created after the base routes so
   // /api/system/info resolves port + tunnel URL lazily at request time.
   let tunnelRuntimeContextHolder = null;

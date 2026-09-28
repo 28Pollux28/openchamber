@@ -1067,6 +1067,7 @@ export const settingsDict = {
   'settings.openchamber.desktopNetwork.field.allowLanAccessDescription': 'Telefonlar, tabletler ve Wi-Fi ağınızdaki diğer bilgisayarların uygulamayı açabilmesi için uygulamayı yeniden başlatır.',
   'settings.openchamber.desktopNetwork.field.warning': 'Uyarı: Etkinken uygulamaya aynı yerel ağdaki herkes erişebilir.',
   'settings.openchamber.desktopNetwork.field.passwordRequiredWarning': 'LAN erişimi Masaüstü UI Şifresi gerektirir. Şifre ayarlanana kadar masaüstü uygulaması yalnızca yerel olarak başlar.',
+  'settings.openchamber.desktopNetwork.field.enterpriseBlocked': 'Kurumsal mod OpenChamber’ı bu bilgisayarda tutar. Ağ erişimine yöneticiniz izin verebilir.',
   'settings.openchamber.desktopPassword.field.password': 'Masaüstü UI Şifresi',
   'settings.openchamber.desktopPassword.field.passwordPlaceholder': 'Şifre gerekmez',
   'settings.openchamber.desktopPassword.field.passwordSetPlaceholder': 'Şifre ayarlı. Değiştirmek için yeni bir şifre yazın.',

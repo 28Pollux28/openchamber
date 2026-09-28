@@ -957,6 +957,7 @@ export const settingsDict = {
   'settings.openchamber.desktopNetwork.field.allowLanAccessDescription': 'Redémarre l\'application afin que les téléphones, tablettes et autres ordinateurs connectés à votre réseau Wi-Fi puissent l\'ouvrir.',
   'settings.openchamber.desktopNetwork.field.warning': 'Attention : lorsqu\'elle est activée, l\'application est accessible à toute personne se trouvant sur le même réseau local.',
   'settings.openchamber.desktopNetwork.field.passwordRequiredWarning': 'L\'accès LAN nécessite un mot de passe de l\'interface utilisateur du bureau. Tant qu\'il n\'est pas défini, l\'application de bureau démarre en accès local uniquement.',
+  'settings.openchamber.desktopNetwork.field.enterpriseBlocked': 'Le mode entreprise garde OpenChamber sur cet ordinateur. Votre administrateur peut autoriser l’accès réseau.',
   'settings.openchamber.desktopPassword.field.password': 'Mot de passe de l\'interface utilisateur du bureau',
   'settings.openchamber.desktopPassword.field.passwordPlaceholder': 'Aucun mot de passe requis',
   'settings.openchamber.desktopPassword.field.passwordSetPlaceholder': 'Mot de passe défini. Saisissez-en un nouveau pour le remplacer.',

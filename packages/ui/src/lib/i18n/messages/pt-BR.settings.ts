@@ -1039,6 +1039,7 @@ export const settingsDict = {
   "settings.openchamber.desktopNetwork.field.allowLanAccessDescription": "Reinicia o aplicativo para que os telefones, tablets e outros computadores em seu Wi-Fi possam abri-lo.",
   "settings.openchamber.desktopNetwork.field.warning": "Aviso: enquanto estiver habilitado, o aplicativo ficará acessível a qualquer pessoa na mesma rede local.",
   "settings.openchamber.desktopNetwork.field.passwordRequiredWarning": "O acesso LAN exige uma senha da UI do desktop. Até configurar uma, o app de desktop inicia apenas localmente.",
+  "settings.openchamber.desktopNetwork.field.enterpriseBlocked": "O modo empresarial mantém o OpenChamber neste computador. Seu administrador pode permitir o acesso pela rede.",
   "settings.openchamber.desktopPassword.field.password": "Senha da UI do desktop",
   "settings.openchamber.desktopPassword.field.passwordPlaceholder": "Nenhuma senha obrigatória",
   "settings.openchamber.desktopPassword.field.passwordSetPlaceholder": "Senha definida. Digite uma nova para substituí-la.",

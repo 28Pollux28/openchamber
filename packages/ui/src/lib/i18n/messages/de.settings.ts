@@ -1015,6 +1015,7 @@ export const settingsDict = {
   'settings.openchamber.desktopNetwork.field.allowLanAccessDescription': 'Startet die App neu, damit Smartphones, Tablets und andere Computer in Ihrem WLAN sie öffnen können.',
   'settings.openchamber.desktopNetwork.field.warning': 'Warnung: Solange aktiviert, ist die App für jeden im selben lokalen Netzwerk erreichbar.',
   'settings.openchamber.desktopNetwork.field.passwordRequiredWarning': 'LAN-Zugriff erfordert ein Desktop-UI-Kennwort. Bis ein Kennwort festgelegt ist, startet die Desktop-App nur lokal.',
+  'settings.openchamber.desktopNetwork.field.enterpriseBlocked': 'Der Enterprise-Modus hält OpenChamber auf diesem Computer. Dein Administrator kann den Netzwerkzugriff erlauben.',
   'settings.openchamber.desktopPassword.field.password': 'Desktop-UI-Kennwort',
   'settings.openchamber.desktopPassword.field.passwordPlaceholder': 'Kein Kennwort erforderlich',
   'settings.openchamber.desktopPassword.field.passwordSetPlaceholder': 'Kennwort gesetzt. Neues eingeben, um es zu ersetzen.',
