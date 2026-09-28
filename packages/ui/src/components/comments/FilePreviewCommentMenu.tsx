@@ -2,12 +2,14 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 
 import { cn } from '@/lib/utils';
+import { useDeviceInfo } from '@/lib/device';
 import { useI18n } from '@/lib/i18n';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useSessionUIStore } from '@/sync/session-ui-store';
 import { useInlineCommentDraftStore } from '@/stores/useInlineCommentDraftStore';
 import { focusChatInput } from '@/components/chat/composer/editor/dom';
 import { collectSelectionOverlayRects } from '@/lib/selectionOverlayRects';
+import { Icon } from '@/components/icon/Icon';
 import { InlineCommentInput } from './InlineCommentInput';
 
 interface FilePreviewCommentMenuProps {
@@ -26,6 +28,7 @@ interface FilePreviewCommentMenuProps {
  */
 export function FilePreviewCommentMenu({ containerRef, filePath, fileContent }: FilePreviewCommentMenuProps) {
   const { t } = useI18n();
+  const { isMobile } = useDeviceInfo();
   const currentSessionId = useSessionUIStore((state) => state.currentSessionId);
   const newSessionDraftOpen = useSessionUIStore((state) => state.newSessionDraft?.open);
   const effectiveDirectory = useEffectiveDirectory();
@@ -194,6 +197,79 @@ export function FilePreviewCommentMenu({ containerRef, filePath, fileContent }: 
 
   const lineRange = commentMode ? resolveLineRange(selectedText) : null;
 
+  const highlightOverlay = commentMode && highlightRects && highlightRects.length > 0
+    ? (
+      <div className="pointer-events-none fixed inset-0 z-40">
+        {highlightRects.map((rect, index) => (
+          <div
+            key={index}
+            className="oc-chat-comment-rect absolute"
+            style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
+          />
+        ))}
+      </div>
+    )
+    : null;
+
+  const commentInput = (
+    <InlineCommentInput
+      fileLabel={filePath}
+      lineRange={lineRange ? { start: lineRange.start, end: lineRange.end } : undefined}
+      onSave={saveComment}
+      onCancel={hide}
+    />
+  );
+
+  // Mobile: Android and iOS draw their own copy/paste toolbar right above a
+  // text selection, exactly where the desktop pill sits, and cover it (#3894).
+  // So the Comment button and the comment input dock at the bottom of the
+  // screen instead, like the chat selection sheet; the keyboard-inset surface
+  // keeps the input above the soft keyboard in the native app, and the
+  // browser's resizes-content viewport does the same on the web. The
+  // highlight renders inside this layer: on mobile the files panel is itself a
+  // z-50 overlay and would cover a separate body-level highlight.
+  if (isMobile) {
+    return createPortal(
+      <div className="oc-keyboard-inset-surface pointer-events-none fixed inset-x-0 bottom-0 z-50">
+        {highlightOverlay}
+        <div
+          ref={menuRef}
+          className="pointer-events-auto mx-auto max-w-[420px] px-3"
+          style={{ paddingBottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))' }}
+        >
+          {commentMode ? commentInput : (
+            <div
+              className={cn(
+                'oc-glass-popover rounded-2xl border border-[var(--interactive-border)]',
+                'p-2 shadow-[0_4px_16px_-4px_rgb(0_0_0_/_0.12)]',
+              )}
+            >
+              <button
+                type="button"
+                // Keep the text selection alive through the tap: the
+                // selection is what the comment quotes.
+                onMouseDown={(event) => event.preventDefault()}
+                onClick={openComment}
+                className={cn(
+                  'flex w-full min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                  'text-sm font-medium leading-tight',
+                  'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
+                  'active:opacity-80',
+                  'transition-opacity duration-150'
+                )}
+                title={t('chat.textSelection.title.commentOnSelection')}
+              >
+                <Icon name="chat-1" className="h-5 w-5 flex-shrink-0" />
+                <span className="min-w-0 whitespace-normal">{t('chat.textSelection.actions.comment')}</span>
+              </button>
+            </div>
+          )}
+        </div>
+      </div>,
+      document.body,
+    );
+  }
+
   return createPortal(
     <div
       ref={menuRef}
@@ -204,28 +280,10 @@ export function FilePreviewCommentMenu({ containerRef, filePath, fileContent }: 
         transform: 'translate(-50%, -100%)',
       }}
     >
-      {commentMode && highlightRects && highlightRects.length > 0
-        ? createPortal(
-          <div className="pointer-events-none fixed inset-0 z-40">
-            {highlightRects.map((rect, index) => (
-              <div
-                key={index}
-                className="oc-chat-comment-rect absolute"
-                style={{ left: rect.left, top: rect.top, width: rect.width, height: rect.height }}
-              />
-            ))}
-          </div>,
-          document.body,
-        )
-        : null}
+      {highlightOverlay ? createPortal(highlightOverlay, document.body) : null}
       {commentMode ? (
         <div className="w-[min(420px,80vw)]">
-          <InlineCommentInput
-            fileLabel={filePath}
-            lineRange={lineRange ? { start: lineRange.start, end: lineRange.end } : undefined}
-            onSave={saveComment}
-            onCancel={hide}
-          />
+          {commentInput}
         </div>
       ) : (
         <div
