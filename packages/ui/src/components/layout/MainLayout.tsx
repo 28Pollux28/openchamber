@@ -31,12 +31,12 @@ import { useUpdatePolling } from '@/hooks/useUpdatePolling';
 import { useTerminalSessionKeepalive } from '@/hooks/useTerminalSessionKeepalive';
 import { useDeviceInfo } from '@/lib/device';
 import { cn } from '@/lib/utils';
-import { lazyWithChunkRecovery } from '@/lib/chunkLoadRecovery';
+import { useOnDemandComponent } from '@/hooks/useOnDemandComponent';
 import { useSessionListSync } from '@/components/session/sidebar/list/useSessionListSync';
 
 import { ChatView } from '@/components/views/ChatView';
 
-const SettingsWindow = lazyWithChunkRecovery(() => import('@/components/views/SettingsWindow').then(m => ({ default: m.SettingsWindow })));
+const loadSettingsWindow = () => import('@/components/views/SettingsWindow').then(m => m.SettingsWindow);
 
 /**
  * Desktop-surface layout: the chat owns the main area, and every other
@@ -53,17 +53,11 @@ export const MainLayout: React.FC = () => {
     const setIsMobile = useUIStore((state) => state.setIsMobile);
     const isSettingsDialogOpen = useUIStore((state) => state.isSettingsDialogOpen);
     const setSettingsDialogOpen = useUIStore((state) => state.setSettingsDialogOpen);
-    // Mount the windowed settings dialog only after its first open: rendering
-    // the lazy component (even closed) makes React fetch the SettingsView
-    // chunk graph (CodeMirror editor, vim mode, theme tooling) on startup.
-    // Once opened it stays mounted so the close animation and state behave as
-    // before.
-    const [settingsWindowMounted, setSettingsWindowMounted] = React.useState(false);
-    React.useEffect(() => {
-        if (isSettingsDialogOpen) {
-            setSettingsWindowMounted(true);
-        }
-    }, [isSettingsDialogOpen]);
+    // Load the windowed settings dialog on its first open: its chunk graph
+    // (CodeMirror editor, vim mode, theme tooling) stays off startup. Once
+    // loaded it stays mounted so the close animation and state behave as
+    // before. A failed load closes the dialog so the next click tries again.
+    const SettingsWindow = useOnDemandComponent(isSettingsDialogOpen, loadSettingsWindow, () => setSettingsDialogOpen(false));
     const isRunOverviewOpen = useUIStore((state) => state.runOverviewKey !== null);
     const isScheduledTasksPageOpen = useUIStore((state) => state.isScheduledTasksDialogOpen);
     const isArchivePageOpen = useUIStore((state) => state.isArchivePageOpen);
@@ -173,13 +167,11 @@ export const MainLayout: React.FC = () => {
                 </div>
 
                 {/* Settings: windowed dialog with blur */}
-                {settingsWindowMounted ? (
-                    <React.Suspense fallback={null}>
-                        <SettingsWindow
-                            open={isSettingsDialogOpen}
-                            onOpenChange={setSettingsDialogOpen}
-                        />
-                    </React.Suspense>
+                {SettingsWindow ? (
+                    <SettingsWindow
+                        open={isSettingsDialogOpen}
+                        onOpenChange={setSettingsDialogOpen}
+                    />
                 ) : null}
             </div>
         </DiffWorkerProvider>
