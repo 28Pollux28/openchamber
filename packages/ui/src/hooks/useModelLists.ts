@@ -1,5 +1,5 @@
 import React from 'react';
-import { useConfigStore } from '@/stores/useConfigStore';
+import { selectProvidersForDirectory, useConfigStore } from '@/stores/useConfigStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { findCatalogModel, type Model, type Provider } from '@/lib/opencode/model';
 
@@ -14,8 +14,12 @@ export interface ModelListItem {
   modelID: string;
 }
 
-export const useModelLists = () => {
-  const providers = useConfigStore((state) => state.providers);
+// `directory` resolves favorites and recents against that directory's catalog
+// (a settings page editing another project), not the active one.
+export const useModelLists = (directory?: string) => {
+  const providers = useConfigStore((state) => (directory === undefined
+    ? state.providers
+    : selectProvidersForDirectory(state, directory)));
   const favoriteModels = useUIStore((state) => state.favoriteModels);
   const recentModels = useUIStore((state) => state.recentModels);
   const hiddenModels = useUIStore((state) => state.hiddenModels);

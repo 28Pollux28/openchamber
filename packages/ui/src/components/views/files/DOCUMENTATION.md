@@ -74,6 +74,76 @@ An agent can ask for a file to be shown (`file.open` on the managed
 opens the files drawer. VS Code has no shared file viewer and no managed
 tool, so the event never reaches it.
 
+## Canvas editors
+
+A "canvas" is an editor with its own document model instead of the text
+editor: an extension's file editor (`contributes.fileEditors`, see
+`packages/sdk/DOCUMENTATION.md`). It exposes `FileCanvasHandle`
+(`fileCanvas.ts`); `getContent(purpose)` returns a `FileCanvasRead`: a
+snapshot, `null` for nothing yet, or a failure message. A failure fails the
+save or keeps the canvas open on a source or fullscreen toggle; it never falls
+back to the stale text draft.
+
+An extension editor claims a file when an active extension's pattern matches
+its name (`useGuestFileEditor`, `lib/guests/file-editors.ts`), ahead of every
+built-in preview: a text editor only text files, a binary editor
+(`content: "binary"`) any file, images and PDFs included. `GuestFileEditor.tsx` mounts `PluginPane
+surface="file"` with a per-mount channel (`lib/guests/file-editor-channel.ts`)
+holding the draft at mount; the frame gets the file on `hello` / load, answers
+snapshot requests within `GUEST_REQUEST_TIMEOUT_MS`, and reports changes. VS
+Code and mobile keep the extension catalog empty, so there nothing matches.
+
+The contract is one-directional content. The frame reads the file it was
+handed at mount, so `FilesView` remounts it with a `key` of path plus
+`canvasRemountNonce` whenever it must adopt content it did not author (a load,
+an external write, a toggle back from the source view, a discard). Its own
+save adopts content without a remount so the viewport is not reset. Exactly
+one instance is mounted, in the docked chain or in the fullscreen overlay;
+entering or leaving fullscreen moves unsaved edits through the text draft, as
+the source toggle does, and the other slot remounts from it.
+
+Canvas edits never enter the text draft. A separate `canvasDirty` flag feeds
+the shared `isDirty`, so autosave, Cmd/Ctrl+S, the unsaved-changes prompt,
+`saveDraft`, and the external-change guard all see canvas edits as text edits.
+Key events inside the frame never reach the host, so Cmd/Ctrl+S arrives as the
+frame's `file-save` and runs the same `saveNow` as the keybind. `saveDraft`
+writes the canvas snapshot when the canvas is dirty and the text draft
+otherwise, in the line endings the file was loaded with. It takes one snapshot
+and marks its version saved after the write; `markSaved` clears the dirty flag
+at once and the frame's answer to `file-saved` sets it again when edits landed
+during the write. A canvas that went away with its extension clears the flag
+instead of keeping autosave writing. The frame's `edited` notices hold
+autosave's timer back until the canvas has been quiet for the full delay.
+
+A canvas never mounts over a draft it cannot take (`shouldShowFileCanvas`): a
+draft over `GUEST_FILE_EDITOR_CONTENT_MAX` stays in the source view, and a
+frame that cannot read the file reports `file-unsupported`, which returns the
+viewer to the source view and records that mode for the path.
+
+A binary editor has no text draft. `GuestFileEditor` reads the file's bytes at
+mount (`/api/fs/raw` through `runtimeFetch`, `loadCanvasBytes`) and loads the
+frame once they are here; too many bytes or a failed read fall back to the
+built-in view with a toast. Its snapshot is bytes, written with
+`files.uploadFile(..., { overwrite: true })`, the same atomic temp-and-rename
+write uploads use, with the stat baseline cleared so the poll does not take
+the write for an external change. The binary guards (`isBinaryFile`,
+`contentDetectedBinary`) that refuse text saves step aside only while a binary
+editor owns the file (`binaryCanvasRef`). There is no source toggle; moving to
+or from fullscreen saves unsaved changes first, because bytes cannot travel
+through the draft. An external change reloads the file and remounts the
+editor with the new bytes, unless it has unsaved changes.
+
+## Excalidraw drawings
+
+`.excalidraw` and Obsidian `.excalidraw.md` files open in the Excalidraw
+extension (`github.com/openchamber/openchamber-excalidraw`), offered on the
+Integrations page (`components/sections/integrations/CatalogExtensionsSection.tsx`).
+Without it, where the runtime loads extensions, the file shows its text under
+a one-line notice whose Install button opens that card. `isExcalidrawFile`
+matches both extensions, and `isMarkdownFile` excludes `.excalidraw.md` so an
+Obsidian drawing never takes the markdown preview path; its source view is the
+markdown document.
+
 ## Uploads
 
 `useFileTreeUpload` owns uploads for every file browser: `FilesView`,

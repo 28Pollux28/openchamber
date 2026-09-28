@@ -1,4 +1,4 @@
-import { createOpencodeClient } from '@opencode-ai/sdk/v2';
+import { OpenCode } from '@opencode/client';
 import * as gitService from './gitService';
 import type { BridgeContext, BridgeResponse } from './bridge';
 
@@ -12,21 +12,6 @@ type BridgeMessageInput = {
 // best-effort and `gitService.removeWorktree` swallows its failure.
 const WORKTREE_INSTANCE_DISPOSE_TIMEOUT_MS = 5_000;
 
-type OpenCodeDisposalFailure =
-  | Error
-  | {
-      data?: {
-        message?: string;
-      };
-    };
-
-const formatOpenCodeDisposalError = (error: OpenCodeDisposalFailure): string => {
-  if (error instanceof Error) {
-    return error.message;
-  }
-  return error.data?.message || 'OpenCode instance disposal failed';
-};
-
 /**
  * Builds the best-effort disposal hook for the extension's active runtime. The
  * API URL and auth headers are read at call time, and the client is created
@@ -38,17 +23,14 @@ const createWorktreeInstanceDisposer = (ctx?: BridgeContext) => {
     if (!apiUrl) {
       throw new Error('OpenCode API URL is not available');
     }
-    const client = createOpencodeClient({
+    // OpenCode 2 has no instance route; evicting the location drops its cached
+    // services (file watchers, LSP, MCP), which is what held the folder.
+    const client = OpenCode.make({
       baseUrl: apiUrl.replace(/\/+$/, ''),
       headers: ctx?.manager?.getOpenCodeAuthHeaders() || {},
+      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(WORKTREE_INSTANCE_DISPOSE_TIMEOUT_MS) }),
     });
-    const result = await client.instance.dispose(
-      { directory: worktreeDirectory },
-      { signal: AbortSignal.timeout(WORKTREE_INSTANCE_DISPOSE_TIMEOUT_MS) },
-    );
-    if (result?.error) {
-      throw new Error(formatOpenCodeDisposalError(result.error));
-    }
+    await client.debug.location.evict({ location: { directory: worktreeDirectory } });
   };
 };
 
