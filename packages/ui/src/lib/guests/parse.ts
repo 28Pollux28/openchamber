@@ -125,6 +125,7 @@ const installedGuestSchema = z.object({
     requested: z.array(z.enum(GUEST_CAPABILITIES)),
     granted: z.array(z.enum(GUEST_CAPABILITIES)),
   }),
+  enterpriseBlocked: z.array(z.enum(GUEST_CAPABILITIES)).optional(),
   source: z.enum(['bundled', 'path', 'zip', 'git']).optional(),
   path: z.string().nullable().optional(),
   enabled: z.boolean().optional(),

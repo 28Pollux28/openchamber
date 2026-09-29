@@ -44,7 +44,11 @@ their existing DOM structure. Reopening still refreshes directory contents.
 ## Artifact previews
 
 `previews/` holds what the viewer shows instead of text: `ImageArtifact`
-(fit or 1:1, natural dimensions), `MediaArtifact` (native audio/video
+(natural dimensions; fit, which never upscales, or a zoom from 10% to 1600%
+through −/+ steps, Ctrl/⌘ + wheel or trackpad pinch, Safari gesture events,
+a two-finger touch pinch, and double-click between fit and 1:1, anchored at
+the pointer; a zoomed image larger than the viewer pans by mouse drag;
+`imageZoom.ts` holds the scale math), `MediaArtifact` (native audio/video
 element, duration and dimensions once metadata loads, a stated failure when
 the runtime cannot decode the codec), `FontArtifact` (a specimen under a
 throwaway `FontFace` family removed when the tab closes), `TableArtifact`

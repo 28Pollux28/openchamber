@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, test } from 'bun:test';
 
-import { createSpace, listSpaces, openSpaceDomain, readSpaceIdleStop, readSpaceJournal, readSpaceSetup, readSpacesSwitch, runSpaceSetup, setSpaceIdleStop, SpacesRequestError } from './spaces-api';
+import { applySpaceWork, createSpace, listSpaces, previewSpaceApply, openSpaceDomain, readSpaceIdleStop, readSpaceJournal, readSpaceSetup, readSpacesSwitch, runSpaceSetup, setSpaceIdleStop, SpacesRequestError } from './spaces-api';
 
 const ID = 'a1b2c3d4e5f6';
 const originalFetch = globalThis.fetch;
@@ -133,5 +133,20 @@ describe('the journal and opened domains', () => {
     expect(await readSpaceJournal(ID).catch((error: Error) => error)).toMatchObject({ code: 'space_answer_malformed' });
     answer(409, JSON.stringify({ code: 'space_not_running', message: 'stopped' }));
     expect(await readSpaceJournal(ID).catch((error: Error) => error)).toBeInstanceOf(SpacesRequestError);
+  });
+  test('parses what an apply would do, and keeps the file a refusal names', async () => {
+    const paths = { count: 0, paths: [] };
+    answer(200, JSON.stringify({ result: 'c'.repeat(40), changedPaths: 3, changedBytes: 2048, nestedRepositories: paths, unmerged: { count: 101, paths: ['a.txt'] }, changesRoute: 'open', lastApplied: null, newPaths: 3, newPathsOverLimit: false, newPathsUndecided: false, interruptedApply: false }));
+    expect(await previewSpaceApply(ID)).toEqual({ changedPaths: 3, changedBytes: 2048, nestedRepositories: paths, unmerged: { count: 101, paths: ['a.txt'] }, changesRoute: 'open', lastApplied: null, newPaths: 3, newPathsUndecided: false });
+
+    const seen = answer(409, JSON.stringify({ code: 'name_not_allowed_here', message: 'The agent made CON', details: { path: 'CON', rule: 'reserved', other: null } }));
+    const refusal = await applySpaceWork(ID, { as: 'changes', removeAfterwards: false }).catch((error: Error) => error);
+    expect(refusal).toBeInstanceOf(SpacesRequestError);
+    expect(refusal).toMatchObject({ code: 'name_not_allowed_here', status: 409, details: { path: 'CON', other: null } });
+    expect(seen[0].method).toBe('POST');
+
+    // Details of a shape this version does not know are dropped, never the refusal itself.
+    answer(409, JSON.stringify({ code: 'changes_do_not_apply', message: 'no', details: { path: 7 } }));
+    expect(await applySpaceWork(ID, { as: 'changes', removeAfterwards: false }).catch((error: Error) => error)).toMatchObject({ code: 'changes_do_not_apply', details: {} });
   });
 });

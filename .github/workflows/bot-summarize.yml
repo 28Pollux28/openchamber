@@ -11,7 +11,7 @@ concurrency:
 jobs:
   summarize:
     if: github.event.comment.user.login != 'openchamber-bot[bot]' && (github.event.comment.body == '@openchamber-bot summarize' || startsWith(github.event.comment.body, '@openchamber-bot summarize '))
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       issues: write

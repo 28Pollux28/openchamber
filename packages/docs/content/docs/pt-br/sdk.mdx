@@ -142,6 +142,8 @@ Para qualquer outra coisa de que sua página precise diretamente, como fontes ou
 
 O usuário as vê no diálogo de aprovação como endereços para os quais sua extensão pode enviar dados e dos quais pode recebê-los, e as aprova de novo se uma atualização adicionar uma. Origens aprovadas ficam abertas para `fetch`, imagens, fontes, estilos e mídia, mas nunca para scripts: o código precisa vir no seu pacote. A origem da página é `null`, então para ler uma resposta de `fetch` o servidor precisa permitir CORS para essa origem.
 
+No [modo empresarial](/security/), uma extensão com `origins`, uma `integration` ou um `service` só é instalada a partir de um repositório Git que o administrador listou. Se a sua extensão funciona sem eles, ela continua instalável para essas equipes. Para desenvolver uma numa máquina assim, peça ao administrador `allowLocalExtensions`, que deixa você instalá-la a partir da pasta dela.
+
 - `token`: o usuário cola um token de API no card de Configurações → Integrações. `apiOrigin` é a única origem que `request` pode chamar. `account` é opcional: um caminho GET e um nome de campo, para o card mostrar quem está conectado. `scheme` diz como o token é enviado; veja a tabela abaixo. Confira na documentação da API do provedor qual header ela espera.
 - `oauth`: o usuário cola um client id, e o OpenChamber executa o fluxo de autorização. Precisa de `authorizeUrl`, `tokenUrl` e `apiOrigin`.
 - `host: { "provider": "linear" }`: reaproveita a conta do Linear já conectada no OpenChamber. Não precisa de client id.

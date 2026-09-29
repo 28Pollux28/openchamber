@@ -148,6 +148,7 @@ export const ClassificationProvidersPage: React.FC<ClassificationProvidersPagePr
       {!loaded ? null : !available || !classifier ? (
         <p className={SETTINGS_DESCRIPTION_CLASS}>{t('settings.classification.unavailable')}</p>
       ) : (
+        <>
         <SettingsSection
           title={(
             <span className="flex items-center gap-2">
@@ -282,9 +283,10 @@ export const ClassificationProvidersPage: React.FC<ClassificationProvidersPagePr
               </SettingsFieldRow>
             )}
             {tokenError ? <p className={SETTINGS_DESCRIPTION_CLASS}>{tokenError}</p> : null}
-            {!locked || customEndpoint?.pinned ? <CustomEndpointFields /> : null}
           </div>
         </SettingsSection>
+        {!locked || customEndpoint?.pinned ? <CustomEndpointFields /> : null}
+        </>
       )}
     </SettingsPageLayout>
   );
