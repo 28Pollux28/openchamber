@@ -685,6 +685,15 @@ describe('the journey: journal and apply', () => {
     ]);
   });
 
+  it('refuses to preview or apply a stopped space with its own code, before reaching into it', async () => {
+    const { journey, id, calls } = await ready();
+    await journey.stopSpace(id);
+    calls.splice(0);
+    await expect(journey.previewApply(id)).rejects.toMatchObject({ code: 'space_not_running' });
+    await expect(journey.applySpace(id, { as: 'changes' })).rejects.toMatchObject({ code: 'space_not_running' });
+    expect(calls).toEqual([]);
+  });
+
   it('applies as a branch, then removes the space when asked, and only after the apply went through', async () => {
     const { journey, place, id, calls } = await ready();
     const outcome = await journey.applySpace(id, { as: 'branch', branch: 'space/fix-login', removeAfterwards: true });
@@ -835,8 +844,9 @@ describe('the journey: idle stop', () => {
     expect(quietStops).toEqual([]);
 
     const held = await ready({ holdCodeOut: true });
-    const heldStops = idleStopped(held.place);
+    // The preview takes the lock while the space still runs; the idle stop comes during it.
     const apply = held.journey.previewApply(held.id);
+    const heldStops = idleStopped(held.place);
     await held.journey.listSpaces();
     await sleep(20);
     expect(heldStops).toEqual([]);

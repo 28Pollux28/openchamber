@@ -84,6 +84,10 @@ type SpacesState = {
   /** The action under way or failed per space, in this window, for the group's status line and menu. */
   actions: ReadonlyMap<string, SpaceActionState>;
   noteAction: (spaceId: string, state: SpaceActionState | null) => void;
+  /** The apply dialog, open on one space. */
+  applyDialog: string | null;
+  openApplyDialog: (spaceId: string) => void;
+  closeApplyDialog: () => void;
   /** The confirmation before a space is deleted, open on one space. */
   deleteDialog: string | null;
   openDeleteDialog: (spaceId: string) => void;
@@ -184,6 +188,9 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
     else actions.delete(spaceId);
     return { actions };
   }),
+  applyDialog: null,
+  openApplyDialog: (spaceId) => set({ applyDialog: spaceId }),
+  closeApplyDialog: () => set({ applyDialog: null }),
   deleteDialog: null,
   openDeleteDialog: (spaceId) => set({ deleteDialog: spaceId }),
   closeDeleteDialog: () => set({ deleteDialog: null }),
@@ -220,7 +227,7 @@ export const useSpacesStore = create<SpacesState>((set, get) => ({
   resetForRuntimeSwitch: () => {
     progressAt.clear();
     journeyGeneration += 1;
-    set({ spaces: EMPTY, journey: null, progressRevision: 0, creationAccess: new Map(), accessDialog: null, actions: new Map(), deleteDialog: null, setupOutputDialog: null, actionsSheet: null });
+    set({ spaces: EMPTY, journey: null, progressRevision: 0, creationAccess: new Map(), accessDialog: null, actions: new Map(), applyDialog: null, deleteDialog: null, setupOutputDialog: null, actionsSheet: null });
   },
   forgetForSwitchOff: () => get().resetForRuntimeSwitch(),
 }));
