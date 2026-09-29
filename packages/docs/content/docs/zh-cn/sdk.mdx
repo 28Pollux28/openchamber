@@ -142,6 +142,8 @@ const { text } = await host.generate({
 
 用户会在批准对话框中看到它们，作为你的扩展可以发送和接收数据的地址；如果更新新增了源，需要再次批准。已批准的源对 `fetch`、图片、字体、样式和媒体开放，但永远不对脚本开放：代码必须随包一起提供。页面的源是 `null`，所以要读取 `fetch` 响应，服务器必须为该源允许 CORS。
 
+在[企业模式](/security/)下，带有 `origins`、`integration` 或 `service` 的扩展只能从管理员列出的 Git 仓库安装。如果你的扩展不需要它们也能工作，这些团队仍然可以安装它。要在这样的机器上开发扩展，请向管理员申请 `allowLocalExtensions`，这样就能从扩展所在的文件夹安装它。
+
 - `token`：用户在 设置 → 集成 的卡片上粘贴 API 令牌。`apiOrigin` 是 `request` 唯一可以调用的源。`account` 可选：一个 GET 路径和一个字段名，让卡片能显示已连接的是谁。`scheme` 决定令牌如何发送,见下表。请查看提供方的 API 文档,确认它期望哪种请求头。
 - `oauth`：用户粘贴 client id，由 OpenChamber 执行授权流程。需要 `authorizeUrl`、`tokenUrl` 和 `apiOrigin`。
 - `host: { "provider": "linear" }`：复用 OpenChamber 中已连接的 Linear 账户。无需 client id。

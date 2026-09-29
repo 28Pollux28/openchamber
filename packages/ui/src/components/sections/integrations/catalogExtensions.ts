@@ -28,6 +28,7 @@ export const CATALOG_EXTENSIONS: readonly CatalogExtensionDefinition[] = [EXCALI
 
 export type CatalogExtensionState =
   | { kind: 'not-installed' }
+  | { kind: 'blocked'; guest: InstalledGuest }
   | { kind: 'needs-approval'; guest: InstalledGuest }
   | { kind: 'paused'; guest: InstalledGuest }
   | { kind: 'update-available'; guest: InstalledGuest; version: string }
@@ -43,6 +44,8 @@ export const getCatalogExtensionState = (
 ): CatalogExtensionState => {
   const guest = guests.find((candidate) => candidate.id === definition.guestId);
   if (!guest) return { kind: 'not-installed' };
+  // Enterprise mode refuses this package; no approval can change that.
+  if (guest.enterpriseBlocked?.length) return { kind: 'blocked', guest };
   if (guestNeedsApproval(guest)) return { kind: 'needs-approval', guest };
   if (guest.enabled === false) return { kind: 'paused', guest };
   if (guest.update) return { kind: 'update-available', guest, version: guest.update.version };

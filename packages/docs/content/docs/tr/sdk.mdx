@@ -142,6 +142,8 @@ Sayfanızın doğrudan ihtiyaç duyduğu diğer her şey için, örneğin bir CD
 
 Kullanıcı bunları onay penceresinde eklentinizin veri gönderip veri alabileceği adresler olarak görür ve bir güncelleme yenisini eklerse yeniden onaylar. Onaylanan kaynaklar `fetch`, görseller, yazı tipleri, stiller ve medya için açıktır ama betikler için asla: kod paketinizle birlikte gelmelidir. Sayfanın kaynağı `null` olduğundan, bir `fetch` yanıtını okuyabilmeniz için sunucunun bu kaynağa CORS izni vermesi gerekir.
 
+[Kurumsal modda](/security/) `origins`, `integration` ya da `service` içeren bir eklenti yalnızca yöneticinin listeye eklediği bir Git deposundan kurulur. Eklentiniz bunlar olmadan çalışabiliyorsa, bu ekipler için kurulabilir kalır. Böyle bir makinede eklenti geliştirmek için yöneticiden `allowLocalExtensions` isteyin; bununla eklentiyi kendi klasöründen kurabilirsiniz.
+
 - `token`: kullanıcı Ayarlar → Entegrasyonlar kartına bir API token'ı yapıştırır. `apiOrigin`, `request` çağrısının erişebileceği tek kaynaktır. `account` isteğe bağlıdır: bir GET yolu ve bir alan adı; kart böylece kimin bağlı olduğunu gösterebilir. `scheme`, token'ın nasıl gönderileceğini belirler; aşağıdaki tabloya bakın. Hangi başlığı beklediğini sağlayıcının API belgelerinden kontrol edin.
 - `oauth`: kullanıcı bir client id yapıştırır, yetkilendirme akışını OpenChamber yürütür. `authorizeUrl`, `tokenUrl` ve `apiOrigin` gerekir.
 - `host: { "provider": "linear" }`: OpenChamber'da zaten bağlı olan Linear hesabını yeniden kullanır. Client id gerekmez.

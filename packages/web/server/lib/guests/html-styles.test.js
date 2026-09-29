@@ -77,6 +77,18 @@ describe('guest document styles', () => {
     }
     expect((await request(app).get('/api/guests/old-guest/main.js').expect(200)).text).toBe(script);
     // A Host that is not a plain host[:port] never reaches the policy: no connections at all.
+    // The app UI draws a package icon as a CSS mask, a CORS fetch from its own
+    // origin; the answer the server's CORS layer gave it must survive.
+    const uiApp = express();
+    uiApp.use((req, res, next) => {
+      if (req.headers.origin === 'openchamber-ui://app') res.setHeader('Access-Control-Allow-Origin', req.headers.origin);
+      next();
+    });
+    registerGuestRoutes(uiApp, { openchamberDataDir: root });
+    const fromUi = await request(uiApp).get('/api/guests/old-guest/main.js').set('Origin', 'openchamber-ui://app').expect(200);
+    expect(fromUi.headers['access-control-allow-origin']).toBe('openchamber-ui://app');
+    const fromFrame = await request(uiApp).get('/api/guests/old-guest/main.js').set('Origin', 'null').expect(200);
+    expect(fromFrame.headers['access-control-allow-origin']).toBe('null');
     const forged = await request(app).get('/api/guests/old-guest/index.html').set('Host', "evil.test; connect-src *").expect(200);
     expect(forged.headers['content-security-policy']).toContain("connect-src 'none';");
     expect(await fs.readFile(path.join(packageRoot, 'index.html'), 'utf8')).toBe(html);

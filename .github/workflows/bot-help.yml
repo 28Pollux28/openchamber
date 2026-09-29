@@ -7,7 +7,7 @@ on:
 jobs:
   help:
     if: github.event.comment.user.login != 'openchamber-bot[bot]' && (github.event.comment.body == '@openchamber-bot help' || startsWith(github.event.comment.body, '@openchamber-bot help '))
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       issues: write
     steps:

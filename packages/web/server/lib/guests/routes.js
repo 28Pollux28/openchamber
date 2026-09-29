@@ -189,6 +189,10 @@ const sendInstallResult = (res, result) => {
     if (result.code === 'host-too-old' && result.required) {
       body.required = result.required;
     }
+    if (result.code === 'enterprise-mode') {
+      body.capabilities = result.capabilities;
+      return res.status(403).json(body);
+    }
     if (conflict && result.id) {
       body.id = result.id;
     }
@@ -729,6 +733,10 @@ export const registerGuestRoutes = (app, {
       // partial grant would leave the guest half-working, so both are refused.
       const requested = requestedGuestCapabilities(guest);
       const granted = parsed.data.granted;
+      // Enterprise mode refuses these for this package; approving cannot lift that.
+      if (guest.enterpriseBlocked?.some((capability) => granted.includes(capability))) {
+        return res.status(403).json({ error: 'enterprise-mode', capabilities: guest.enterpriseBlocked });
+      }
       const matchesRequest = granted.length === requested.length && requested.every((capability) => granted.includes(capability));
       if (granted.length > 0 && !matchesRequest) {
         return res.status(400).json({ error: 'invalid-request' });
@@ -867,7 +875,12 @@ export const registerGuestRoutes = (app, {
       // The sandboxed frame's origin is `null`, and fonts (always) and fetch
       // are CORS requests: without this its own package fonts and files are
       // refused. `null`, not `*`: only opaque-origin documents may read them.
-      res.setHeader('Access-Control-Allow-Origin', 'null');
+      // The app UI's own origin, already allowed by the server's CORS layer,
+      // keeps its answer: the rail draws a package icon as a CSS mask, which is
+      // a CORS fetch from openchamber-ui:// or the dev origin.
+      if (!res.getHeader('Access-Control-Allow-Origin')) {
+        res.setHeader('Access-Control-Allow-Origin', 'null');
+      }
       res.send(body);
     } catch (error) {
       console.error('Failed to serve guest asset:', error);

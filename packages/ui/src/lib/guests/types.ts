@@ -2,6 +2,7 @@ import type {
   AttachContribution,
   FileEditorContribution,
   GuestActionContribution,
+  GuestCapability,
   GuestCommandContribution,
   GuestSurfaceDock,
   GuestToolContribution,
@@ -52,6 +53,8 @@ export type InstalledGuest = {
   fileEditors?: FileEditorContribution[];
   /** What the package asks for and what the user approved at install. */
   capabilities: PublicGuestCapabilities;
+  /** Capabilities enterprise mode refuses this package: it is not from a repository the administrator allowed. */
+  enterpriseBlocked?: GuestCapability[];
   source?: GuestSource;
   path?: string | null;
   /** False when the user disabled the extension. Omitted/true means enabled. */
