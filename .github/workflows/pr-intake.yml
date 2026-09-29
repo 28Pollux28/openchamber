@@ -23,7 +23,7 @@ jobs:
   collect:
     name: Collect pull requests
     if: ${{ github.repository == 'openchamber/openchamber' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     outputs:
       targets: ${{ steps.collect.outputs.targets }}
     steps:
@@ -64,7 +64,7 @@ jobs:
     name: Label PR ${{ matrix.target.number }}
     needs: collect
     if: ${{ needs.collect.outputs.targets != '[]' }}
-    runs-on: blacksmith-2vcpu-ubuntu-2404
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       pull-requests: write

@@ -1491,6 +1491,47 @@ describe("optimisticSend target directory", () => {
     expect(appendCalls).toBe(1)
   })
 
+  test("shows context before the prompt at once and hands the same ids to the send", async () => {
+    const targetStore = createStore({})
+    const childStores = createChildStores([["/target/project", targetStore]])
+    const added: Message[] = []
+    const removed: string[] = []
+    let sent: { messageID: string; contextIDs: Array<string | undefined> } | null = null
+
+    const { optimisticSend, setActionRefs, setOptimisticRefs } = await import("./session-actions")
+    setActionRefs(childStores, () => "/target/project")
+    setOptimisticRefs(
+      (input) => {
+        added.push(input.message)
+      },
+      (input) => {
+        removed.push(input.messageID)
+      },
+    )
+
+    const metadata = { openchamberContext: { kind: "chat-quote" as const, quote: "q", text: "t", messageId: "m" } }
+    await expect(optimisticSend({
+      sessionId: "session-context",
+      directory: "/target/project",
+      content: "",
+      context: [{ text: "first", metadata }, { text: "  " }, { text: "second" }],
+      send: async (messageID, context) => {
+        sent = { messageID, contextIDs: context.map((item) => item.id) }
+        throw new Error("rejected")
+      },
+    })).rejects.toThrow("rejected")
+
+    // The blank item gets no record, the others come first with the prompt's time.
+    expect(added.map((message) => message.role)).toEqual(["synthetic", "synthetic", "user"])
+    expect(new Set(added.map((message) => message.time.created)).size).toBe(1)
+    expect(added[0]?.metadata).toEqual(metadata)
+    const ids = added.map((message) => message.id)
+    expect([...ids].sort()).toEqual(ids)
+    expect(sent).toEqual({ messageID: ids[2], contextIDs: [ids[0], ids[1]] })
+    // A rejected send takes the context records down with the prompt.
+    expect(removed).toEqual(ids)
+  })
+
   test("runs appendSubmissions once for an ambiguous confirmation", async () => {
     const targetStore = createStore({})
     const childStores = createChildStores([["/target/project", targetStore]])

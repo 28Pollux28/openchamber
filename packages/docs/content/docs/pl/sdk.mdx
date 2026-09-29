@@ -142,6 +142,8 @@ Dla wszystkiego innego, czego Twoja strona potrzebuje bezpośrednio, np. czcione
 
 Użytkownik widzi je w oknie zatwierdzania jako adresy, do których Twoje rozszerzenie może wysyłać dane i z których może je odbierać, i zatwierdza je ponownie, gdy aktualizacja doda nowy. Zatwierdzone originy są otwarte dla `fetch`, obrazów, czcionek, stylów i multimediów, ale nigdy dla skryptów: kod musi być dostarczony w Twoim pakiecie. Origin strony to `null`, więc aby odczytać odpowiedź `fetch`, serwer musi zezwolić na CORS dla tego originu.
 
+W [trybie enterprise](/security/) rozszerzenie z `origins`, `integration` albo `service` instaluje się tylko z repozytorium Git, które administrator umieścił na liście. Jeśli Twoje rozszerzenie może działać bez nich, takie zespoły nadal mogą je zainstalować. Aby tworzyć rozszerzenie na takiej maszynie, poproś administratora o `allowLocalExtensions`, dzięki czemu zainstalujesz je z jego folderu.
+
 - `token`: użytkownik wkleja token API na karcie w Ustawienia → Integracje. `apiOrigin` to jedyny origin, który `request` może wywołać. `account` jest opcjonalne: ścieżka GET i nazwa pola, żeby karta mogła pokazać, kto jest podłączony. `scheme` określa, jak token jest wysyłany; zobacz tabelę poniżej. Sprawdź w dokumentacji API dostawcy, jakiego nagłówka oczekuje.
 - `oauth`: użytkownik wkleja client id, a OpenChamber przeprowadza proces autoryzacji. Wymaga `authorizeUrl`, `tokenUrl` i `apiOrigin`.
 - `host: { "provider": "linear" }`: używa konta Linear już podłączonego w OpenChamber. Client id nie jest potrzebne.

@@ -630,6 +630,9 @@ export const createSettingsHelpers = (dependencies) => {
     if (typeof candidate.agentNotifyToolEnabled === 'boolean') {
       result.agentNotifyToolEnabled = candidate.agentNotifyToolEnabled;
     }
+    if (typeof candidate.agentToolsCodeMode === 'boolean') {
+      result.agentToolsCodeMode = candidate.agentToolsCodeMode;
+    }
     if (typeof candidate.isolatedSpacesEnabled === 'boolean') {
       result.isolatedSpacesEnabled = candidate.isolatedSpacesEnabled;
     }

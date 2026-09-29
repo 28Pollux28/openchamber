@@ -132,6 +132,8 @@ export const CatalogExtensionsSection: React.FC<CatalogExtensionsSectionProps> =
     switch (state.kind) {
       case 'not-installed':
         return { status: t('settings.integrations.thirdParty.status.notInstalled'), tone: 'neutral' };
+      case 'blocked':
+        return { status: t('settings.extensions.status.enterpriseBlocked'), tone: 'warning' };
       case 'needs-approval':
         return { status: t('settings.integrations.extensionCatalog.status.needsApproval'), tone: 'warning' };
       case 'paused':
@@ -163,7 +165,7 @@ export const CatalogExtensionsSection: React.FC<CatalogExtensionsSectionProps> =
         ? { label: t('settings.integrations.thirdParty.actions.update'), onClick: () => void update(definition), variant: 'default' as const }
         : state.kind === 'paused'
           ? { label: t('settings.integrations.extensionCatalog.actions.enable'), onClick: () => void enable(definition), variant: 'default' as const }
-          : state.kind === 'needs-approval'
+          : state.kind === 'needs-approval' || state.kind === 'blocked'
             ? { label: t('settings.integrations.extensionCatalog.actions.manage'), onClick: openExtensionsPage, variant: 'outline' as const }
             : null;
 

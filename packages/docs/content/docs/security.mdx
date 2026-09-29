@@ -58,6 +58,7 @@ The path doesn't depend on how OpenChamber is installed. The desktop app, the we
   "organization": "Acme",
   "relayUrl": "wss://relay.acme.com/ws",
   "allowNetworkAccess": false,
+  "allowedExtensions": ["https://github.com/acme/"],
   "jev": {
     "url": "https://llm.acme.com/v1",
     "model": "acme-classifier",
@@ -66,7 +67,7 @@ The path doesn't depend on how OpenChamber is installed. The desktop app, the we
 }
 ```
 
-Only `enterpriseMode` is needed. `organization` is shown in Settings as "Managed by Acme", so people know who made the call. `relayUrl` and `jev` pin your own relay and your own Jev endpoint, and `allowNetworkAccess` lets other devices reach OpenChamber over the network. All three are described below.
+Only `enterpriseMode` is needed. `organization` is shown in Settings as "Managed by Acme", so people know who made the call. `relayUrl` and `jev` pin your own relay and your own Jev endpoint, `allowNetworkAccess` lets other devices reach OpenChamber over the network, and `allowedExtensions` lists the extension repositories you trust. All of them are described below.
 
 - Nothing a user sets, in Settings or in the environment, turns off what the file turns on.
 - When the file turns enterprise mode on, only the file decides. The environment variables below for the relay, Jev and network access are ignored, because a user can set those themselves.
@@ -84,7 +85,53 @@ OPENCHAMBER_ENTERPRISE_MODE=1
 
 On a laptop it's a weaker lock: the desktop app reads it from the login shell profile (for example `~/.zshrc`), and the user can edit that. Use the policy file there.
 
-With the variable, the relay, Jev and network access come from their own variables too: `OPENCHAMBER_RELAY_URL`, `OPENCHAMBER_JEV_URL` and `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1`. In Docker you'll need the last one, since the server has to listen beyond the container.
+With the variable, the relay, Jev, network access and allowed extensions come from their own variables too: `OPENCHAMBER_RELAY_URL`, `OPENCHAMBER_JEV_URL`, `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1`, `OPENCHAMBER_ALLOWED_EXTENSIONS` (repository URLs separated by commas) and `OPENCHAMBER_ALLOW_LOCAL_EXTENSIONS=1`. In Docker you'll need the network one, since the server has to listen beyond the container.
+
+### Examples
+
+Put the policy file on a Mac. Run in Terminal as an administrator:
+
+```bash
+sudo mkdir -p "/Library/Application Support/OpenChamber"
+sudo tee "/Library/Application Support/OpenChamber/policy.json" > /dev/null <<'JSON'
+{
+  "enterpriseMode": true,
+  "organization": "Acme"
+}
+JSON
+```
+
+On Linux it's the same with `/etc/openchamber` as the folder.
+
+On Windows, run PowerShell as Administrator. The last line leaves the folder writable only by administrators and the system:
+
+```powershell
+New-Item -ItemType Directory -Force "C:\ProgramData\OpenChamber" | Out-Null
+@'
+{
+  "enterpriseMode": true,
+  "organization": "Acme"
+}
+'@ | Set-Content -Encoding UTF8 "C:\ProgramData\OpenChamber\policy.json"
+icacls "C:\ProgramData\OpenChamber" /inheritance:r /grant:r "Administrators:(OI)(CI)F" "SYSTEM:(OI)(CI)F" "Users:(OI)(CI)RX"
+```
+
+A server in Docker, added to the `environment` of `docker-compose.yml`. The container listens beyond itself, so it needs network access allowed:
+
+```yaml
+environment:
+  OPENCHAMBER_UI_PASSWORD: ${OPENCHAMBER_UI_PASSWORD}
+  OPENCHAMBER_ENTERPRISE_MODE: "1"
+  OPENCHAMBER_ALLOW_NETWORK_ACCESS: "1"
+  # Optional:
+  OPENCHAMBER_RELAY_URL: wss://relay.acme.com/ws
+  OPENCHAMBER_JEV_URL: https://llm.acme.com/v1
+  OPENCHAMBER_JEV_MODEL: acme-classifier
+  OPENCHAMBER_JEV_API_KEY: ${ACME_JEV_KEY}
+  OPENCHAMBER_ALLOWED_EXTENSIONS: https://github.com/acme/
+```
+
+To check it worked, open Settings → Providers: an Enterprise mode notice with your organization's name appears at the top.
 
 ### What changes
 
@@ -96,6 +143,7 @@ With the variable, the relay, Jev and network access come from their own variabl
 - [External tunnels](/tunnels/) (Cloudflare, ngrok) are off. A tunnel provider decrypts traffic at its edge and sees every request in plain text.
 - The [Private Relay](/private-relay/) works only through your own relay. Run a [self-hosted relay](https://github.com/openchamber/openchamber-relay) and point OpenChamber at it with `relayUrl` in the policy file or `OPENCHAMBER_RELAY_URL=wss://relay.example.com/ws`. The shared relay can't read your traffic either, since it's end-to-end encrypted, but your own keeps the connection metadata and the way into this machine inside your network. Without your own relay, devices can't be paired at all.
 - OpenChamber listens only on the machine it runs on. The desktop setting that lets other devices on the local network open the app is turned off, and the server refuses to start on a network address, whether through the CLI (`--host`, `--lan`) or the environment. If the policy file appears while the app is running, connections from other machines are dropped until the next start. Allow network access with `"allowNetworkAccess": true` in the policy file, or `OPENCHAMBER_ALLOW_NETWORK_ACCESS=1` where the environment turns enterprise mode on. Keep in mind that the connection is plain HTTP, so on a shared network anyone can read it; put a server that others reach behind [your own HTTPS](/reverse-proxy/).
+- [Extensions](/extensions/) that can send data off the machine (ones that talk to an outside API, load from outside addresses, or run a background service) install only from a Git repository listed in `allowedExtensions`. Extensions that do none of this install as usual. An installed extension from anywhere else stays off, and Settings says why. The list holds repository URLs, since an extension picks its own name; an entry ending in `/`, like `https://github.com/acme/`, allows every repository under it. On the machines of people who build extensions, `"allowLocalExtensions": true` also allows installing from a local folder. A ZIP stays closed either way.
 - In the VS Code extension, connecting providers is off and update checks don't report usage. It has no Jev, relay, tunnels, push notifications or cloud speech to begin with.
 
 Small-model tasks (session titles, recaps, commit messages, the diff walkthrough) need no special mode. They always run on the small model you chose in Settings, or on a small model of the provider you're working with, or on the default model from your OpenCode config. They never fall back to some other provider you happen to have connected.

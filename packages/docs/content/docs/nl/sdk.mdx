@@ -142,6 +142,8 @@ Voor andere bronnen die uw pagina rechtstreeks nodig heeft, zoals lettertypen of
 
 In het toestemmingsvenster ziet de gebruiker deze als adressen waarmee de extensie gegevens kan uitwisselen. Als een update een adres toevoegt, is opnieuw toestemming nodig. Goedgekeurde origins zijn toegankelijk voor `fetch`, afbeeldingen, lettertypen, stijlen en media, maar nooit voor scripts. Code moet in uw pakket zitten. De origin van de pagina is `null`, dus om een `fetch`-antwoord te kunnen lezen moet de server CORS voor die origin toestaan.
 
+In de [enterprise-modus](/nl/security/) wordt een extensie met `origins`, een `integration` of een `service` alleen geïnstalleerd vanuit een Git-repository die de beheerder heeft opgegeven. Kan uw extensie zonder, dan blijft ze voor die teams installeerbaar. Wilt u op zo'n computer een extensie bouwen, vraag de beheerder dan om `allowLocalExtensions`; daarmee installeert u de extensie vanuit haar map.
+
 - `token`: de gebruiker plakt een API-token op de integratiekaart. `apiOrigin` is de enige origin die `request` mag bereiken. `account` is optioneel en bevat een GET-pad en een veldnaam om het verbonden account te tonen. `scheme` bepaalt hoe het token wordt verstuurd; zie de tabel. Controleer in de provider-API-documentatie welke header vereist is.
 - `oauth`: de gebruiker plakt een client-ID en OpenChamber voert de autorisatieprocedure uit. Vereist `authorizeUrl`, `tokenUrl` en `apiOrigin`.
 - `host: { "provider": "linear" }`: hergebruikt het Linear-account dat al in OpenChamber verbonden is. Geen client-ID nodig.
