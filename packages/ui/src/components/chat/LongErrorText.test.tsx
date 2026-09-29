@@ -1,4 +1,7 @@
-import { describe, expect, test } from 'bun:test';
+import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
+import { Window } from 'happy-dom';
+import { act } from 'react';
+import { createRoot, type Root } from 'react-dom/client';
 import { renderToStaticMarkup } from 'react-dom/server';
 
 import { I18nProvider } from '@/lib/i18n';
@@ -50,5 +53,71 @@ describe('LongErrorText', () => {
     expect(markup).not.toContain('x'.repeat(1_000));
     expect(markup).toContain('aria-expanded="false"');
     expect(markup).toContain('>Show full error</button>');
+  });
+});
+
+describe('LongErrorText interaction', () => {
+  let windowInstance: Window;
+  let host: HTMLDivElement;
+  let root: Root;
+
+  beforeEach(() => {
+    windowInstance = new Window();
+    Object.assign(globalThis, {
+      window: windowInstance,
+      document: windowInstance.document,
+      HTMLElement: windowInstance.HTMLElement,
+      Element: windowInstance.Element,
+      Node: windowInstance.Node,
+      IS_REACT_ACT_ENVIRONMENT: true,
+    });
+    host = document.createElement('div');
+    document.body.append(host);
+    root = createRoot(host);
+  });
+
+  afterEach(async () => {
+    await act(async () => root.unmount());
+    await windowInstance.happyDOM.close();
+  });
+
+  const render = async (text: string) => {
+    await act(async () => {
+      root.render(
+        <I18nProvider>
+          <LongErrorText text={text}>{(visibleText) => <p>{visibleText}</p>}</LongErrorText>
+        </I18nProvider>,
+      );
+    });
+  };
+
+  const toggle = () => host.querySelector('button');
+  const click = async () => {
+    await act(async () => toggle()?.click());
+  };
+
+  test('expands to the full text and collapses back', async () => {
+    const text = `first error ${'x'.repeat(5_000)}`;
+    await render(text);
+    expect(host.querySelector('p')?.textContent).not.toBe(text);
+
+    await click();
+    expect(host.querySelector('p')?.textContent).toBe(text);
+    expect(toggle()?.getAttribute('aria-expanded')).toBe('true');
+    expect(toggle()?.textContent).toBe('Show less');
+
+    await click();
+    expect(host.querySelector('p')?.textContent).not.toBe(text);
+    expect(toggle()?.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  test('a different error in the same place starts collapsed', async () => {
+    await render(`first error ${'x'.repeat(5_000)}`);
+    await click();
+    expect(toggle()?.getAttribute('aria-expanded')).toBe('true');
+
+    await render(`second error ${'y'.repeat(5_000)}`);
+    expect(toggle()?.getAttribute('aria-expanded')).toBe('false');
+    expect(toggle()?.textContent).toBe('Show full error');
   });
 });

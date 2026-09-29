@@ -23,22 +23,33 @@ export const LongErrorText: React.FC<LongErrorTextProps> = ({ text, children, bu
   const [expandedText, setExpandedText] = React.useState<string | null>(null);
   const expanded = expandedText === text;
   const preview = React.useMemo(() => getLongErrorPreview(text), [text]);
+  const contentId = React.useId();
 
   if (preview === null) return <>{children(text)}</>;
 
+  // aria-live="off": inside a status region, expanding must not make a screen
+  // reader read the whole error aloud.
   return (
-    <>
-      {/* The full text scrolls inside its own box, so "Show less" stays right under it. */}
-      {expanded ? <div className="max-h-96 overflow-y-auto">{children(text)}</div> : children(preview)}
+    <div aria-live="off">
+      {/* The full text scrolls inside its own box, so "Show less" stays right under it.
+          tabIndex lets keyboard users scroll that box. */}
+      <div
+        id={contentId}
+        tabIndex={expanded ? 0 : undefined}
+        className={expanded ? 'max-h-96 overflow-y-auto' : undefined}
+      >
+        {children(expanded ? text : preview)}
+      </div>
       <Button
         variant="link"
         size="xs"
         aria-expanded={expanded}
+        aria-controls={contentId}
         onClick={() => setExpandedText(expanded ? null : text)}
         className={cn('-ml-2 normal-case', buttonClassName)}
       >
         {expanded ? t('chat.longError.collapse') : t('chat.longError.expand')}
       </Button>
-    </>
+    </div>
   );
 };
