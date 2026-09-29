@@ -2,6 +2,7 @@ import { describe, expect, test } from 'bun:test';
 
 import {
   DEV_SERVER_WAIT_MS,
+  acceptsBrowserTabLoadRequest,
   forgetBrowserTabOpenedWithAddress,
   noteBrowserTabOpenedWithAddress,
   planFailedLoadRetry,
@@ -64,5 +65,22 @@ describe('dev server wait', () => {
     stop();
     requestBrowserTabLoad('/repo', tabID, 'http://localhost:5173/');
     expect(loads).toEqual(['http://localhost:5173/']);
+  });
+
+  test('a load request reloads a failed tab but leaves a working page alone', () => {
+    const url = 'http://localhost:5173/';
+    const failed = { kind: 'failed', url, code: -102, description: 'ERR_CONNECTION_REFUSED' } as const;
+    const ready = { kind: 'ready', url, title: 'dev' } as const;
+    const loading = { kind: 'loading', url } as const;
+
+    expect(acceptsBrowserTabLoadRequest(failed, false)).toBe(true);
+    // A page that worked and then failed shows the error, so it loads again.
+    expect(acceptsBrowserTabLoadRequest(failed, true)).toBe(true);
+    // Nothing shown yet: the first load is still going or never produced a page.
+    expect(acceptsBrowserTabLoadRequest(loading, false)).toBe(true);
+    expect(acceptsBrowserTabLoadRequest({ kind: 'idle' }, false)).toBe(true);
+
+    expect(acceptsBrowserTabLoadRequest(ready, true)).toBe(false);
+    expect(acceptsBrowserTabLoadRequest(loading, true)).toBe(false);
   });
 });

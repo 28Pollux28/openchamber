@@ -13,6 +13,7 @@
  * load runs once and fails honestly; the wait comes back with the next load
  * the user, the agent or the page starts.
  */
+import type { BrowserNavStatus } from './contract';
 import { isStartingServerFailure } from './url';
 
 /** How long to keep waiting for a dev server that is still coming up. */
@@ -53,14 +54,24 @@ const loadRequestListeners = new Map<string, Set<LoadRequestListener>>();
  * Opening an address that already has a tab only focuses that tab, which is
  * not enough when the tab is showing a failure: a project action that just
  * started the server announces the same address, and the page must load now,
- * waiting for the server like any other load someone started. A tab that is
- * not mounted misses the request and loads on its next mount instead.
+ * waiting for the server like any other load someone started. The tab decides
+ * with {@link acceptsBrowserTabLoadRequest}; a tab that is not mounted misses
+ * the request and loads on its next mount instead.
  */
 export const requestBrowserTabLoad = (directory: string, tabID: string, url: string): void => {
   const listeners = loadRequestListeners.get(tabKey(directory, tabID));
   if (!listeners) return;
   for (const listener of listeners) listener(url);
 };
+
+/**
+ * Whether a mounted tab acts on a load request. Only a tab showing a failure,
+ * or one that has not shown a page yet, loads again: reloading a working page
+ * would throw away whatever the person had on it, so that tab is only focused.
+ */
+export const acceptsBrowserTabLoadRequest = (status: BrowserNavStatus, hasShownPage: boolean): boolean => (
+  status.kind === 'failed' || !hasShownPage
+);
 
 export const subscribeBrowserTabLoadRequests = (
   directory: string,

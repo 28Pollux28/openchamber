@@ -10,6 +10,7 @@ import { openExternalUrl } from '@/lib/url';
 import { normalizeContextPanelDirectoryKey, useUIStore } from '@/stores/useUIStore';
 import { BLANK_URL, isLoopbackUrl, normalizeBrowserUrl } from '@/lib/browser/url';
 import {
+  acceptsBrowserTabLoadRequest,
   forgetBrowserTabOpenedWithAddress,
   planFailedLoadRetry,
   subscribeBrowserTabLoadRequests,
@@ -580,10 +581,17 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tab
     retunneledUrlsRef.current.clear();
     loadUrl(value);
   }, [loadUrl]);
-  // Opening an address this tab already has loads it again rather than only
-  // focusing the tab, so an earlier failure does not stay on screen.
+  // Opening an address this tab already has loads it again when the tab shows
+  // a failure, so it does not stay on screen; a working page is left alone.
+  const navStatusRef = React.useRef(navigation.status);
+  navStatusRef.current = navigation.status;
+  const hasShownPageRef = React.useRef(false);
+  if (navigation.status.kind === 'ready' && navigation.status.url) hasShownPageRef.current = true;
   React.useEffect(
-    () => subscribeBrowserTabLoadRequests(tabDirectory, tabID, loadUrlFromUser),
+    () => subscribeBrowserTabLoadRequests(tabDirectory, tabID, (url) => {
+      if (!acceptsBrowserTabLoadRequest(navStatusRef.current, hasShownPageRef.current)) return;
+      loadUrlFromUser(url);
+    }),
     [loadUrlFromUser, tabDirectory, tabID],
   );
   React.useEffect(() => {
