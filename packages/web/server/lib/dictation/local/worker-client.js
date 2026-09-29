@@ -92,13 +92,9 @@ export class DictationWorkerClient {
   }
 
   appendSessionAudio(sessionId, audio) {
-    // Fire-and-forget: nobody consumes the result, and under real streaming
-    // these pile up behind in-flight decodes. A request-timeout here would be
-    // spurious (the audio IS accepted; it just waits its turn), and it would
-    // surface as "Dictation worker request timed out: session.append" mid
-    // dictation. The worker stays responsive because session.commit acks
-    // before decoding, so only a truly dead worker matters — and that is
-    // caught by the worker 'close' handler, not a per-request timer.
+    // Fire-and-forget with no per-request timeout: audio queued behind a
+    // decode is accepted, just waiting its turn. A dead worker is caught by
+    // handleWorkerExit.
     void this.sendRequest({ type: 'session.append', sessionId, audio }, { timeoutMs: 0 }).catch((err) => {
       this.emitSessionError(sessionId, err);
     });
@@ -106,10 +102,7 @@ export class DictationWorkerClient {
 
   commitSession(sessionId) {
     // Fire-and-forget like appendSessionAudio: the committed/transcript events
-    // carry the result, not this response. Under a replay (buffered segments
-    // flushed in a burst) the commits queue behind each other's decodes, and a
-    // per-request timeout would fire on a commit that is merely waiting its
-    // turn. A dead worker is caught by handleWorkerExit instead.
+    // carry the result, and a dead worker is caught by handleWorkerExit.
     void this.sendRequest({ type: 'session.commit', sessionId }, { timeoutMs: 0 }).catch((err) => {
       this.emitSessionError(sessionId, err);
     });

@@ -158,13 +158,12 @@ async function handleRequest(message) {
         sendOk(message.requestId);
         return;
       }
-      // The segment's decode is synchronous and grows quadratically with its
-      // length (measured: 120s -> 16s, 300s -> 115s on an M1). Acknowledging
-      // only after decode made the parent's 30s worker-request timeout fire
-      // on long segments AND head-of-line-blocked every following IPC packet
-      // (session.append) behind the decode. So: take the segment, ack the
-      // commit immediately, and decode on the next turn of the event loop —
-      // the transcript still arrives as a session.transcript event.
+      // The segment's decode is synchronous. Acknowledging only after it made
+      // the parent's worker-request timeout fire on long segments and blocked
+      // every following IPC packet (session.append) behind the decode. So:
+      // take the segment, ack the commit immediately, and decode on the next
+      // turn of the event loop — the transcript still arrives as a
+      // session.transcript event.
       const pending = session.takePendingSegment();
       sendOk(message.requestId);
       if (pending) {
