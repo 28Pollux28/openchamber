@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
 import { CONTEXT_SURFACES, sortContextSurfaces } from '../lib/surfaces/registry';
+import { forgetBrowserTabOpenedWithAddress, wasBrowserTabOpenedWithAddress } from '../lib/browser/devServerWait';
 import { useTerminalStore } from './useTerminalStore';
 import { useUIStore } from './useUIStore';
 
@@ -443,6 +444,32 @@ describe('useUIStore context panel tabs', () => {
 
     const sanitizedDiffTab = getContextPanelTabs('/repo-worktree').find((tab) => tab.mode === 'diff');
     expect(sanitizedDiffTab?.targetDirectory).toBe(null);
+  });
+});
+
+describe('useUIStore browser tabs opened with an address', () => {
+  const url = 'http://localhost:5173/';
+  const tabID = `browser:${url}`;
+
+  test('a new tab counts as opened now, so its first load may wait for the server', () => {
+    forgetBrowserTabOpenedWithAddress(tabID);
+    useUIStore.getState().openContextPreview('/repo', url);
+    expect(wasBrowserTabOpenedWithAddress(tabID)).toBe(true);
+    forgetBrowserTabOpenedWithAddress(tabID);
+  });
+
+  test('reopening an existing tab does not mark it, so its next mount counts as restored', () => {
+    useUIStore.getState().openContextBrowser('/repo', url);
+    forgetBrowserTabOpenedWithAddress(tabID);
+    useUIStore.getState().openContextPreview('/repo', url);
+    expect(wasBrowserTabOpenedWithAddress(tabID)).toBe(false);
+  });
+
+  test('an agent tab opened with an address counts as opened now', () => {
+    const agentTabID = useUIStore.getState().openAgentBrowserTab('/repo', url);
+    expect(agentTabID === null).toBe(false);
+    expect(wasBrowserTabOpenedWithAddress(agentTabID ?? '')).toBe(true);
+    forgetBrowserTabOpenedWithAddress(agentTabID ?? '');
   });
 });
 

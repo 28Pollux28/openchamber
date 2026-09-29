@@ -8,7 +8,13 @@ import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { openExternalUrl } from '@/lib/url';
 import { normalizeContextPanelDirectoryKey, useUIStore } from '@/stores/useUIStore';
-import { BLANK_URL, isLoopbackUrl, isStartingServerFailure, normalizeBrowserUrl } from '@/lib/browser/url';
+import { BLANK_URL, isLoopbackUrl, normalizeBrowserUrl } from '@/lib/browser/url';
+import {
+  forgetBrowserTabOpenedWithAddress,
+  planFailedLoadRetry,
+  wasBrowserTabOpenedWithAddress,
+  type DevServerWaitRun,
+} from '@/lib/browser/devServerWait';
 import { probeLoopbackStatus } from '@/lib/browser/devServers';
 import {
   cancelAnnotationSession,
@@ -63,8 +69,6 @@ const isChromiumHost = (): boolean => (
   typeof window !== 'undefined' && Boolean(window.__OPENCHAMBER_ELECTRON__)
 );
 
-/** How long to keep waiting for a dev server that is still coming up. */
-const DEV_SERVER_WAIT_MS = 40_000;
 /** Chromium's zoom is exponential: factor = 1.2 ^ level. */
 const ZOOM_STEP = 0.5;
 const ZOOM_MIN = -3;
@@ -129,7 +133,16 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tab
   const [stageSize, setStageSize] = React.useState({ width: 0, height: 0 });
   const stageRef = React.useRef<HTMLDivElement | null>(null);
   /** When the current run of retries began, per URL. */
-  const retryRef = React.useRef<{ url: string; startedAt: number } | null>(null);
+  const retryRef = React.useRef<DevServerWaitRun | null>(null);
+  /**
+   * Set while the tab's first load comes from saved state rather than from
+   * someone opening it now. That load is not waited out; the next one is.
+   */
+  const restoredLoadRef = React.useRef(Boolean(startUrl) && !wasBrowserTabOpenedWithAddress(tabID));
+  React.useEffect(() => {
+    // Consumed by the first mount, so a later remount counts as restored.
+    forgetBrowserTabOpenedWithAddress(tabID);
+  }, [tabID]);
   /** Set once this tab has seen a page that was not a startup error. */
   const servedOkRef = React.useRef(false);
   const openedAtRef = React.useRef(Date.now());
@@ -706,27 +719,24 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tab
       return () => clearTimeout(timer);
     };
 
+    // Mid-navigation: leave whatever state the previous decision set, so a
+    // retry does not flash the page behind the waiting screen and back.
+    if (status.kind === 'loading') return;
+
+    // Only a settled page ends the restored load; a blank settle can precede it.
+    const restored = restoredLoadRef.current;
+    if (status.kind === 'failed' || (status.kind === 'ready' && status.url)) restoredLoadRef.current = false;
+
     // Nothing is listening yet.
     if (status.kind === 'failed') {
-      if (!isStartingServerFailure(status.code, status.url)) {
-        setIsWaitingForServer(false);
-        return;
-      }
-      const now = Date.now();
-      const run = retryRef.current?.url === status.url
-        ? retryRef.current
-        : { url: status.url, startedAt: now };
-      retryRef.current = run;
-      if (now - run.startedAt > DEV_SERVER_WAIT_MS) {
+      const plan = planFailedLoadRetry(status, { run: retryRef.current, restored, now: Date.now() });
+      retryRef.current = plan.run;
+      if (!plan.retry) {
         setIsWaitingForServer(false);
         return;
       }
       return reloadSoon();
     }
-
-    // Mid-navigation: leave whatever state the previous decision set, so a
-    // retry does not flash the page behind the waiting screen and back.
-    if (status.kind === 'loading') return;
 
     retryRef.current = null;
 
@@ -735,7 +745,7 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tab
       setIsWaitingForServer(false);
       return;
     }
-    if (servedOkRef.current || Date.now() - openedAtRef.current > GATEWAY_WAIT_MS) {
+    if (restored || servedOkRef.current || Date.now() - openedAtRef.current > GATEWAY_WAIT_MS) {
       servedOkRef.current = true;
       setIsWaitingForServer(false);
       return;

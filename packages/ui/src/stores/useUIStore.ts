@@ -14,6 +14,7 @@ import type { PermissionMode } from './utils/permissionAutoAccept';
 import { directoryMayHaveActiveProjectAction, useTerminalStore } from '@/stores/useTerminalStore';
 import { useFilesViewTabsStore } from './useFilesViewTabsStore';
 import { isVSCodeRuntime } from '@/lib/desktop';
+import { noteBrowserTabOpenedWithAddress } from '@/lib/browser/devServerWait';
 import { isContextPanelMode, type ContextPanelMode } from '@/lib/surfaces/modes';
 import { getRuntimeKey, isTransientRuntimeKey } from '@/lib/runtime-switch';
 import { sanitizeWorkStatusSectionOrder, type WorkStatusPanelSectionId } from '@/components/chat/work-status/sections';
@@ -537,6 +538,21 @@ const touchContextPanelState = (prev?: ContextPanelDirectoryState): ContextPanel
     widthFractionByMode: {},
     touchedAt: Date.now(),
   };
+};
+
+/**
+ * A browser tab created now with an address loads it because someone asked, so
+ * it may wait for a dev server that is still starting. A tab that already
+ * exists keeps whatever it is showing and is not marked.
+ */
+const noteNewBrowserTab = (
+  byDirectory: Record<string, ContextPanelDirectoryState>,
+  directory: string,
+  dedupeKey: string,
+): void => {
+  const tabID = buildContextPanelTabID('browser', dedupeKey);
+  if (byDirectory[directory]?.tabs.some((tab) => tab.id === tabID)) return;
+  noteBrowserTabOpenedWithAddress(tabID);
 };
 
 const upsertContextPanelTab = (
@@ -1656,6 +1672,7 @@ export const useUIStore = create<UIStore>()(
             return;
           }
 
+          noteNewBrowserTab(get().contextPanelByDirectory, normalizedDirectory, normalizedUrl);
           // No stored label: a browser tab is named after wherever it has
           // navigated to, which the panel derives from targetPath.
           get().openContextPanelTab(normalizedDirectory, {
@@ -1673,6 +1690,7 @@ export const useUIStore = create<UIStore>()(
           if (!normalizedDirectory || isVSCodeRuntime()) return null;
           browserTabSequence += 1;
           const dedupeKey = `browser:agent:${Date.now()}-${browserTabSequence}`;
+          if (url.trim()) noteNewBrowserTab(get().contextPanelByDirectory, normalizedDirectory, dedupeKey);
           get().openContextPanelTab(normalizedDirectory, {
             mode: 'browser',
             targetPath: url.trim(),
@@ -1698,6 +1716,7 @@ export const useUIStore = create<UIStore>()(
           const normalizedDirectory = normalizeDirectoryPath((directory || '').trim());
           if (!normalizedDirectory || isVSCodeRuntime()) return;
           const targetUrl = typeof url === 'string' && url.trim().length > 0 ? url.trim() : '';
+          if (targetUrl) noteNewBrowserTab(get().contextPanelByDirectory, normalizedDirectory, targetUrl);
           get().openContextPanelTab(normalizedDirectory, {
             mode: 'browser',
             targetPath: targetUrl,
