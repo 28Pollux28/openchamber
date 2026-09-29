@@ -740,7 +740,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.group.worktreeMissing': '工作树文件夹缺失',
   'sessions.sidebar.project.folderMissing': '项目文件夹不存在或不可用',
   'sessions.sidebar.group.space': '隔离空间',
-  'sessions.sidebar.group.spaceStale': '该空间没有响应。这些是它最后一次报告的会话。',
+  'sessions.sidebar.group.spaceStale': '该空间没有响应。会话可能已过时。',
   'sessions.sidebar.grouping.spaceUnnamed': '隔离空间',
   'sessions.sidebar.sessionDialogs.worktree.label': '工作树',
   'sessions.sidebar.sessionDialogs.worktree.pathUnavailable': '工作树路径不可用。',

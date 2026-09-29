@@ -740,7 +740,7 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.group.worktreeMissing": "Теки worktree немає",
   "sessions.sidebar.project.folderMissing": "Папка проєкту відсутня або недоступна",
   "sessions.sidebar.group.space": "Ізольований простір",
-  "sessions.sidebar.group.spaceStale": "Простір не відповідає. Це сеанси, про які він повідомив востаннє.",
+  "sessions.sidebar.group.spaceStale": "Простір не відповідає. Сеанси можуть бути застарілими.",
   "sessions.sidebar.grouping.spaceUnnamed": "Ізольований простір",
   "sessions.sidebar.sessionDialogs.worktree.label": "Worktree",
   "sessions.sidebar.sessionDialogs.worktree.pathUnavailable": "Шлях worktree недоступний.",

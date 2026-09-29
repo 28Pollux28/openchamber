@@ -740,7 +740,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.group.worktreeMissing': 'ワークツリーのフォルダーがありません',
   'sessions.sidebar.project.folderMissing': 'プロジェクトフォルダーが見つからないか、利用できません',
   'sessions.sidebar.group.space': '隔離スペース',
-  'sessions.sidebar.group.spaceStale': 'スペースが応答していません。最後に報告されたセッションを表示しています。',
+  'sessions.sidebar.group.spaceStale': 'スペースが応答していません。セッションが古い可能性があります。',
   'sessions.sidebar.grouping.spaceUnnamed': '隔離スペース',
   'sessions.sidebar.sessionDialogs.worktree.label': 'ワークツリー',
   'sessions.sidebar.sessionDialogs.worktree.pathUnavailable': 'ワークツリーパスは利用できません。',

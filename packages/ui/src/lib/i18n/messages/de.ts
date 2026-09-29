@@ -651,7 +651,7 @@ export const dict = {
   'sessions.sidebar.group.worktreeMissing': 'Worktree-Ordner fehlt',
   'sessions.sidebar.project.folderMissing': 'Projektordner fehlt oder ist nicht verfügbar',
   'sessions.sidebar.group.space': 'Isolierter Bereich',
-  'sessions.sidebar.group.spaceStale': 'Der Bereich antwortet nicht. Das sind die Sitzungen, die er zuletzt gemeldet hat.',
+  'sessions.sidebar.group.spaceStale': 'Der Bereich antwortet nicht. Die Sitzungen sind möglicherweise veraltet.',
   'sessions.sidebar.grouping.spaceUnnamed': 'Isolierter Bereich',
   'sessions.sidebar.sessionDialogs.worktree.label': 'Worktree',
   'sessions.sidebar.sessionDialogs.worktree.pathUnavailable': 'Worktree-Pfad nicht verfügbar.',
