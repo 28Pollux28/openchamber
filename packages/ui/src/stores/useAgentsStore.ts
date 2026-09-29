@@ -236,6 +236,13 @@ export const isAgentBuiltIn = (agent: Agent): boolean => {
   return extended.native === true || extended.builtIn === true;
 };
 
+// Reset deletes the file that overrides a built-in agent. OpenCode's own agents
+// and the ones a plugin registers have no such file, so there is nothing to reset.
+export const canResetAgent = (agent: Agent): boolean =>
+  // SAFETY: store agents are AgentWithExtras; `path` is optional there and
+  // loadAgents sets it only when a definition file exists.
+  isAgentBuiltIn(agent) && Boolean((agent as AgentWithExtras).path);
+
 // Helper to check if agent is hidden (internal agents like title, compaction, summary)
 // Checks both top-level hidden and options.hidden (OpenCode API inconsistency workaround)
 export const isAgentHidden = (agent: Agent): boolean => {
@@ -700,7 +707,9 @@ export const useAgentsStore = create<AgentsStore>()(
               return { ok: true, requiresManualRestart: true };
             }
 
-            // OpenCode 2 re-reads the file itself; the store just refreshes its list.
+            // OpenCode 2 re-reads the file itself and then announces
+            // `agent.updated`, which re-reads this list again (catalogRefresh).
+            // This read can land before that and still carry the deleted agent.
             const loaded = await get().loadAgents(configDirectory);
             if (loaded) {
               emitConfigChange("agents", { source: CONFIG_EVENT_SOURCE });

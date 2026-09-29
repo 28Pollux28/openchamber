@@ -1,5 +1,6 @@
 import { afterAll, beforeEach, describe, expect, spyOn, test } from 'bun:test';
 import { Window } from 'happy-dom';
+import type { AgentWithExtras } from '@/stores/useAgentsStore';
 
 const browser = new Window({ url: 'http://localhost/' });
 Object.assign(globalThis, {
@@ -65,7 +66,7 @@ const fetchSpy = spyOn(globalThis, 'fetch').mockImplementation(async (input) => 
   return Response.json({ data: [] });
 });
 
-const { useAgentsStore, invalidateAgentsLoadCache, isAgentBuiltIn } = await import('@/stores/useAgentsStore');
+const { useAgentsStore, invalidateAgentsLoadCache, isAgentBuiltIn, canResetAgent } = await import('@/stores/useAgentsStore');
 
 const sdkAgent = (name: string, mode: 'primary' | 'subagent'): ListedAgent => ({
   id: name,
@@ -149,5 +150,26 @@ describe('useAgentsStore built-in classification', () => {
 
     expect(consumedConfigLookups).toEqual(['build']);
     expect(build && isAgentBuiltIn(build)).toBe(false);
+  });
+});
+
+describe('useAgentsStore reset for agents without a config file', () => {
+  test('a built-in agent offers reset only when a file overrides it', async () => {
+    listedAgents = [sdkAgent('ghost-plugin', 'subagent')];
+    agentConfigResponses.set('ghost-plugin', {
+      name: 'ghost-plugin',
+      scope: null,
+      sources: { md: { exists: false }, json: { exists: false } },
+      isBuiltIn: true,
+    });
+
+    await useAgentsStore.getState().loadAgents(DIRECTORY);
+
+    const ghost = (useAgentsStore.getState().agentsByDirectory[DIRECTORY] ?? [])
+      .find((agent) => agent.name === 'ghost-plugin');
+    expect(ghost && isAgentBuiltIn(ghost)).toBe(true);
+    expect(ghost && canResetAgent(ghost)).toBe(false);
+    const overridden: AgentWithExtras | undefined = ghost && { ...ghost, path: '/home/u/.config/opencode/agents/ghost-plugin.md' };
+    expect(overridden && canResetAgent(overridden)).toBe(true);
   });
 });
