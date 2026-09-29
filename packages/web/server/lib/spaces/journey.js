@@ -769,6 +769,9 @@ export function createSpaceJourney({
     const { record } = records.read(spaceId);
     const repository = record?.repository ?? space.projectDirectory;
     if (!repository) throw new SpaceError('project_not_registered', 'The project this space was made for is no longer registered, so its work has nowhere to go.');
+    // Code out reaches into the space, so a stopped one would fail there as a generic failure of
+    // the place; the dialog needs to know it can offer a start instead.
+    if (space.state !== 'running') throw new SpaceError('space_not_running', 'The space is stopped. Start it to apply its work.');
     return { space, repository, spacePath: record?.spacePath ?? space.directory };
   };
 

@@ -67,6 +67,14 @@ export const spaceMenuActionsOf = (entry: SpaceEntry | undefined): SpaceAction[]
   return gone ? ['stop', 'remove'] : ['restart_opencode', 'restart', 'setup', 'stop', 'remove'];
 };
 
+/**
+ * Whether the space's work can be applied from its menu: a running space, or a stopped one that a
+ * start brings back, which the apply dialog offers. A stopped space whose gatekeeper is gone never
+ * starts again, so its work cannot be reached.
+ */
+export const isSpaceApplicable = (entry: SpaceEntry | undefined): boolean => entry?.state === 'running'
+  || (entry?.state === 'exited' && entry.damage !== 'gatekeeper_gone');
+
 /** An action of the menu that cannot run now: the setup commands again while they still run. */
 export const isSpaceActionUnavailable = (entry: SpaceEntry | undefined, action: SpaceAction): boolean => (
   action === 'setup' && entry?.setup?.state === 'running'
@@ -111,15 +119,27 @@ export const runSpaceAction = async (spaceId: string, action: SpaceAction): Prom
   const after = useSpacesStore.getState();
   after.noteAction(spaceId, failure ? { kind: 'failed', action, failure } : null);
   if (!failure && action === 'remove') {
-    after.noteCreationAccess(spaceId, null);
-    if (after.accessDialog?.spaceId === spaceId) after.closeAccessDialog();
-    if (after.actionsSheet === spaceId) after.closeActionsSheet();
+    await forgetRemovedSpace(spaceId);
+    return;
   }
-  if (!failure && action !== 'stop' && action !== 'remove' && action !== 'setup') after.noteReachable(spaceId);
+  if (!failure && action !== 'stop' && action !== 'setup') after.noteReachable(spaceId);
   // The action's outcome stands on its own: a list that cannot be read now is read at the next turn.
+  await refreshSpacesJourney().catch(() => {});
+};
+
+/**
+ * What this window drops once the host removed a space, by a delete or after an apply: its
+ * dialogs, then the host's lists read again.
+ */
+export const forgetRemovedSpace = async (spaceId: string): Promise<void> => {
+  const store = useSpacesStore.getState();
+  store.noteCreationAccess(spaceId, null);
+  if (store.accessDialog?.spaceId === spaceId) store.closeAccessDialog();
+  if (store.actionsSheet === spaceId) store.closeActionsSheet();
+  if (store.applyDialog === spaceId) store.closeApplyDialog();
   await refreshSpacesJourney().catch(() => {});
   // The sidebar's group of a space comes from the session list's mark as well, which the host
   // drops only in its next complete list; without asking for it now, a space the user just
   // deleted stayed in the sidebar for about forty seconds, measured.
-  if (!failure && action === 'remove') await refreshGlobalSessions().then(() => {}, () => {});
+  await refreshGlobalSessions().then(() => {}, () => {});
 };
