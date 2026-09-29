@@ -142,6 +142,8 @@ For anything else your page needs directly, such as fonts or images from a CDN o
 
 The user sees them on the approval dialog as addresses your extension can send data to and receive data from, and approves them again if an update adds one. Approved origins are open to `fetch`, images, fonts, styles and media, but never to scripts: code has to ship in your package. The page's origin is `null`, so to read a `fetch` response the server must allow CORS for that origin.
 
+In [enterprise mode](/security/#enterprise-mode), an extension with `origins`, an `integration` or a `service` installs only from a Git repository the administrator listed. If your extension can work without them, it stays installable for those teams. To build one on such a machine, ask the administrator for `allowLocalExtensions`, which lets you install it from its folder.
+
 
 - `token`: the user pastes an API token on the Settings → Integrations card. `apiOrigin` is the only origin `request` may call. `account` is optional: a GET path and a field name, so the card can show who is connected. `scheme` says how the token is sent; see the table below. Check the provider's API docs for which header it expects.
 - `oauth`: the user pastes a client id, and OpenChamber runs the authorize flow. Needs `authorizeUrl`, `tokenUrl`, and `apiOrigin`.

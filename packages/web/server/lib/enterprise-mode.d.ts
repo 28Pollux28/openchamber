@@ -14,6 +14,8 @@ export interface EnterprisePolicy {
   relayUrl: string | null;
   jev: { url: string; model: string | null; apiKey: string | null } | null;
   allowNetworkAccess: boolean;
+  allowedExtensions: string[];
+  allowLocalExtensions: boolean;
 }
 
 export type PublicEnterprisePolicy = Pick<EnterprisePolicy, 'enterpriseMode' | 'source' | 'organization' | 'policyError'> & { networkAccessBlocked: boolean };

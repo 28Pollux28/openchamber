@@ -18,16 +18,38 @@ const failureSchema = z.object({
 
 export type SpaceFailure = z.infer<typeof failureSchema>;
 
+// Paths the space reports, at most a hundred of them, with how many there are in all.
+const reportedPathsSchema = z.object({ count: z.number().int().min(0), paths: z.array(z.string()) });
+
+export type SpaceReportedPaths = z.infer<typeof reportedPathsSchema>;
+
+// What a refusal names beside its code, where the screen shows it: the file an apply refused
+// (`path`, and `other` for a name that differs only in case), the branch in the way, and for a
+// refusal that closes the way of uncommitted changes the files it was about. Paths come from the
+// space or the user's project, so they are text to show.
+const failureDetailsSchema = z.object({
+  path: z.string().optional(),
+  other: z.string().nullable().optional(),
+  branch: z.string().optional(),
+  stillThere: reportedPathsSchema.optional(),
+  ignoredInTheWay: reportedPathsSchema.optional(),
+  filteredInTheWay: reportedPathsSchema.optional(),
+});
+
+export type SpaceFailureDetails = z.infer<typeof failureDetailsSchema>;
+
 /** A refusal or failure of a journey route: the server's code, its message, and the HTTP status. */
 export class SpacesRequestError extends Error {
   readonly code: string;
   readonly status: number;
+  readonly details: SpaceFailureDetails;
 
-  constructor(code: string, message: string, status: number) {
+  constructor(code: string, message: string, status: number, details: SpaceFailureDetails = {}) {
     super(message);
     this.name = 'SpacesRequestError';
     this.code = code;
     this.status = status;
+    this.details = details;
   }
 }
 
@@ -90,12 +112,13 @@ export const spaceCreationStepSchema = z.enum(SPACE_CREATION_STEPS);
 
 // The project's setup commands in the space (5d-4): queued until the code arrived, the command
 // running now, how the last run ended, or a run the host did not live to see end. `command` is the
-// project's text, to show only.
+// project's text, to show only. A failed run says when it began and ended, so the output window can
+// read the gatekeeper's refusals within; null from a host or a record from before that.
 const setupSchema = z.discriminatedUnion('state', [
   z.object({ state: z.literal('queued'), total: z.number().int().min(1) }),
   z.object({ state: z.literal('running'), index: z.number().int().min(0), total: z.number().int().min(1), command: z.string() }),
   z.object({ state: z.literal('done'), total: z.number().int().min(1) }),
-  z.object({ state: z.literal('failed'), index: z.number().int().min(0), total: z.number().int().min(1), command: z.string(), exitCode: z.number().int().nullable(), timedOut: z.boolean() }),
+  z.object({ state: z.literal('failed'), index: z.number().int().min(0), total: z.number().int().min(1), command: z.string(), exitCode: z.number().int().nullable(), timedOut: z.boolean(), startedAt: z.string().nullable().default(null), finishedAt: z.string().nullable().default(null) }),
   z.object({ state: z.literal('interrupted'), total: z.number().int().min(1) }),
 ]);
 
@@ -147,7 +170,7 @@ export type GrantRequest =
   | { kind: 'model'; provider: string; upstream: string; secret: { kind: 'typed'; value: string } | { kind: 'env'; name: string } }
   | { kind: 'domain'; upstream: string };
 
-const errorBodySchema = z.object({ code: z.string(), message: z.string() });
+const errorBodySchema = z.object({ code: z.string(), message: z.string(), details: failureDetailsSchema.nullable().optional().catch(null) });
 
 const request = async <T>(path: string, schema: z.ZodType<T>, init: RequestInit = {}): Promise<T> => {
   const response = await runtimeFetch(path, {
@@ -158,7 +181,7 @@ const request = async <T>(path: string, schema: z.ZodType<T>, init: RequestInit 
   if (!response.ok) {
     const error = errorBodySchema.safeParse(body);
     throw error.success
-      ? new SpacesRequestError(error.data.code, error.data.message, response.status)
+      ? new SpacesRequestError(error.data.code, error.data.message, response.status, error.data.details ?? {})
       : new SpacesRequestError('space_request_failed', `The server answered ${response.status}.`, response.status);
   }
   const parsed = schema.safeParse(body);
@@ -268,3 +291,43 @@ export const readSpaceSetup = (spaceId: string, signal?: AbortSignal): Promise<S
 
 export const removeSpace = (spaceId: string): Promise<SpaceRemoval> =>
   request(`${SPACES_ROUTE}/${spaceId}`, removalSchema, { method: 'DELETE' });
+
+// What an apply would do, read while the dialog is open: the work brought out of the space now, and
+// where the space stands for an apply as uncommitted changes. `changedPaths` counts against the
+// space's start; `newPaths` is what the next apply as changes writes, null when it cannot be told.
+const applyPreviewSchema = z.object({
+  changedPaths: z.number().int().min(0),
+  changedBytes: z.number().min(0),
+  nestedRepositories: reportedPathsSchema,
+  unmerged: reportedPathsSchema,
+  changesRoute: z.enum(['open', 'closed']),
+  lastApplied: z.string().nullable(),
+  newPaths: z.number().int().min(0).nullable(),
+  // Reading the project back ran out of time: an apply as changes would be refused.
+  newPathsUndecided: z.boolean().default(false),
+});
+
+export type SpaceApplyPreview = z.infer<typeof applyPreviewSchema>;
+
+export type SpaceApplyRequest =
+  | { as: 'branch'; branch: string; removeAfterwards: boolean }
+  | { as: 'changes'; removeAfterwards: boolean };
+
+const appliedSchema = z.union([
+  z.object({ status: z.literal('applied'), branch: z.string() }),
+  z.object({ status: z.literal('applied'), appliedPaths: z.number().int().min(0) }),
+  z.object({ status: z.literal('nothing_to_apply') }),
+]);
+
+// `removal` is null unless the space was removed after the apply went through.
+const applyOutcomeSchema = z.object({ applied: appliedSchema, removal: removalSchema.nullable() });
+
+export type SpaceApplyOutcome = z.infer<typeof applyOutcomeSchema>;
+
+/** Brings the space's work out and says what an apply would do; writes nothing of the user's files. */
+export const previewSpaceApply = (spaceId: string, signal?: AbortSignal): Promise<SpaceApplyPreview> =>
+  request(`${SPACES_ROUTE}/${spaceId}/apply`, applyPreviewSchema, { signal });
+
+/** Brings the work out once more and applies it; what is applied is what this call brought. */
+export const applySpaceWork = (spaceId: string, body: SpaceApplyRequest): Promise<SpaceApplyOutcome> =>
+  request(`${SPACES_ROUTE}/${spaceId}/apply`, applyOutcomeSchema, { method: 'POST', body: JSON.stringify(body) });

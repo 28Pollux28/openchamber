@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from 'bun:test';
 
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
-import { isSpaceActionUnavailable, runSpaceAction, spaceConditionOf, spaceMenuActionsOf } from './space-repair';
+import { isSpaceActionUnavailable, isSpaceApplicable, runSpaceAction, spaceConditionOf, spaceMenuActionsOf } from './space-repair';
 import { getSharedTrustConfirmationSnapshot, settleSharedTrustConfirmation } from '@/lib/sharedTrustConfirmation';
 import type { SpaceEntry } from './spaces-api';
 import { useSpacesStore, type SpaceMark } from './spaces-store';
@@ -28,6 +28,17 @@ const entry = (change: Partial<SpaceEntry> = {}): SpaceEntry => ({
   ...change,
 });
 const mark = (state: SpaceMark['state']): SpaceMark => ({ id: ID, name: 'Fix login', state, projectDirectory: '/home/me/app', directory: `/spaces/${ID}/app` });
+
+describe('whether a space\'s work can be applied', () => {
+  test('from a running space, or a stopped one a start brings back', () => {
+    expect(isSpaceApplicable(entry())).toBe(true);
+    expect(isSpaceApplicable(entry({ state: 'exited' }))).toBe(true);
+    expect(isSpaceApplicable(entry({ damage: 'gatekeeper_gone' }))).toBe(true);
+    expect(isSpaceApplicable(entry({ state: 'exited', damage: 'gatekeeper_gone' }))).toBe(false);
+    for (const state of ['preparing', 'failed', 'missing'] as const) expect(isSpaceApplicable(entry({ state }))).toBe(false);
+    expect(isSpaceApplicable(undefined)).toBe(false);
+  });
+});
 
 describe('the state of a space', () => {
   test('says nothing for a space that runs and answers, or one the creation line covers', () => {
@@ -79,7 +90,7 @@ describe('the actions of a space', () => {
   test('offers the setup commands again only while they do not run', () => {
     expect(isSpaceActionUnavailable(entry({ setup: { state: 'running', index: 0, total: 2, command: 'npm ci' } }), 'setup')).toBe(true);
     expect(isSpaceActionUnavailable(entry({ setup: { state: 'running', index: 0, total: 2, command: 'npm ci' } }), 'restart')).toBe(false);
-    expect(isSpaceActionUnavailable(entry({ setup: { state: 'failed', index: 0, total: 2, command: 'npm ci', exitCode: 1, timedOut: false } }), 'setup')).toBe(false);
+    expect(isSpaceActionUnavailable(entry({ setup: { state: 'failed', index: 0, total: 2, command: 'npm ci', exitCode: 1, timedOut: false, startedAt: null, finishedAt: null } }), 'setup')).toBe(false);
     expect(isSpaceActionUnavailable(entry(), 'setup')).toBe(false);
   });
 

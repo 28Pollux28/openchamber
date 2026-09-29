@@ -1,6 +1,7 @@
 /**
- * The repair actions of an isolated space (DESIGN.md, user journey step 8), from soft to hard:
- * restart OpenCode, restart the container, stop or start, and delete after a confirmation. The
+ * The actions of an isolated space: apply its work (user journey step 6) above the repair actions
+ * (step 8), from soft to hard: restart OpenCode, restart the container, stop or start, and delete
+ * after a confirmation, which offers to apply first. The
  * desktop has them in a menu on the space's group; the phone opens the same list as a sheet from
  * the group's swipe actions. Delete never runs from the list itself: it opens the confirmation,
  * which says what goes with the space.
@@ -24,7 +25,7 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { MobileOverlayPanel } from '@/components/ui/MobileOverlayPanel';
 import { useI18n } from '@/lib/i18n';
-import { isSpaceActionUnavailable, runSpaceAction, spaceMenuActionsOf } from '@/lib/spaces/space-repair';
+import { isSpaceActionUnavailable, isSpaceApplicable, runSpaceAction, spaceMenuActionsOf } from '@/lib/spaces/space-repair';
 import { useSpacesStore, type SpaceAction } from '@/lib/spaces/spaces-store';
 import { useUIStore } from '@/stores/useUIStore';
 import { SPACE_ACTION_TEXT } from './spaceActionText';
@@ -47,13 +48,20 @@ const pick = (spaceId: string, action: SpaceAction) => {
 const useSpaceActions = (spaceId: string) => {
   const entry = useSpacesStore((state) => state.journey?.get(spaceId));
   const busy = useSpacesStore((state) => state.actions.get(spaceId)?.kind === 'running');
-  return { actions: spaceMenuActionsOf(entry), busy, unavailable: (action: SpaceAction) => isSpaceActionUnavailable(entry, action) };
+  return {
+    actions: spaceMenuActionsOf(entry),
+    applicable: isSpaceApplicable(entry),
+    busy,
+    unavailable: (action: SpaceAction) => isSpaceActionUnavailable(entry, action),
+  };
 };
+
+const openApply = (spaceId: string) => useSpacesStore.getState().openApplyDialog(spaceId);
 
 /** The "⋯" menu on a space's group header, beside the grant key and the new-session button. */
 export const SpaceActionsMenu: React.FC<{ spaceId: string; label: string; className?: string }> = ({ spaceId, label, className }) => {
   const { t } = useI18n();
-  const { actions, busy, unavailable } = useSpaceActions(spaceId);
+  const { actions, applicable, busy, unavailable } = useSpaceActions(spaceId);
   if (actions.length === 0) return null;
   return (
     <DropdownMenu>
@@ -69,6 +77,15 @@ export const SpaceActionsMenu: React.FC<{ spaceId: string; label: string; classN
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="min-w-[200px]" onClick={(event) => event.stopPropagation()}>
+        {applicable ? (
+          <>
+            <DropdownMenuItem disabled={busy} onClick={() => openApply(spaceId)} className="gap-2">
+              <Icon name="git-merge" className="h-4 w-4" />
+              {t('spaces.actions.apply')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+          </>
+        ) : null}
         {actions.map((action) => (
           <React.Fragment key={action}>
             {action === 'remove' && actions.length > 1 ? <DropdownMenuSeparator /> : null}
@@ -93,11 +110,25 @@ export const SpaceActionsSheet: React.FC = () => {
   const { t } = useI18n();
   const spaceId = useSpacesStore((state) => state.actionsSheet);
   const name = useSpacesStore((state) => (spaceId ? state.journey?.get(spaceId)?.name : undefined));
-  const { actions, busy, unavailable } = useSpaceActions(spaceId ?? '');
+  const { actions, applicable, busy, unavailable } = useSpaceActions(spaceId ?? '');
   const close = () => useSpacesStore.getState().closeActionsSheet();
   return (
     <MobileOverlayPanel open={spaceId !== null} title={name ?? t('spaces.actions.menu')} onClose={close}>
       <div className="flex flex-col gap-1 px-3 pb-4 pt-1">
+        {spaceId && applicable ? (
+          <Button
+            variant="ghost"
+            className="justify-start gap-2"
+            disabled={busy}
+            onClick={() => {
+              close();
+              openApply(spaceId);
+            }}
+          >
+            <Icon name="git-merge" className="h-4 w-4" />
+            {t('spaces.actions.apply')}
+          </Button>
+        ) : null}
         {spaceId ? actions.map((action) => (
           <Button
             key={action}
@@ -124,15 +155,22 @@ export const SpaceDeleteDialog: React.FC = () => {
   const isMobile = useUIStore((state) => state.isMobile);
   const spaceId = useSpacesStore((state) => state.deleteDialog);
   const name = useSpacesStore((state) => (spaceId ? state.journey?.get(spaceId)?.name ?? '' : ''));
+  const applicable = useSpacesStore((state) => isSpaceApplicable(spaceId ? state.journey?.get(spaceId) : undefined));
   const close = () => useSpacesStore.getState().closeDeleteDialog();
   const confirm = () => {
     if (!spaceId) return;
     close();
     void runSpaceAction(spaceId, 'remove');
   };
+  const applyFirst = () => {
+    if (!spaceId) return;
+    close();
+    openApply(spaceId);
+  };
   const title = t('spaces.delete.title', { name });
   const buttons = (
     <div className="flex w-full justify-end gap-2">
+      {applicable ? <Button variant="outline" size="sm" className="mr-auto" onClick={applyFirst}>{t('spaces.delete.applyFirst')}</Button> : null}
       <Button variant="outline" size="sm" onClick={close}>{t('spaces.delete.cancel')}</Button>
       <Button variant="destructive" size="sm" onClick={confirm}>{t('spaces.delete.confirm')}</Button>
     </div>
