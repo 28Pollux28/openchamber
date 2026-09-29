@@ -12,6 +12,7 @@ import { BLANK_URL, isLoopbackUrl, normalizeBrowserUrl } from '@/lib/browser/url
 import {
   forgetBrowserTabOpenedWithAddress,
   planFailedLoadRetry,
+  subscribeBrowserTabLoadRequests,
   wasBrowserTabOpenedWithAddress,
   type DevServerWaitRun,
 } from '@/lib/browser/devServerWait';
@@ -138,11 +139,12 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tab
    * Set while the tab's first load comes from saved state rather than from
    * someone opening it now. That load is not waited out; the next one is.
    */
-  const restoredLoadRef = React.useRef(Boolean(startUrl) && !wasBrowserTabOpenedWithAddress(tabID));
+  const tabDirectory = normalizeContextPanelDirectoryKey(directory);
+  const restoredLoadRef = React.useRef(Boolean(startUrl) && !wasBrowserTabOpenedWithAddress(tabDirectory, tabID));
   React.useEffect(() => {
     // Consumed by the first mount, so a later remount counts as restored.
-    forgetBrowserTabOpenedWithAddress(tabID);
-  }, [tabID]);
+    forgetBrowserTabOpenedWithAddress(tabDirectory, tabID);
+  }, [tabDirectory, tabID]);
   /** Set once this tab has seen a page that was not a startup error. */
   const servedOkRef = React.useRef(false);
   const openedAtRef = React.useRef(Date.now());
@@ -187,6 +189,8 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tab
   const loadUrl = React.useCallback((value: string) => {
     const next = normalizeBrowserUrl(value);
     if (next === BLANK_URL) return;
+    // Anything navigated here was asked for, even before the restored load settled.
+    restoredLoadRef.current = false;
     // The address bar shows what the user asked for; a tunnel only changes
     // where the bytes come from, and surfacing 127.0.0.1:<random> would be
     // confusing and useless to copy.
@@ -225,6 +229,8 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tab
           // The view still needs a src or the panel stays blank forever; it
           // gets a blank one, with the failure stated over it.
           setTunnelFailedUrl(startUrl);
+          // No restored load happens, so the next one must not be treated as it.
+          restoredLoadRef.current = false;
           setInitialSrc(BLANK_URL);
           return;
         }
@@ -574,6 +580,12 @@ const WebviewBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tab
     retunneledUrlsRef.current.clear();
     loadUrl(value);
   }, [loadUrl]);
+  // Opening an address this tab already has loads it again rather than only
+  // focusing the tab, so an earlier failure does not stay on screen.
+  React.useEffect(
+    () => subscribeBrowserTabLoadRequests(tabDirectory, tabID, loadUrlFromUser),
+    [loadUrlFromUser, tabDirectory, tabID],
+  );
   React.useEffect(() => {
     if (!webviewElement) return;
 
@@ -900,6 +912,11 @@ const IframeBrowser: React.FC<BrowserPaneProps> = ({ initialUrl, directory, tabI
   const [history, setHistory] = React.useState<string[]>(startUrl ? [startUrl] : []);
   const [historyIndex, setHistoryIndex] = React.useState(startUrl ? 0 : -1);
   const [reloadNonce, bumpReload] = React.useReducer((value: number) => value + 1, 0);
+  // Nothing here waits for a dev server, so a tab opened with an address only
+  // needs the mark dropped, keeping the session-only set from growing.
+  React.useEffect(() => {
+    forgetBrowserTabOpenedWithAddress(normalizeContextPanelDirectoryKey(directory), tabID);
+  }, [directory, tabID]);
 
   const persistUrl = React.useCallback((url: string) => {
     if (!url || url === BLANK_URL || !directory || !tabID) return;

@@ -5,6 +5,8 @@ import {
   forgetBrowserTabOpenedWithAddress,
   noteBrowserTabOpenedWithAddress,
   planFailedLoadRetry,
+  requestBrowserTabLoad,
+  subscribeBrowserTabLoadRequests,
   wasBrowserTabOpenedWithAddress,
 } from './devServerWait';
 
@@ -38,13 +40,29 @@ describe('dev server wait', () => {
 
   test('a tab opened with an address counts as opened now only until it has mounted', () => {
     const tabID = 'browser:http://localhost:8481/';
-    expect(wasBrowserTabOpenedWithAddress(tabID)).toBe(false);
+    expect(wasBrowserTabOpenedWithAddress('/repo', tabID)).toBe(false);
 
-    noteBrowserTabOpenedWithAddress(tabID);
-    expect(wasBrowserTabOpenedWithAddress(tabID)).toBe(true);
-    expect(wasBrowserTabOpenedWithAddress(tabID)).toBe(true);
+    noteBrowserTabOpenedWithAddress('/repo', tabID);
+    expect(wasBrowserTabOpenedWithAddress('/repo', tabID)).toBe(true);
+    expect(wasBrowserTabOpenedWithAddress('/repo', tabID)).toBe(true);
+    // The same address in another project is a different tab.
+    expect(wasBrowserTabOpenedWithAddress('/other', tabID)).toBe(false);
 
-    forgetBrowserTabOpenedWithAddress(tabID);
-    expect(wasBrowserTabOpenedWithAddress(tabID)).toBe(false);
+    forgetBrowserTabOpenedWithAddress('/repo', tabID);
+    expect(wasBrowserTabOpenedWithAddress('/repo', tabID)).toBe(false);
+  });
+
+  test('a load request reaches only the mounted tab it names, until it unsubscribes', () => {
+    const tabID = 'browser:http://localhost:5173/';
+    const loads: string[] = [];
+    const stop = subscribeBrowserTabLoadRequests('/repo', tabID, (url) => loads.push(url));
+
+    requestBrowserTabLoad('/repo', tabID, 'http://localhost:5173/');
+    requestBrowserTabLoad('/other', tabID, 'http://localhost:5173/');
+    expect(loads).toEqual(['http://localhost:5173/']);
+
+    stop();
+    requestBrowserTabLoad('/repo', tabID, 'http://localhost:5173/');
+    expect(loads).toEqual(['http://localhost:5173/']);
   });
 });
