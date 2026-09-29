@@ -23,18 +23,18 @@ describe('getLongErrorPreview', () => {
     const preview = getLongErrorPreview(`JSON parsing failed: ${'{"a":1}'.repeat(30_000)}`);
     expect(preview?.startsWith('JSON parsing failed: ')).toBe(true);
     expect(preview?.endsWith('…')).toBe(true);
-    expect(preview?.length).toBeLessThanOrEqual(601);
+    expect(preview?.length).toBeLessThanOrEqual(401);
   });
 
   test('cuts a long multi-line error to its first lines', () => {
     const lines = Array.from({ length: 200 }, (_, index) => `line ${index}`);
     const preview = getLongErrorPreview(lines.join('\n'));
-    expect(preview).toBe(`${lines.slice(0, 8).join('\n')}…`);
+    expect(preview).toBe(`${lines.slice(0, 6).join('\n')}…`);
   });
 
   test('does not split an emoji at the cut', () => {
-    const preview = getLongErrorPreview(`${'a'.repeat(599)}😀${'b'.repeat(2_000)}`);
-    expect(preview).toBe(`${'a'.repeat(599)}…`);
+    const preview = getLongErrorPreview(`${'a'.repeat(399)}😀${'b'.repeat(2_000)}`);
+    expect(preview).toBe(`${'a'.repeat(399)}…`);
   });
 });
 
