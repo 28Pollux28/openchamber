@@ -142,6 +142,8 @@ Für alles andere, was deine Seite direkt braucht, etwa Schriften oder Bilder vo
 
 Der Nutzer sieht sie im Bestätigungsdialog als Adressen, an die deine Erweiterung Daten senden und von denen sie Daten empfangen kann, und bestätigt sie erneut, wenn ein Update eine neue hinzufügt. Bestätigte Origins sind für `fetch`, Bilder, Schriften, Styles und Medien offen, aber nie für Skripte: Code muss in deinem Paket mitkommen. Der Origin der Seite ist `null`, daher muss der Server CORS für diesen Origin erlauben, damit du eine `fetch`-Antwort lesen kannst.
 
+Im [Enterprise-Modus](/security/) lässt sich eine Erweiterung mit `origins`, einer `integration` oder einem `service` nur aus einem Git-Repository installieren, das der Administrator freigegeben hat. Wenn deine Erweiterung ohne sie auskommt, bleibt sie für solche Teams installierbar. Um eine Erweiterung auf so einem Rechner zu entwickeln, bitte den Administrator um `allowLocalExtensions`; damit kannst du sie aus ihrem Ordner installieren.
+
 - `token`: Der Nutzer fügt auf der Karte unter Einstellungen → Integrationen einen API-Token ein. `apiOrigin` ist der einzige Origin, den `request` aufrufen darf. `account` ist optional: ein GET-Pfad und ein Feldname, damit die Karte anzeigen kann, wer verbunden ist. `scheme` sagt, wie der Token gesendet wird; siehe Tabelle unten. Prüfe in der API-Dokumentation des Anbieters, welchen Header sie erwartet.
 - `oauth`: Der Nutzer fügt eine Client-ID ein, und OpenChamber führt den Authorize-Flow durch. Braucht `authorizeUrl`, `tokenUrl` und `apiOrigin`.
 - `host: { "provider": "linear" }`: das in OpenChamber bereits verbundene Linear-Konto wiederverwenden. Keine Client-ID nötig.

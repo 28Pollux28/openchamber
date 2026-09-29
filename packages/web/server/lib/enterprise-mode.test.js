@@ -37,6 +37,8 @@ describe('enterprise policy', () => {
       relayUrl: null,
       jev: null,
       allowNetworkAccess: false,
+      allowedExtensions: [],
+      allowLocalExtensions: false,
     });
   });
 
@@ -63,6 +65,8 @@ describe('enterprise policy', () => {
       relayUrl: 'wss://relay.acme.test/ws',
       jev: { url: 'https://llm.acme.test/v1', model: 'acme-jev', apiKey: 'k' },
       allowNetworkAccess: false,
+      allowedExtensions: [],
+      allowLocalExtensions: false,
     });
   });
 
@@ -88,6 +92,15 @@ describe('enterprise policy', () => {
     } }));
     expect(policy.relayUrl).toBe('wss://relay.acme.test/ws');
     expect(policy.allowNetworkAccess).toBe(true);
+  });
+
+  it('takes allowed extension repositories from the file, or from the environment only when the file does not govern', () => {
+    const env = { OPENCHAMBER_ALLOWED_EXTENSIONS: 'https://github.com/me/ext, https://github.com/me/other' };
+    expect(readEnterprisePolicy(machine({ [LINUX_POLICY]: '{"enterpriseMode": true}' }, { env })).allowedExtensions).toEqual([]);
+    expect(readEnterprisePolicy(machine({ [LINUX_POLICY]: '{"enterpriseMode": true, "allowedExtensions": ["https://github.com/acme/ext"]}' }, { env })).allowedExtensions)
+      .toEqual(['https://github.com/acme/ext']);
+    expect(readEnterprisePolicy(machine({}, { env: { ...env, OPENCHAMBER_ENTERPRISE_MODE: '1' } })).allowedExtensions)
+      .toEqual(['https://github.com/me/ext', 'https://github.com/me/other']);
   });
 
   describe('network access', () => {
@@ -161,6 +174,12 @@ describe('enterprise policy', () => {
     const policy = readEnterprisePolicy(machine({ [LINUX_POLICY]: denied }));
     expect(policy.enterpriseMode).toBe(true);
     expect(policy.policyError).toContain('permission denied');
+  });
+
+  it('reads a file saved with a byte-order mark', () => {
+    const policy = readEnterprisePolicy(machine({ [LINUX_POLICY]: '\uFEFF{"enterpriseMode": true, "organization": "Acme"}' }));
+    expect(policy.policyError).toBeNull();
+    expect(policy.organization).toBe('Acme');
   });
 
   it('ignores unknown keys so newer policy files still apply', () => {
