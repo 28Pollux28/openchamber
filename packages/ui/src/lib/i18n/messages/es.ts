@@ -740,7 +740,7 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.group.worktreeMissing": "Falta la carpeta del worktree",
   "sessions.sidebar.project.folderMissing": "La carpeta del proyecto no existe o no está disponible",
   "sessions.sidebar.group.space": "Espacio aislado",
-  "sessions.sidebar.group.spaceStale": "El espacio no responde. Estas son las sesiones que informó por última vez.",
+  "sessions.sidebar.group.spaceStale": "El espacio no responde. Puede que las sesiones no estén al día.",
   "sessions.sidebar.grouping.spaceUnnamed": "Espacio aislado",
   "sessions.sidebar.sessionDialogs.worktree.label": "Worktree",
   "sessions.sidebar.sessionDialogs.worktree.pathUnavailable": "Ruta de worktree no disponible.",

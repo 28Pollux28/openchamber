@@ -739,7 +739,7 @@ export const dict = {
   'sessions.sidebar.group.worktreeMissing': 'Worktree-map ontbreekt',
   'sessions.sidebar.project.folderMissing': 'Projectmap ontbreekt of is niet beschikbaar',
   'sessions.sidebar.group.space': 'Geïsoleerde ruimte',
-  'sessions.sidebar.group.spaceStale': 'De ruimte reageert niet. Dit zijn de sessies die hij als laatste heeft gemeld.',
+  'sessions.sidebar.group.spaceStale': 'De ruimte reageert niet. Sessies zijn mogelijk verouderd.',
   'sessions.sidebar.grouping.spaceUnnamed': 'Geïsoleerde ruimte',
   'sessions.sidebar.sessionDialogs.worktree.label': 'Worktree',
   'sessions.sidebar.sessionDialogs.worktree.pathUnavailable': 'Worktreepad niet beschikbaar.',

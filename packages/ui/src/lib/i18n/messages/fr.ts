@@ -562,7 +562,7 @@ export const dict = {
   'sessions.sidebar.group.worktreeMissing': 'Le dossier du worktree est introuvable',
   'sessions.sidebar.project.folderMissing': 'Le dossier du projet est introuvable ou indisponible',
   'sessions.sidebar.group.space': 'Espace isolé',
-  'sessions.sidebar.group.spaceStale': 'L’espace ne répond pas. Voici les sessions qu’il a signalées en dernier.',
+  'sessions.sidebar.group.spaceStale': 'L’espace ne répond pas. Les sessions sont peut-être obsolètes.',
   'sessions.sidebar.grouping.spaceUnnamed': 'Espace isolé',
   'sessions.sidebar.sessionDialogs.worktree.label': 'Worktree',
   'sessions.sidebar.sessionDialogs.worktree.pathUnavailable': 'Chemin du worktree indisponible.',
