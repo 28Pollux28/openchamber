@@ -1851,6 +1851,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.sessionError.showStatus': 'OpenCode 상태 표시',
   'chat.sessionError.noReply': 'OpenCode가 이 메시지에 대한 응답을 시작하지 않았습니다.',
   'chat.sessionError.interrupted': 'OpenCode가 이 응답을 중단했습니다.',
+  'chat.longError.expand': '전체 오류 보기',
+  'chat.longError.collapse': '간략히 보기',
   'chat.goal.dialog.titleCreate': '세션 목표 설정',
   'chat.goal.dialog.titleManage': '세션 목표',
   'chat.goal.dialog.objectiveLabel': '목표',

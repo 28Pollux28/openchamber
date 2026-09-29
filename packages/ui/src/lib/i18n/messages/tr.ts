@@ -1810,6 +1810,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'OpenCode durumunu göster',
   'chat.sessionError.noReply': 'OpenCode bu mesaja yanıt vermeye başlamadı.',
   'chat.sessionError.interrupted': 'OpenCode bu yanıtı kesti.',
+  'chat.longError.expand': 'Hatanın tamamını göster',
+  'chat.longError.collapse': 'Daha az göster',
   'chat.goal.dialog.titleCreate': 'Session hedefi belirle',
   'chat.goal.dialog.titleManage': 'Session hedefi',
   'chat.goal.dialog.objectiveLabel': 'Amaç',

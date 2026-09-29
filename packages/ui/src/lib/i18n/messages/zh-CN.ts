@@ -1815,6 +1815,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.sessionError.showStatus': '显示 OpenCode 状态',
   'chat.sessionError.noReply': 'OpenCode 没有开始回复这条消息。',
   'chat.sessionError.interrupted': 'OpenCode 中断了此回复。',
+  'chat.longError.expand': '显示完整错误',
+  'chat.longError.collapse': '收起',
   'chat.goal.dialog.titleCreate': '设置会话目标',
   'chat.goal.dialog.titleManage': '会话目标',
   'chat.goal.dialog.objectiveLabel': '目标',

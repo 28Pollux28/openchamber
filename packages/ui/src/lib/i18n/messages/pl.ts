@@ -2484,6 +2484,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.sessionError.showStatus': 'Pokaż status OpenCode',
   'chat.sessionError.noReply': 'OpenCode nie rozpoczął odpowiedzi na tę wiadomość.',
   'chat.sessionError.interrupted': 'OpenCode przerwał tę odpowiedź.',
+  'chat.longError.expand': 'Pokaż cały błąd',
+  'chat.longError.collapse': 'Pokaż mniej',
   'chat.goal.dialog.titleCreate': 'Ustaw cel sesji',
   'chat.goal.dialog.titleManage': 'Cel sesji',
   'chat.goal.dialog.objectiveLabel': 'Cel',

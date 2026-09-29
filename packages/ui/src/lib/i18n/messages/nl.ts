@@ -1849,6 +1849,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'OpenCode-status tonen',
   'chat.sessionError.noReply': 'OpenCode is geen antwoord op dit bericht begonnen.',
   'chat.sessionError.interrupted': 'OpenCode heeft dit antwoord onderbroken.',
+  'chat.longError.expand': 'Volledige fout tonen',
+  'chat.longError.collapse': 'Minder tonen',
   'chat.goal.dialog.titleCreate': 'Goal voor sessie instellen',
   'chat.goal.dialog.titleManage': 'Goal voor sessie',
   'chat.goal.dialog.objectiveLabel': 'Doelstelling',
