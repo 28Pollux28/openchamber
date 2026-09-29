@@ -10,9 +10,8 @@ import { SherpaSegmentTranscriptionSession } from './sherpa-recognizer.js';
  * correct if the session can hand the segment back without decoding it.
  *
  * If takePendingSegment() ever starts decoding inline again, a long segment
- * (measured: 300s -> 115s decode) would block the worker's IPC past the
- * parent's request timeout again — the exact "Dictation worker request timed
- * out: session.commit" failure.
+ * would block the worker's IPC past the parent's request timeout again — the
+ * exact "Dictation worker request timed out: session.commit" failure.
  */
 
 class RecordingEngine {

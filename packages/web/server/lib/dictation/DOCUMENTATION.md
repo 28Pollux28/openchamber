@@ -41,7 +41,7 @@ response carries `X-Speech-Model` and `X-Speech-Language`.
   the generic OpenCode proxy so routes are not shadowed.
 - `stream-manager.js` — `DictationStreamManager`, one per WS connection.
   Chunk reordering by `seq` + ack, resampling to the provider rate, segment
-  splitting, silence suppression by PCM peak, partial-transcript
+  splitting inside pauses, silence suppression by PCM peak, partial-transcript
   concatenation, adaptive finalization timeout.
 - `service.js` — provider resolution and readiness. Providers:
   - `local` (default): sherpa-onnx Parakeet TDT in a forked worker process.
@@ -58,8 +58,8 @@ response carries `X-Speech-Model` and `X-Speech-Language`.
   recognizer engine and segment session (one decode per committed segment),
   model catalog and downloader. The native `sherpa-onnx-node` addon is only
   ever loaded inside the worker process.
-- `audio.js` — PCM16 helpers: format parsing, peak, WAV wrapping, streaming
-  linear resampler.
+- `audio.js` — PCM16 helpers: format parsing, peak, per-frame RMS, WAV
+  wrapping, streaming linear resampler.
 
 ## WebSocket protocol (JSON text frames)
 
@@ -78,10 +78,21 @@ openaiCompatible?: { baseUrl, model, apiKey } }`.
 ## Segmentation
 
 A dictation is one segment unless it runs long. Past `segmentMinSeconds`
-(15 s) the manager commits on the first silent chunk, so cuts land at a pause
-rather than mid-word; `segmentMaxSeconds` (25 s) is a hard cap for speech with
-no pause in it. Client chunks are ~1 s, so "silent chunk" is roughly a second
-of silence.
+(15 s) the manager cuts inside the first pause it finds, so cuts land between
+words; `segmentMaxSeconds` (25 s) is a hard cap for speech with no pause in it.
+
+Pauses are found inside each ~1 s client chunk, not at chunk boundaries: the
+chunk is scored in 50 ms RMS frames; a frame is quiet when it is close to the
+stream's noise floor (the quietest frame in the last ~10 s, so a fan or a
+boosted mic does not hide every pause and a silent first second from a gated
+mic is soon forgotten) and well below its loudest frame (so soft speech does
+not pass for a pause), a pause is a quiet run of at least 200 ms, and the cut
+goes into the middle of that run — a pause that straddles two chunks still
+counts, cut at the chunk boundary when its middle already went by. At the
+hard cap the cut goes into the quietest frame of the chunk that crosses it.
+Bytes before the cut end the committed segment, bytes after it start the next
+one; the client's `seq` and ack are untouched because the whole chunk is
+consumed either way.
 
 The bounds exist because Parakeet is a full-attention conformer: decode cost
 and peak memory grow quadratically with segment length. Measured on Parakeet
