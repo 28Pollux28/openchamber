@@ -28,6 +28,11 @@ it rebuilt a catalog. The sync layer calls it from `reloadCatalog`; see
 pending-restart queue: config mutations take effect as soon as OpenCode has
 re-read the file, and only the OpenCode binary path restarts the server.
 
+The agents store counts load generations: `invalidateAgentsLoadCache` starts a
+new one, and a load never joins a read that began in an older generation. It
+waits for that read and reads again, so a refresh after a delete cannot be
+answered by the read the delete itself started.
+
 Plugin catalogs carry `loadedDirectory` and `loadedRuntimeKey`, the owner of
 the installed list. The editor waits for that directory's catalog before hydrating a draft;
 plugin IDs alone are not unique across projects. Catalog requests and their
