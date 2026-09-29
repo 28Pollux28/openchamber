@@ -1660,6 +1660,8 @@ export const dict = {
   'chat.sessionError.showStatus': 'OpenCode-Status anzeigen',
   'chat.sessionError.noReply': 'OpenCode hat keine Antwort auf diese Nachricht begonnen.',
   'chat.sessionError.interrupted': 'OpenCode hat diese Antwort unterbrochen.',
+  'chat.longError.expand': 'Vollständigen Fehler anzeigen',
+  'chat.longError.collapse': 'Weniger anzeigen',
   'chat.goal.dialog.titleCreate': 'Sitzungsziel festlegen',
   'chat.goal.dialog.titleManage': 'Sitzungsziel',
   'chat.goal.dialog.objectiveLabel': 'Ziel',
