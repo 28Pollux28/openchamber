@@ -21,12 +21,14 @@ export const SpaceApplyButton: React.FC<{ directory: string | null | undefined; 
   const enabled = useUIStore((state) => state.isolatedSpacesEnabled);
   const spaceId = spaceIdOfDirectory(directory);
   const applicable = useSpacesStore((state) => isSpaceApplicable(spaceId ? state.journey?.get(spaceId) : undefined));
+  // As the group's menu: nothing new starts while another action on the space runs.
+  const busy = useSpacesStore((state) => (spaceId ? state.actions.get(spaceId)?.kind === 'running' : false));
   if (!enabled || !spaceId || !applicable || isVSCodeRuntime()) return null;
   const label = t('spaces.header.apply');
   return (
     <Tooltip>
       <TooltipTrigger asChild>
-        <button type="button" aria-label={label} onClick={() => useSpacesStore.getState().openApplyDialog(spaceId)} className={className}>
+        <button type="button" aria-label={label} disabled={busy} onClick={() => useSpacesStore.getState().openApplyDialog(spaceId)} className={className}>
           <Icon name="git-merge" className={iconClassName} />
         </button>
       </TooltipTrigger>

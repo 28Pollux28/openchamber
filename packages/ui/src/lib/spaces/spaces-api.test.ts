@@ -137,7 +137,7 @@ describe('the journal and opened domains', () => {
   test('parses what an apply would do, and keeps the file a refusal names', async () => {
     const paths = { count: 0, paths: [] };
     answer(200, JSON.stringify({ result: 'c'.repeat(40), changedPaths: 3, changedBytes: 2048, nestedRepositories: paths, unmerged: { count: 101, paths: ['a.txt'] }, changesRoute: 'open', lastApplied: null, newPaths: 3, newPathsOverLimit: false, newPathsUndecided: false, interruptedApply: false }));
-    expect(await previewSpaceApply(ID)).toEqual({ changedPaths: 3, changedBytes: 2048, nestedRepositories: paths, unmerged: { count: 101, paths: ['a.txt'] }, changesRoute: 'open', lastApplied: null, newPaths: 3 });
+    expect(await previewSpaceApply(ID)).toEqual({ changedPaths: 3, changedBytes: 2048, nestedRepositories: paths, unmerged: { count: 101, paths: ['a.txt'] }, changesRoute: 'open', lastApplied: null, newPaths: 3, newPathsUndecided: false });
 
     const seen = answer(409, JSON.stringify({ code: 'name_not_allowed_here', message: 'The agent made CON', details: { path: 'CON', rule: 'reserved', other: null } }));
     const refusal = await applySpaceWork(ID, { as: 'changes', removeAfterwards: false }).catch((error: Error) => error);

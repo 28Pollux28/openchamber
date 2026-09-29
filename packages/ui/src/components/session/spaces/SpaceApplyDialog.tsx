@@ -63,6 +63,7 @@ const ApplyDialogFor: React.FC<{ spaceId: string }> = ({ spaceId }) => {
   const [applying, setApplying] = React.useState(false);
   const [refusal, setRefusal] = React.useState<SpaceApplyRefusal | null>(null);
   const [starting, setStarting] = React.useState(false);
+  const [startFailure, setStartFailure] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     const controller = new AbortController();
@@ -92,9 +93,13 @@ const ApplyDialogFor: React.FC<{ spaceId: string }> = ({ spaceId }) => {
   const start = async () => {
     setStarting(true);
     setRefusal(null);
+    setStartFailure(null);
     await runSpaceAction(spaceId, 'start');
     setStarting(false);
-    setReadCount((count) => count + 1);
+    // The start's own reason, which otherwise shows only on the group's status line.
+    const after = useSpacesStore.getState().actions.get(spaceId);
+    if (after?.kind === 'failed' && after.action === 'start') setStartFailure(spaceFailureText(t, after.failure));
+    else setReadCount((count) => count + 1);
   };
 
   const apply = async () => {
@@ -120,6 +125,10 @@ const ApplyDialogFor: React.FC<{ spaceId: string }> = ({ spaceId }) => {
   const refusalText = (shown: SpaceApplyRefusal): string => {
     switch (shown.kind) {
       case 'changes_closed': return t('spaces.apply.refused.changesClosed');
+      case 'part_thrown_away': return t('spaces.apply.refused.partThrownAway');
+      case 'ignored_in_the_way': return t('spaces.apply.refused.ignoredInTheWay', { path: shown.path });
+      case 'filtered_in_the_way': return t('spaces.apply.refused.filteredInTheWay');
+      case 'undecided': return t('spaces.apply.refused.undecided');
       case 'partly_applied': return t('spaces.apply.refused.partlyApplied');
       case 'nothing_to_apply': return t('spaces.apply.refused.nothingNew');
       case 'too_large': return t('spaces.apply.refused.tooLarge');
@@ -142,6 +151,8 @@ const ApplyDialogFor: React.FC<{ spaceId: string }> = ({ spaceId }) => {
     </div>
   );
 
+  // A stopped space whose network filter is gone never starts again (see "Repair").
+  const gatekeeperGone = useSpacesStore((state) => state.journey?.get(spaceId)?.damage === 'gatekeeper_gone');
   const branchRefusal = refusal?.kind === 'branch_exists' || refusal?.kind === 'invalid_branch' ? refusal : null;
   const topRefusal = refusal && !branchRefusal ? refusal : read.kind === 'refused' ? read.refusal : null;
 
@@ -163,8 +174,10 @@ const ApplyDialogFor: React.FC<{ spaceId: string }> = ({ spaceId }) => {
       {agentWorking ? <p className="typography-meta text-status-warning">{t('spaces.apply.agentWorking')}</p> : null}
       {topRefusal ? (
         <div className="space-y-2">
-          <p className="typography-meta text-status-error">{refusalText(topRefusal)}</p>
-          {topRefusal.kind === 'not_running' ? (
+          <p className="typography-meta text-status-error">{topRefusal.kind === 'not_running' && gatekeeperGone ? t('spaces.failure.gatekeeperGone') : refusalText(topRefusal)}</p>
+          {topRefusal.kind === 'part_thrown_away' ? pathList(t('spaces.apply.refused.partThrownAwayFiles'), topRefusal.stillThere) : null}
+          {startFailure ? <p className="typography-meta text-status-error">{startFailure}</p> : null}
+          {topRefusal.kind === 'not_running' && !gatekeeperGone ? (
             <Button variant="outline" size="xs" onClick={() => void start()} disabled={starting} className="gap-1.5">
               {starting ? <Icon name="loader-4" className="h-3.5 w-3.5 animate-spin" /> : null}
               {t('spaces.actions.start')}
@@ -211,7 +224,8 @@ const ApplyDialogFor: React.FC<{ spaceId: string }> = ({ spaceId }) => {
               ) : null}
               {option('changes', t('spaces.apply.as.changes'), changesClosed)}
               {changesClosed ? <p className="pl-6 typography-meta text-muted-foreground">{t('spaces.apply.changes.closed')}</p> : null}
-              {!changesClosed && sinceLastApply ? <p className="pl-6 typography-meta text-muted-foreground">{sinceLastApply}</p> : null}
+              {!changesClosed && preview.newPathsUndecided ? <p className="pl-6 typography-meta text-status-warning">{t('spaces.apply.changes.undecided')}</p> : null}
+              {!changesClosed && !preview.newPathsUndecided && sinceLastApply ? <p className="pl-6 typography-meta text-muted-foreground">{sinceLastApply}</p> : null}
             </div>
           )}
 
@@ -239,7 +253,7 @@ const ApplyDialogFor: React.FC<{ spaceId: string }> = ({ spaceId }) => {
 
   if (isMobile) {
     return (
-      <MobileOverlayPanel open title={title} onClose={close} footer={footer}>
+      <MobileOverlayPanel open title={title} onClose={() => { if (!applying) close(); }} footer={footer}>
         <div className="px-3 pb-4 pt-1">{body}</div>
       </MobileOverlayPanel>
     );

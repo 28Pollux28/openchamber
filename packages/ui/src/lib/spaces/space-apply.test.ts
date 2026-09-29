@@ -63,12 +63,23 @@ describe('what an apply was refused for', () => {
   const refused = (code: string, details = {}) => applyRefusalOf(new SpacesRequestError(code, 'from the host', 409, details), 'fix-login');
 
   test('the refusals that close the way of uncommitted changes turn the dialog to the branch', () => {
-    for (const code of ['changes_do_not_apply', 'changes_route_closed', 'changes_blocked_by_link', 'changes_undecided']) {
+    for (const code of ['changes_do_not_apply', 'changes_route_closed', 'changes_blocked_by_link']) {
       expect(refused(code)).toEqual({ kind: 'changes_closed' });
     }
+    expect(refused('changes_undecided')).toEqual({ kind: 'undecided' });
+    for (const code of ['changes_undecided', 'changes_do_not_apply']) expect(closesChanges(refused(code))).toBe(true);
     expect(refused('changes_partly_applied')).toEqual({ kind: 'partly_applied' });
     expect(closesChanges(refused('changes_route_closed'))).toBe(true);
     expect(closesChanges(refused('changes_partly_applied'))).toBe(true);
+  });
+
+  test('keeps the cases whose next step differs: part thrown away names the files in the way of the branch', () => {
+    const stillThere = { count: 2, paths: ['src/a.js', 'src/b.js'] };
+    const partly = refused('changes_do_not_apply', { thrownAway: { count: 1, paths: ['README.md'] }, stillThere });
+    expect(partly).toEqual({ kind: 'part_thrown_away', stillThere });
+    expect(refused('changes_do_not_apply', { ignoredInTheWay: { count: 1, paths: ['.env.local'] } })).toEqual({ kind: 'ignored_in_the_way', path: '.env.local' });
+    expect(refused('changes_do_not_apply', { filteredInTheWay: { count: 1, paths: ['big.bin'] } })).toEqual({ kind: 'filtered_in_the_way' });
+    for (const refusal of [partly, refused('changes_do_not_apply', { filteredInTheWay: { count: 1, paths: ['x'] } })]) expect(closesChanges(refusal)).toBe(true);
   });
 
   test('the refusals that leave that way open do not', () => {

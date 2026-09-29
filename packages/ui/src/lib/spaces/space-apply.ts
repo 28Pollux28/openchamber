@@ -9,7 +9,7 @@
 // deleted afterwards unless the user asks.
 
 import { useGlobalSessionStatusStore } from '@/sync/global-session-status';
-import { applySpaceWork, SpacesRequestError, type SpaceApplyOutcome, type SpaceApplyRequest, type SpaceFailure } from './spaces-api';
+import { applySpaceWork, SpacesRequestError, type SpaceApplyOutcome, type SpaceApplyRequest, type SpaceFailure, type SpaceFailureDetails, type SpaceReportedPaths } from './spaces-api';
 import { forgetRemovedSpace } from './space-repair';
 import { refreshSpacesJourney, spacesRuntimeGeneration, useSpacesStore } from './spaces-store';
 
@@ -41,6 +41,10 @@ export const branchNameOfSpace = (name: string): string => {
  */
 export type SpaceApplyRefusal =
   | { kind: 'changes_closed' }
+  | { kind: 'part_thrown_away'; stillThere: SpaceReportedPaths }
+  | { kind: 'ignored_in_the_way'; path: string }
+  | { kind: 'filtered_in_the_way' }
+  | { kind: 'undecided' }
   | { kind: 'partly_applied' }
   | { kind: 'nothing_to_apply' }
   | { kind: 'too_large' }
@@ -52,14 +56,27 @@ export type SpaceApplyRefusal =
   | { kind: 'other'; failure: SpaceFailure };
 
 // The refusals after which the host applies this space only as a branch; see "Apply" in the
-// module documentation of `packages/web/server/lib/spaces`.
-const CLOSING = new Set(['changes_do_not_apply', 'changes_route_closed', 'changes_blocked_by_link', 'changes_undecided']);
+// module documentation of `packages/web/server/lib/spaces`. The route is told once, at the
+// refusal (decision 7), so the cases whose next step differs keep a sentence of their own: part of
+// the last apply thrown away leaves files that stand in the way of the branch, a file git ignores
+// or one a filter such as Git LFS keeps was there before the space, and a read that ran out of
+// time says nothing about whether the work fits.
+const CLOSING = new Set(['changes_do_not_apply', 'changes_route_closed', 'changes_blocked_by_link']);
+
+const closingRefusalOf = (details: SpaceFailureDetails): SpaceApplyRefusal => {
+  if (details.stillThere && details.stillThere.count > 0) return { kind: 'part_thrown_away', stillThere: details.stillThere };
+  const ignored = details.ignoredInTheWay?.paths[0];
+  if (ignored) return { kind: 'ignored_in_the_way', path: ignored };
+  if (details.filteredInTheWay && details.filteredInTheWay.count > 0) return { kind: 'filtered_in_the_way' };
+  return { kind: 'changes_closed' };
+};
 
 export const applyRefusalOf = (error: Error, branch: string | null): SpaceApplyRefusal => {
   if (!(error instanceof SpacesRequestError)) return { kind: 'other', failure: { code: 'space_request_failed', message: error.message } };
   const { code, details } = error;
-  if (CLOSING.has(code)) return { kind: 'changes_closed' };
+  if (CLOSING.has(code)) return closingRefusalOf(details);
   switch (code) {
+    case 'changes_undecided': return { kind: 'undecided' };
     case 'changes_partly_applied': return { kind: 'partly_applied' };
     case 'nothing_to_apply': return { kind: 'nothing_to_apply' };
     case 'changes_too_large':
@@ -78,7 +95,17 @@ export const applyRefusalOf = (error: Error, branch: string | null): SpaceApplyR
 };
 
 /** Whether a refusal leaves the space applicable only as a branch from now on. */
-export const closesChanges = (refusal: SpaceApplyRefusal): boolean => refusal.kind === 'changes_closed' || refusal.kind === 'partly_applied';
+export const closesChanges = (refusal: SpaceApplyRefusal): boolean => {
+  switch (refusal.kind) {
+    case 'changes_closed':
+    case 'part_thrown_away':
+    case 'ignored_in_the_way':
+    case 'filtered_in_the_way':
+    case 'undecided':
+    case 'partly_applied': return true;
+    default: return false;
+  }
+};
 
 const insideSpace = (directory: string, spaceId: string): boolean => {
   const root = `/spaces/${spaceId}`;

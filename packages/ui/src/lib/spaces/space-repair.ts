@@ -68,10 +68,12 @@ export const spaceMenuActionsOf = (entry: SpaceEntry | undefined): SpaceAction[]
 };
 
 /**
- * Whether the space's work can be applied from its menu: a space whose container exists, running
- * or stopped. A stopped one is started from the apply dialog, which says why.
+ * Whether the space's work can be applied from its menu: a running space, or a stopped one that a
+ * start brings back, which the apply dialog offers. A stopped space whose gatekeeper is gone never
+ * starts again, so its work cannot be reached.
  */
-export const isSpaceApplicable = (entry: SpaceEntry | undefined): boolean => entry?.state === 'running' || entry?.state === 'exited';
+export const isSpaceApplicable = (entry: SpaceEntry | undefined): boolean => entry?.state === 'running'
+  || (entry?.state === 'exited' && entry.damage !== 'gatekeeper_gone');
 
 /** An action of the menu that cannot run now: the setup commands again while they still run. */
 export const isSpaceActionUnavailable = (entry: SpaceEntry | undefined, action: SpaceAction): boolean => (

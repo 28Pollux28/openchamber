@@ -18,13 +18,22 @@ const failureSchema = z.object({
 
 export type SpaceFailure = z.infer<typeof failureSchema>;
 
+// Paths the space reports, at most a hundred of them, with how many there are in all.
+const reportedPathsSchema = z.object({ count: z.number().int().min(0), paths: z.array(z.string()) });
+
+export type SpaceReportedPaths = z.infer<typeof reportedPathsSchema>;
+
 // What a refusal names beside its code, where the screen shows it: the file an apply refused
-// (`path`, and `other` for a name that differs only in case) and the branch in the way. Paths come
-// from the space, so they are text to show.
+// (`path`, and `other` for a name that differs only in case), the branch in the way, and for a
+// refusal that closes the way of uncommitted changes the files it was about. Paths come from the
+// space or the user's project, so they are text to show.
 const failureDetailsSchema = z.object({
   path: z.string().optional(),
   other: z.string().nullable().optional(),
   branch: z.string().optional(),
+  stillThere: reportedPathsSchema.optional(),
+  ignoredInTheWay: reportedPathsSchema.optional(),
+  filteredInTheWay: reportedPathsSchema.optional(),
 });
 
 export type SpaceFailureDetails = z.infer<typeof failureDetailsSchema>;
@@ -282,11 +291,6 @@ export const readSpaceSetup = (spaceId: string, signal?: AbortSignal): Promise<S
 export const removeSpace = (spaceId: string): Promise<SpaceRemoval> =>
   request(`${SPACES_ROUTE}/${spaceId}`, removalSchema, { method: 'DELETE' });
 
-// Paths the space reports, at most a hundred of them, with how many there are in all.
-const reportedPathsSchema = z.object({ count: z.number().int().min(0), paths: z.array(z.string()) });
-
-export type SpaceReportedPaths = z.infer<typeof reportedPathsSchema>;
-
 // What an apply would do, read while the dialog is open: the work brought out of the space now, and
 // where the space stands for an apply as uncommitted changes. `changedPaths` counts against the
 // space's start; `newPaths` is what the next apply as changes writes, null when it cannot be told.
@@ -298,6 +302,8 @@ const applyPreviewSchema = z.object({
   changesRoute: z.enum(['open', 'closed']),
   lastApplied: z.string().nullable(),
   newPaths: z.number().int().min(0).nullable(),
+  // Reading the project back ran out of time: an apply as changes would be refused.
+  newPathsUndecided: z.boolean().default(false),
 });
 
 export type SpaceApplyPreview = z.infer<typeof applyPreviewSchema>;
