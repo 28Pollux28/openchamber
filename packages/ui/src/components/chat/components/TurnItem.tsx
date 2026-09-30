@@ -13,15 +13,17 @@ interface TurnItemProps {
 /**
  * The sticky user header paints the chat background so assistant content scrolling
  * underneath disappears behind it. The soft edge lives in the header's own background
- * instead of an overlay below it: the bottom 0.75rem of the header box fades the
+ * instead of an overlay below it: the bottom 2.25rem of the header box fades the
  * background out, and that strip sits over the empty space the user bubble already
- * reserves below itself. At rest the strip reveals the identical page background
- * (`--background` is generated from the same `surface.background` token), so it is
- * invisible and can never wash over the assistant content that follows.
+ * reserves below itself (the 44px gap that also hosts its hover action row, so the
+ * solid background still ends 8px under the bubble). At rest the strip reveals the
+ * identical page background (`--background` is generated from the same
+ * `surface.background` token), so it is invisible and can never wash over the
+ * assistant content that follows.
  */
 const STICKY_HEADER_BACKGROUND: React.CSSProperties = {
     backgroundImage:
-        'linear-gradient(to bottom, var(--surface-background) calc(100% - 0.75rem), transparent)',
+        'linear-gradient(to bottom, var(--surface-background) calc(100% - 2.25rem), transparent)',
 };
 
 const TurnItem: React.FC<TurnItemProps> = ({ turn, stickyUserHeader = true, renderMessage, assistantContent }) => {
