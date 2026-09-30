@@ -705,6 +705,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': '删除已归档会话',
   'sessions.sidebar.group.actions.deleteGroupAria': '删除 {label}',
   'sessions.sidebar.group.actions.deleteWorktree': '删除工作树',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': '删除工作树和本地分支',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': '删除 {label} 及其本地分支',
   'sessions.sidebar.group.actions.newDraftInGroupAria': '在 {label} 中新建草稿会话',
   'sessions.sidebar.grouping.projectRoot': '项目根目录',
   'sessions.sidebar.grouping.projectRootWithBranch': '项目根目录：{branch}',

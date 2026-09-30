@@ -527,6 +527,8 @@ export const dict = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': 'Supprimer les sessions archivées',
   'sessions.sidebar.group.actions.deleteGroupAria': 'Supprimer {label}',
   'sessions.sidebar.group.actions.deleteWorktree': 'Supprimer ce worktree',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': 'Supprimer ce worktree et la branche locale',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': 'Supprimer {label} et sa branche locale',
   'sessions.sidebar.group.actions.newDraftInGroupAria': 'Nouvelle session de brouillon dans {label}',
   'sessions.sidebar.grouping.projectRoot': 'racine du projet',
   'sessions.sidebar.grouping.projectRootWithBranch': 'racine du projet : {branch}',

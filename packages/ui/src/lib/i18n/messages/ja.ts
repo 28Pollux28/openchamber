@@ -705,6 +705,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': 'アーカイブ済みセッションを削除',
   'sessions.sidebar.group.actions.deleteGroupAria': '{label}を削除',
   'sessions.sidebar.group.actions.deleteWorktree': 'ワークツリーを削除',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': 'ワークツリーとローカルブランチを削除',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': '{label}とそのローカルブランチを削除',
   'sessions.sidebar.group.actions.newDraftInGroupAria': '{label}で新しい下書きセッション',
   'sessions.sidebar.grouping.projectRoot': 'プロジェクトルート',
   'sessions.sidebar.grouping.projectRootWithBranch': 'プロジェクトルート: {branch}',

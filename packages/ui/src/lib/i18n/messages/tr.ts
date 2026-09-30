@@ -685,6 +685,8 @@ export const dict = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': 'Arşivlenmiş session\'ları sil',
   'sessions.sidebar.group.actions.deleteGroupAria': '{label} öğesini sil',
   'sessions.sidebar.group.actions.deleteWorktree': 'Worktree\'yi sil',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': 'Worktree\'yi ve yerel branch\'i sil',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': '{label} öğesini ve yerel branch\'ini sil',
   'sessions.sidebar.group.actions.newDraftInGroupAria': '{label} içinde yeni taslak session',
   'sessions.sidebar.grouping.projectRoot': 'proje kökü',
   'sessions.sidebar.grouping.projectRootWithBranch': 'proje kökü: {branch}',

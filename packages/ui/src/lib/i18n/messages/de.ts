@@ -616,6 +616,8 @@ export const dict = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': 'Archivierte Sitzungen löschen',
   'sessions.sidebar.group.actions.deleteGroupAria': '{label} löschen',
   'sessions.sidebar.group.actions.deleteWorktree': 'Worktree löschen',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': 'Worktree und lokalen Branch löschen',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': '{label} und den lokalen Branch löschen',
   'sessions.sidebar.group.actions.newDraftInGroupAria': 'Neue Entwurfs-Sitzung in {label}',
   'sessions.sidebar.grouping.projectRoot': 'Projektstamm',
   'sessions.sidebar.grouping.projectRootWithBranch': 'Projektstamm: {branch}',
