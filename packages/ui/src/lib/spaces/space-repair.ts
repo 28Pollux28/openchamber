@@ -72,10 +72,11 @@ export const spaceMenuActionsOf = (entry: SpaceEntry | undefined): SpaceAction[]
 /**
  * Whether the space's work can be applied from its menu: a running space, or a stopped one that a
  * start brings back, which the apply dialog offers. A stopped space whose gatekeeper is gone never
- * starts again, so its work cannot be reached.
+ * starts again, so its work cannot be reached. Nor can a space whose project folder is gone from
+ * the host: its work has nowhere to go.
  */
-export const isSpaceApplicable = (entry: SpaceEntry | undefined): boolean => entry?.state === 'running'
-  || (entry?.state === 'exited' && entry.damage !== 'gatekeeper_gone');
+export const isSpaceApplicable = (entry: SpaceEntry | undefined): boolean => entry?.projectFolder.found !== false
+  && (entry?.state === 'running' || (entry?.state === 'exited' && entry.damage !== 'gatekeeper_gone'));
 
 /** An action of the menu that cannot run now: the setup commands again while they still run. */
 export const isSpaceActionUnavailable = (entry: SpaceEntry | undefined, action: SpaceAction): boolean => (

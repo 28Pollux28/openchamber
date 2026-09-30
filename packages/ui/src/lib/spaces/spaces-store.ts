@@ -7,6 +7,7 @@ import { create } from 'zustand';
 import { z } from 'zod';
 
 import { listSpaces, type SpaceEntry, type SpaceFailure, type SpaceGrant } from './spaces-api';
+import { normalizePath } from '@/lib/pathNormalization';
 import type { SpaceProgress } from '@/sync/event-pipeline';
 
 /**
@@ -286,4 +287,39 @@ export const useSidebarSpaces = (): SpaceMark[] => {
   const marks = useSpacesStore((state) => state.spaces);
   const journey = useSpacesStore((state) => state.journey);
   return React.useMemo(() => mergeSidebarSpaces(marks, journey), [journey, marks]);
+};
+
+/** The spaces of one registered project, in the host's order, for its spaces page (journey step 9). */
+export const spacesOfProject = (journey: ReadonlyMap<string, SpaceEntry>, projectPath: string): SpaceEntry[] => {
+  const project = normalizePath(projectPath);
+  return Array.from(journey.values()).filter((entry) => project !== null && normalizePath(entry.projectDirectory) === project);
+};
+
+/**
+ * The spaces whose project is no longer registered on this host: removed from OpenChamber, or
+ * added again under another path. Nothing else lists them, so Settings does.
+ */
+export const spacesWithoutProject = (journey: ReadonlyMap<string, SpaceEntry>): SpaceEntry[] => (
+  Array.from(journey.values()).filter((entry) => entry.projectDirectory === null)
+);
+
+/**
+ * How a screen that lists spaces stands with the journey list: it asks for a fresh read when it
+ * opens, shows what the store already holds meanwhile, and a read that failed is kept apart from
+ * the list, so it never reads as "no spaces".
+ */
+type SpacesJourneyRead = { journey: ReadonlyMap<string, SpaceEntry> | null; error: Error | null };
+
+export const useSpacesJourneyRead = (): SpacesJourneyRead => {
+  const journey = useSpacesStore((state) => state.journey);
+  const [error, setError] = React.useState<Error | null>(null);
+  React.useEffect(() => {
+    let current = true;
+    refreshSpacesJourney().then(
+      () => { if (current) setError(null); },
+      (failure: Error) => { if (current) setError(failure); },
+    );
+    return () => { current = false; };
+  }, []);
+  return { journey, error };
 };

@@ -133,6 +133,10 @@ const spaceEntrySchema = z.object({
   name: z.string(),
   projectDirectory: z.string().nullable(),
   directory: z.string().nullable(),
+  // The folder the space was made for, on the host, which a space whose project is no longer
+  // registered still names; `found` is whether it is there now, null when not looked at. A host
+  // before 5e-3 names none.
+  projectFolder: z.object({ path: z.string().nullable(), found: z.boolean().nullable() }).default({ path: null, found: null }),
   state: z.enum(['preparing', 'running', 'exited', 'missing', 'failed']),
   // A stopped space that stopped itself after the idle hours, rather than by a hand or a crash.
   stoppedIdle: z.boolean().default(false),

@@ -169,7 +169,14 @@ const useArchivedNotice = () => {
       return;
     }
     toast.success(text, {
-      action: { label: t('spaces.archive.noticeOpen'), onClick: () => useUIStore.getState().setArchivePageOpen(true) },
+      // A space deleted from Settings: the Archive page would open behind its window.
+      action: {
+        label: t('spaces.archive.noticeOpen'),
+        onClick: () => {
+          useUIStore.getState().setSettingsDialogOpen(false);
+          useUIStore.getState().setArchivePageOpen(true);
+        },
+      },
     });
   }, [isMobile, name, t]);
 };

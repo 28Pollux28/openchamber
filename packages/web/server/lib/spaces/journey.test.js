@@ -78,7 +78,11 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
       return { spacePath: `/spaces/${request.spaceId}/project`, projectPath: `/spaces/${request.spaceId}/project`, base: BASE, identityCopied: { name: true, email: false } };
     },
     sendHistory: async (request) => { calls.push(['sendHistory', request]); fail('sendHistory'); return { status: historyStatus }; },
-    removeSpaceRefs: async (request) => { calls.push(['removeSpaceRefs', request]); fail('removeSpaceRefs'); },
+    removeSpaceRefs: async (request) => {
+      calls.push(['removeSpaceRefs', request]);
+      fail('removeSpaceRefs');
+      if (failAt === 'projectFolderGone') throw new SpaceError('project_folder_missing', `${request.repository} does not exist, or is not a folder.`);
+    },
   };
   const codeOut = {
     bringCodeOut: async (request) => { calls.push(['bringCodeOut', request]); if (holdCodeOut) await codeOutHeld; fail('bringCodeOut'); return { result: 'c'.repeat(40), changedPaths: 3, changedBytes: 10, nestedRepositories: { count: 0, paths: [] }, unmerged: { count: 0, paths: [] } }; },
@@ -93,6 +97,7 @@ const journeyWith = ({ failAt = null, place = createMemoryPlace(), projects = [P
     listProjectDirectories: async () => projects,
     archiveChats,
     readHostSecret: (name) => hostEnvironment[name],
+    folderExists: async () => true,
     readIdleStop: async () => idle.saved ?? { enabled: true, hours: 4 },
     saveIdleStop: async (setting) => { if (holdIdleSave) await idleSaveHeld; fail('saveIdleStop'); idle.saved = setting; },
     announce: (spaceId, payload) => { events.push({ spaceId, ...payload.properties }); },
@@ -249,6 +254,13 @@ describe('the journey: start, stop, remove', () => {
     const outcome = await journey.removeSpace(id);
     expect(outcome).toMatchObject({ id, removed: true, refsRemoved: false, failures: [expect.objectContaining({ code: 'removeSpaceRefs_failed' })] });
     expect(await place.list()).toEqual([]);
+  });
+
+  it('counts a delete as done when the project folder is gone and its refs with it', async () => {
+    const { journey, place, records, id } = await ready({ failAt: 'projectFolderGone' });
+    expect(await journey.removeSpace(id)).toEqual({ id, removed: true, refsRemoved: false, failures: [], chats: null });
+    expect(await place.list()).toEqual([]);
+    expect(records.read(id).status).toBe('missing');
   });
 
   it('refuses to start, stop or remove a space that is still being made', async () => {
@@ -749,7 +761,56 @@ describe('the journey: journal and apply', () => {
     const orphan = journeyWith({ projects: [] });
     const other = await orphan.manager.createSpace({ placeId: 'memory', projectDirectory: PROJECT, name: 'Orphan' });
     await expect(orphan.journey.previewApply(other.id)).rejects.toMatchObject({ code: 'project_not_registered' });
-    expect((await orphan.journey.listSpaces())[0]).toMatchObject({ id: other.id, projectDirectory: null, directory: null });
+    expect((await orphan.journey.listSpaces())[0]).toMatchObject({ id: other.id, projectDirectory: null, directory: null, projectFolder: { path: null, found: null } });
+  });
+});
+
+describe('the journey: the project folder of a space', () => {
+  const made = async () => {
+    const first = journeyWith();
+    const { id } = await first.journey.createSpace(REQUEST);
+    await until(() => steps(first.events, id).includes('ready'));
+    await until(() => first.records.read(id).record?.history !== 'pending');
+    return { id, first };
+  };
+
+  it('names the folder the space was made for and whether it is there, while the project is registered and after it is gone', async () => {
+    const { id, first } = await made();
+    const asked = [];
+    // The record names the folder: a journey that no longer has the project still lists it.
+    const unregistered = createSpaceJourney({
+      manager: first.manager, place: first.place, gatekeeper: first.gatekeeper, codeIn: {}, codeOut: {}, records: first.records,
+      spaceOpenCode: {}, serverInside: {}, restartOpenCodeInside: async () => {},
+      listProjectDirectories: async () => [],
+      folderExists: async (directory) => { asked.push(directory); return false; },
+      logger: quiet,
+    });
+    expect((await unregistered.listSpaces())[0]).toMatchObject({ id, projectDirectory: null, directory: null, projectFolder: { path: PROJECT, found: false } });
+    expect(asked).toEqual([PROJECT]);
+  });
+
+  it('says the folder is there by looking at the host', async () => {
+    const folder = fs.mkdtempSync(path.join(os.tmpdir(), 'openchamber-journey-project-'));
+    folders.push(folder);
+    const file = path.join(folder, 'a-file');
+    fs.writeFileSync(file, '');
+    const { first } = await made();
+    const look = (directory) => createSpaceJourney({
+      manager: first.manager, place: first.place, gatekeeper: first.gatekeeper, codeIn: {}, codeOut: {}, records: { read: () => ({ record: { repository: directory } }) },
+      spaceOpenCode: {}, serverInside: {}, restartOpenCodeInside: async () => {},
+      listProjectDirectories: async () => [],
+      logger: quiet,
+    }).listSpaces();
+    expect((await look(folder))[0].projectFolder).toEqual({ path: folder, found: true });
+    // A file where the folder was is not the folder, and neither is nothing.
+    expect((await look(file))[0].projectFolder).toEqual({ path: file, found: false });
+    expect((await look(path.join(folder, 'gone')))[0].projectFolder).toEqual({ path: path.join(folder, 'gone'), found: false });
+  });
+
+  it('lists a creation under way with its folder not looked at yet', async () => {
+    const { journey } = journeyWith({ holdCodeIn: true });
+    const { id } = await journey.createSpace(REQUEST);
+    expect((await journey.listSpaces()).find((space) => space.id === id)).toMatchObject({ projectFolder: { path: PROJECT, found: null } });
   });
 });
 
