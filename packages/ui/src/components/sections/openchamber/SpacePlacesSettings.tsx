@@ -198,7 +198,11 @@ const PlaceBlock: React.FC<{ place: SpacePlace; spaces: SpaceEntry[] | null; spa
     return (
       <SettingsControlGroup title={name}>
         <div className="space-y-2">
-          <p className="typography-meta text-[var(--status-warning)]" role="status">{spaceFailureText(t, place)}</p>
+          {/* What the user can do about it: one line with the info mark, as Settings' own notes read. */}
+          <p className="flex items-start gap-1.5 typography-meta text-foreground" role="status">
+            <Icon name="information" className="mt-[0.2em] h-3.5 w-3.5 shrink-0 text-[var(--status-info)]" />
+            <span>{spaceFailureText(t, place)}</span>
+          </p>
           {spaces && spaces.length > 0 ? (
             <div className="space-y-1">
               <p className="typography-meta text-muted-foreground">
