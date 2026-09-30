@@ -5,6 +5,7 @@ import katex from 'katex';
 import DOMPurify, { type DOMPurify as DOMPurifyInstance } from 'dompurify';
 import { buildAgentMentionUrl, parseAgentHref, parseSkillHref } from '@/lib/messages/inlineMessageLinks';
 import { isAppLinkUrl } from '@/lib/url';
+import { isSessionDeepLink } from '@/lib/sessionLinks';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { contentFingerprint, HighlightResultCache, utf16Bytes } from './highlightResultCache';
 import { highlightCodeInWorker } from './markdown-worker';
@@ -537,10 +538,17 @@ const detailsExtension: TokenizerAndRendererExtension = {
 // marked's GFM autolink swallows CJK punctuation after a bare URL, so switch
 // to marked-linkify-it, which treats Unicode punctuation as a URL boundary.
 // Plain CJK characters right after a URL are still consumed, matching GitHub.
+// A pasted session or message link (`openchamber://session/<id>?message=<id>`)
+// becomes a link too; other `openchamber:` routes stay text.
+const OPENCHAMBER_SESSION_LINK_TAIL = /^\/\/session\/[A-Za-z0-9_-]{1,128}(?:\?message=[A-Za-z0-9_-]{1,128})?/;
+const OPENCHAMBER_SESSION_LINK_SCHEMA = {
+  // Length of the link after `openchamber:` at `pos`, or 0 when it is not one.
+  validate: (text: string, pos: number): number => OPENCHAMBER_SESSION_LINK_TAIL.exec(text.slice(pos))?.[0].length ?? 0,
+};
 const createParser = (imageMode: MarkdownImageMode, rawHtml: MarkdownRawHtmlMode) => {
   const renderMath = rawHtml === 'sanitize' ? renderMathPlaceholder : renderKatex;
   return new Marked().use(
-    markedLinkifyIt({ fuzzyLink: false }),
+    markedLinkifyIt({ fuzzyLink: false, schemas: { 'openchamber:': OPENCHAMBER_SESSION_LINK_SCHEMA } }),
     {
       gfm: true,
       breaks: false,
@@ -739,7 +747,13 @@ const installAnchorHooks = (purifier: DOMPurifyInstance): void => {
     // DOMPurify's default URI policy strips custom application schemes
     // (obsidian://, vscode://, ...). Keep them for anchors; dangerous schemes
     // stay excluded via isAppLinkUrl and clicks go through confirmation.
-    if (isLocalFileUrl(data.attrValue) || isAppLinkUrl(data.attrValue)) data.forceKeepAttr = true;
+    // OpenChamber's own scheme is kept only for session links, which the chat
+    // opens in place; pairing and other privileged routes stay stripped. VS
+    // Code keeps them as text: its sessions live on its own OpenCode.
+    const keepSessionLink = isSessionDeepLink(data.attrValue) && !isVSCodeRuntime();
+    if (isLocalFileUrl(data.attrValue) || isAppLinkUrl(data.attrValue) || keepSessionLink) {
+      data.forceKeepAttr = true;
+    }
   });
   purifier.addHook('afterSanitizeAttributes', (node) => {
     if (!(node instanceof HTMLAnchorElement)) return;
