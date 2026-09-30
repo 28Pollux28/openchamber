@@ -175,6 +175,32 @@ describe('the actions of a space', () => {
       expect(reloads).toBe(1);
     });
 
+    test('a delete whose chats could not be saved opens the confirmation again; "Delete anyway" says so, and saved chats are announced', async () => {
+      useGlobalSessionsStore.setState({ loadSessions: async () => ({ activeSessions: [], archivedSessions: [] }) });
+      useSpacesStore.getState().applyJourney([entry({ name: 'Fix login' })], 0);
+      const asked: string[] = [];
+      host((path) => {
+        if (!path.endsWith(ID)) return listAnswer([entry({ name: 'Fix login' })]);
+        return new Response(JSON.stringify({ code: 'chats_not_saved', message: 'not saved', details: { tooLarge: ['Big one'], failed: 0 } }), { status: 409 });
+      });
+      await runSpaceAction(ID, 'remove');
+      expect(useSpacesStore.getState().actions.has(ID)).toBe(false);
+      expect(useSpacesStore.getState().deleteDialog).toBe(ID);
+      expect(useSpacesStore.getState().deleteUnsaved).toEqual({ tooLarge: ['Big one'], failed: 0 });
+
+      globalThis.fetch = Object.assign(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input), 'http://host');
+        asked.push(`${init?.method ?? 'GET'} ${url.pathname}${url.search}`);
+        return url.pathname.endsWith(ID)
+          ? new Response(JSON.stringify({ id: ID, removed: true, failures: [], chats: { saved: 1 } }), { status: 200 })
+          : listAnswer([]);
+      }, originalFetch);
+      useSpacesStore.getState().closeDeleteDialog();
+      await runSpaceAction(ID, 'remove', { deleteUnsavedChats: true });
+      expect(asked[0]).toBe(`DELETE /api/openchamber/spaces/${ID}?unsavedChats=delete`);
+      expect(useSpacesStore.getState().archivedNotice).toBe('Fix login');
+    });
+
     // The project's setup as the host's project route answers it: personal commands only, so no trust prompt.
     const projectSetup = (commands: string[]) => ({
       trust: { hash: null, trusted: true }, setupWorktree: commands, setupWorktreeWait: false, projectActions: [], projectActionsPrimaryId: null, draftStarters: [],

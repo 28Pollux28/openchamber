@@ -34,6 +34,10 @@ const failureDetailsSchema = z.object({
   stillThere: reportedPathsSchema.optional(),
   ignoredInTheWay: reportedPathsSchema.optional(),
   filteredInTheWay: reportedPathsSchema.optional(),
+  // `chats_not_saved`: the titles of chats too large to save, and how many others failed. Titles
+  // come from the space, so they are text to show.
+  tooLarge: z.array(z.string()).optional(),
+  failed: z.number().int().min(0).optional(),
 });
 
 export type SpaceFailureDetails = z.infer<typeof failureDetailsSchema>;
@@ -238,8 +242,17 @@ export type SpaceJournal = z.infer<typeof journalSchema>;
 export const readSpaceJournal = (spaceId: string, signal?: AbortSignal): Promise<SpaceJournal> =>
   request(`${SPACES_ROUTE}/${spaceId}/journal`, journalSchema, { signal });
 
+// What went to the Archive page when a space was deleted: how many chats were saved. Null for a
+// space whose making failed, which has none, and from a host before 5e-2.
+const savedChatsSchema = z.object({ saved: z.number().int().min(0) });
+
 // A removal can go through in part: `failures` names what stayed, and the screen says so.
-const removalSchema = z.object({ id: spaceIdSchema, removed: z.boolean(), failures: z.array(failureSchema) });
+const removalSchema = z.object({
+  id: spaceIdSchema,
+  removed: z.boolean(),
+  failures: z.array(failureSchema),
+  chats: savedChatsSchema.nullable().default(null),
+});
 
 type SpaceRemoval = z.infer<typeof removalSchema>;
 
@@ -289,8 +302,22 @@ export type SpaceSetupOutput = z.infer<typeof setupOutputSchema>;
 export const readSpaceSetup = (spaceId: string, signal?: AbortSignal): Promise<SpaceSetupOutput> =>
   request(`${SPACES_ROUTE}/${spaceId}/setup`, setupOutputSchema, { signal });
 
-export const removeSpace = (spaceId: string): Promise<SpaceRemoval> =>
-  request(`${SPACES_ROUTE}/${spaceId}`, removalSchema, { method: 'DELETE' });
+/**
+ * Deletes a space after its chats went to the Archive page. When they cannot all be saved the
+ * space stays and the answer is `chats_not_saved`; `deleteUnsavedChats` is the user's "Delete
+ * anyway", which saves what can be and deletes the space.
+ */
+export const removeSpace = (spaceId: string, { deleteUnsavedChats = false }: { deleteUnsavedChats?: boolean } = {}): Promise<SpaceRemoval> =>
+  request(`${SPACES_ROUTE}/${spaceId}${deleteUnsavedChats ? '?unsavedChats=delete' : ''}`, removalSchema, { method: 'DELETE' });
+
+// A deleted space whose chats are on the Archive page: the directory that holds them names it.
+const archiveSchema = z.object({ spaceId: spaceIdSchema, name: z.string(), directory: z.string() });
+
+export type SpaceArchive = z.infer<typeof archiveSchema>;
+
+/** The archives of deleted spaces. It reads a file of the host's and runs nothing of the feature. */
+export const listSpaceArchives = async (signal?: AbortSignal): Promise<SpaceArchive[]> =>
+  (await request(`${SPACES_ROUTE}/archives`, z.object({ archives: z.array(archiveSchema) }), { signal })).archives;
 
 // What an apply would do, read while the dialog is open: the work brought out of the space now, and
 // where the space stands for an apply as uncommitted changes. `changedPaths` counts against the
@@ -319,8 +346,13 @@ const appliedSchema = z.union([
   z.object({ status: z.literal('nothing_to_apply') }),
 ]);
 
-// `removal` is null unless the space was removed after the apply went through.
-const applyOutcomeSchema = z.object({ applied: appliedSchema, removal: removalSchema.nullable() });
+// `removal` is null unless the space was removed after the apply went through; `kept` says why a
+// space asked to be deleted afterwards stayed: its chats could not all be saved.
+const applyOutcomeSchema = z.object({
+  applied: appliedSchema,
+  removal: removalSchema.nullable(),
+  kept: failureSchema.nullable().default(null),
+});
 
 export type SpaceApplyOutcome = z.infer<typeof applyOutcomeSchema>;
 
