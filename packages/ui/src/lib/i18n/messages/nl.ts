@@ -704,6 +704,8 @@ export const dict = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': 'Gearchiveerde sessies verwijderen',
   'sessions.sidebar.group.actions.deleteGroupAria': '{label} verwijderen',
   'sessions.sidebar.group.actions.deleteWorktree': 'Worktree verwijderen',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': 'Worktree en lokale branch verwijderen',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': '{label} en de lokale branch verwijderen',
   'sessions.sidebar.group.actions.newDraftInGroupAria': 'Nieuwe concept-sessie in {label}',
   'sessions.sidebar.grouping.projectRoot': 'projecthoofdmap',
   'sessions.sidebar.grouping.projectRootWithBranch': 'projecthoofdmap: {branch}',

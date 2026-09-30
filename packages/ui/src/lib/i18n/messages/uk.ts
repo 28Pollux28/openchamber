@@ -705,6 +705,8 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.group.actions.deleteArchivedSessions": "Видалити заархівовані сесії",
   "sessions.sidebar.group.actions.deleteGroupAria": "Видалити {label}",
   "sessions.sidebar.group.actions.deleteWorktree": "Видалити worktree",
+  "sessions.sidebar.group.actions.deleteWorktreeAndBranch": "Видалити worktree і локальну гілку",
+  "sessions.sidebar.group.actions.deleteGroupAndBranchAria": "Видалити {label} і його локальну гілку",
   "sessions.sidebar.group.actions.newDraftInGroupAria": "Нова чернетка сесії в {label}",
   "sessions.sidebar.grouping.projectRoot": "корінь проєкту",
   "sessions.sidebar.grouping.projectRootWithBranch": "корінь проєкту: {branch}",

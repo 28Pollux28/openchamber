@@ -705,6 +705,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': 'Usuń zarchiwizowane sesje',
   'sessions.sidebar.group.actions.deleteGroupAria': 'Usuń {label}',
   'sessions.sidebar.group.actions.deleteWorktree': 'Usuń drzewo pracy',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': 'Usuń drzewo pracy i gałąź lokalną',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': 'Usuń {label} i jego gałąź lokalną',
   'sessions.sidebar.group.actions.newDraftInGroupAria': 'Nowa sesja robocza w {label}',
   'sessions.sidebar.grouping.projectRoot': 'główny katalog projektu',
   'sessions.sidebar.grouping.projectRootWithBranch': 'główny katalog projektu: {branch}',

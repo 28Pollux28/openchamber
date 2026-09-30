@@ -705,6 +705,8 @@ export const dict: Record<I18nKey, string> = {
   "sessions.sidebar.group.actions.deleteArchivedSessions": "Eliminar sesiones archivadas",
   "sessions.sidebar.group.actions.deleteGroupAria": "Eliminar {label}",
   "sessions.sidebar.group.actions.deleteWorktree": "Eliminar worktree",
+  "sessions.sidebar.group.actions.deleteWorktreeAndBranch": "Eliminar worktree y rama local",
+  "sessions.sidebar.group.actions.deleteGroupAndBranchAria": "Eliminar {label} y su rama local",
   "sessions.sidebar.group.actions.newDraftInGroupAria": "Nueva sesión de borrador en {label}",
   "sessions.sidebar.grouping.projectRoot": "raíz del proyecto",
   "sessions.sidebar.grouping.projectRootWithBranch": "raíz del proyecto: {branch}",

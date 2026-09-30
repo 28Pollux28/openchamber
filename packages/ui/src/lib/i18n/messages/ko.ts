@@ -705,6 +705,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': '보관된 세션 삭제',
   'sessions.sidebar.group.actions.deleteGroupAria': '{label} 삭제',
   'sessions.sidebar.group.actions.deleteWorktree': '워크트리 삭제',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': '워크트리와 로컬 브랜치 삭제',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': '{label} 및 로컬 브랜치 삭제',
   'sessions.sidebar.group.actions.newDraftInGroupAria': '{label}에 새 드래프트 세션 만들기',
   'sessions.sidebar.grouping.projectRoot': '프로젝트 루트',
   'sessions.sidebar.grouping.projectRootWithBranch': '프로젝트 루트: {branch}',

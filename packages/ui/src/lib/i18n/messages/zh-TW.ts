@@ -718,6 +718,8 @@ export const dict: Record<I18nKey, string> = {
   'sessions.sidebar.group.actions.deleteArchivedSessions': '刪除已封存會話',
   'sessions.sidebar.group.actions.deleteGroupAria': '刪除 {label}',
   'sessions.sidebar.group.actions.deleteWorktree': '刪除 worktree',
+  'sessions.sidebar.group.actions.deleteWorktreeAndBranch': '刪除 worktree 和本機分支',
+  'sessions.sidebar.group.actions.deleteGroupAndBranchAria': '刪除 {label} 及其本機分支',
   'sessions.sidebar.group.actions.newDraftInGroupAria': '在 {label} 中新增草稿會話',
   'sessions.sidebar.grouping.projectRoot': '專案根目錄',
   'sessions.sidebar.grouping.projectRootWithBranch': '專案根目錄：{branch}',
