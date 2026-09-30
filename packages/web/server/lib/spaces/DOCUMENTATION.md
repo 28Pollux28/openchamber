@@ -504,7 +504,7 @@ The merged list and the rules for it live in `space-sessions.js`, pure; `host.js
 - A space's list and events are read whenever the switch is on, one `docker ps` every fifteen seconds and one event connection per space, whether or not a client is looking. That is the cost of live status for sessions nobody has opened yet.
 - The relay path of the new sockets, a phone reaching a space's terminal through the private relay, has not been exercised on a device: the three allowlists carry the shapes and the unit tests prove each list, and nothing more.
 - A space's event connection that is still being made cannot be aborted: the host's close waits for the server inside to answer or the stream to die. One request per space at most.
-- The mark names a space's project only while that project is registered on this host under the very path the space was made for: the label holds a hash of that path, and the host compares it with its registered projects' paths as they are. A project removed or re-added under another spelling leaves the space with no project, and the sidebar shows nothing of it until the spaces page of a later stage lists every space.
+- The mark names a space's project only while that project is registered on this host under the very path the space was made for: the label holds a hash of that path, and the host compares it with its registered projects' paths as they are. A project removed or re-added under another spelling leaves the space with no project, and the sidebar shows nothing of it; since 5e-3 Settings lists it among the spaces without a project, see "Spaces page" under "The journey".
 - The empty-cwd terminal listing that the sidebar's action badges read is the host's alone; a space's terminals are listed per directory, through the prefix, when the terminal panel of that directory asks.
 
 ## The journey
@@ -519,7 +519,7 @@ All under `/api/openchamber/spaces`, a namespace of the host's beside `/api/open
 |---|---|
 | `GET /switch`, `PUT /switch` | The switch, see "The switch" above. |
 | `GET /places` | Every place asked `check()` now, because the user is looking: `{ places: [{ id, available, version, os, arch, hostIsolation }] }`, or `{ id, available: false, code, message }`. |
-| `GET /` | `{ spaces }`: the place's list with what the host remembers about each, the creations under way in their place, and the failed ones after it. |
+| `GET /` | `{ spaces }`: the place's list with what the host remembers about each, the creations under way in their place, and the failed ones after it. Since 5e-3 each names `projectFolder`, `{ path, found }`: the folder it was made for, from the record, and whether that is a folder on the host now, `found` null while a creation is under way. |
 | `POST /` | `{ projectDirectory, name, start, network, setupCommands }`. Answers 202 at once with the entry the list carries; the steps follow as events. |
 | `POST /<id>/start`, `POST /<id>/stop` | The place's start and stop; start says the network again. Answers the listed entry, start with `networkRestored`. |
 | `POST /<id>/restart-opencode` | Since 5d-2: asks the server inside a running space to restart its OpenCode, and answers the listed entry once it is ready again. See "Repair". |
@@ -571,6 +571,14 @@ DESIGN.md, decision 9 and journey step 7; built in 5e-2, `space-archive.js`, the
 - **All or nothing.** A chat that cannot be listed, taken out or imported, one over 256 MB, or more than 1000 chats, fails the delete with `chats_not_saved` before anything is deleted, with the titles of the chats too large in `details.tooLarge` and the others counted in `details.failed`; chats already imported are deleted from the host's OpenCode again. With `?unsavedChats=delete` what can be saved is saved and the space goes. For an apply with `removeAfterwards` the work stays applied and the space stays, `kept` says why.
 - **Read-only.** An imported chat is a live session of the host's OpenCode: measured on 2026-09-30, a shell sent to one ran on the host. So besides the rule above, `guard`, mounted before every route that acts on a session, refuses with 409 `archived_chat_read_only` any request other than a read that names an archived chat in `/api/session/<id>`, `/api/experimental/session/<id>/...`, `/api/openchamber/sessions/<id>/...`, `/api/message-queue/sessions/<id>`, `/api/goals/objective/<id>` or `/api/permission-auto-accept/sessions/<id>`; `DELETE /api/session/<id>` passes, which is how the user deletes one. The id is compared decoded, as the route behind it decodes it. It reads the archive's files at start and runs nothing, so it and `GET /archives` exist with the switch on or off: turning the feature off does not make an archived chat runnable.
 - **Not a boundary against the agent.** By the time a chat is archived the space is gone. What a space wrote into its chats is shown as any chat of the space was shown while it lived.
+
+### Spaces page
+
+DESIGN.md, journey step 9 and decision 12; built in 5e-3, UI only on top of `GET /`. The maintainer's calls of 2026-09-30:
+
+- "Manage isolated spaces" in the project menu, under "Manage worktrees", opens the project's spaces page, laid out as the worktrees page: "New isolated space" on top, which opens the create dialog of the new-session picker, and a row per space with its name, its network, the status line of its group in the sidebar, the key of the grant dialog and the group's menu. Spaces of the Archive page are not listed. The phone has it as a section of its project editor, under the worktrees, with no create button.
+- A space whose project is no longer registered is listed in Settings, under the switch, as a space without a project, only when there is one, with the folder it was made for; "Apply changes…" is not offered when `projectFolder.found` is false, because the work has nowhere to go. Deleting such a space counts as done even though its service refs cannot be removed: they went with the folder, wherever it is now, and the host logs that they stay there.
+- Closing a project stops its running spaces, found by the folder they were made for, except one where a session is busy, because closing is one click with no confirmation; a notice says how many stopped. Files are kept, as with any stop, and the idle stop takes the rest. The client that closes the project does this, `lib/spaces/space-close.ts` in the UI, reading which sessions are busy from its own live status; a project removed any other way, by editing the settings file, stops nothing.
 
 ### Idle stop
 

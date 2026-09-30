@@ -14,6 +14,7 @@ const entry = (change: Partial<SpaceEntry> = {}): SpaceEntry => ({
   id: ID,
   name: 'Fix login',
   projectDirectory: '/home/me/app',
+  projectFolder: { path: '/home/me/app', found: true },
   directory: `/spaces/${ID}/app`,
   state: 'running',
   stoppedIdle: false,
@@ -37,6 +38,10 @@ describe('whether a space\'s work can be applied', () => {
     expect(isSpaceApplicable(entry({ state: 'exited', damage: 'gatekeeper_gone' }))).toBe(false);
     for (const state of ['preparing', 'failed', 'missing'] as const) expect(isSpaceApplicable(entry({ state }))).toBe(false);
     expect(isSpaceApplicable(undefined)).toBe(false);
+    // The folder the space was made for is gone from the host: the work has nowhere to go.
+    expect(isSpaceApplicable(entry({ projectDirectory: null, projectFolder: { path: '/home/me/app', found: false } }))).toBe(false);
+    // Not looked at, or a host before 5e-3 that names none: the apply dialog decides.
+    expect(isSpaceApplicable(entry({ projectDirectory: null, projectFolder: { path: null, found: null } }))).toBe(true);
   });
 });
 
