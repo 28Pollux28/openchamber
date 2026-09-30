@@ -36,6 +36,7 @@ mock.module("@/lib/runtime-switch", () => ({
 }))
 
 import { applyGlobalSessionStatusSnapshot, useGlobalSessionStatusStore } from "../global-session-status"
+import { recordObservedTurn } from "../observed-turns"
 import { useSessionOrderingStore } from "../session-ordering"
 import { useSessionActivityTimingStore } from "../session-activity-timing"
 
@@ -177,8 +178,9 @@ describe("maybePollStatusAfterMessageCompletion (issue OPE-193)", () => {
     expect(store.getState().session_status?.ses_1?.type).toBe("idle")
   })
 
-  test("recovers an unfinished turn after reload when status was initially unknown", async () => {
+  test("recovers an unfinished turn it watched run when status was initially unknown", async () => {
     const store = createStore()
+    recordObservedTurn(store, "ses_1", { type: "busy" })
     store.getState().patch({
       message: { ses_1: [unfinishedAssistant] },
       part: { msg_1: [runningTool] },
@@ -194,6 +196,39 @@ describe("maybePollStatusAfterMessageCompletion (issue OPE-193)", () => {
     const part = store.getState().part.msg_1[0]
     expect(part?.type).toBe("tool")
     if (part?.type === "tool") expect(part.state.status).toBe("error")
+  })
+
+  test("keeps an unfinished turn it never watched open after reload (#4156)", async () => {
+    const store = createStore()
+    store.getState().patch({
+      message: { ses_1: [unfinishedAssistant] },
+      part: { msg_1: [runningTool] },
+    })
+
+    await recoverInterruptedTurnAfterMessageLoad("/test/project", store, "ses_1")
+
+    expect(store.getState().session_status?.ses_1?.type).toBe("idle")
+    expect(store.getState().message.ses_1[0]).toBe(unfinishedAssistant)
+    expect(store.getState().part.msg_1[0]).toBe(runningTool)
+  })
+
+  test("a busy snapshot counts as watching the run", async () => {
+    const store = createStore()
+    store.getState().patch({
+      message: { ses_1: [unfinishedAssistant] },
+      part: { msg_1: [runningTool] },
+    })
+    respondWithSnapshot = () => Promise.resolve({ ses_1: { type: "busy" } })
+    await recoverInterruptedTurnAfterMessageLoad("/test/project", store, "ses_1")
+    expect(store.getState().message.ses_1[0]).toBe(unfinishedAssistant)
+
+    // The connected server dies mid-turn; the next snapshot no longer lists it.
+    store.getState().patch({ session_status: {} })
+    respondWithSnapshot = () => Promise.resolve({})
+    await recoverInterruptedTurnAfterMessageLoad("/test/project", store, "ses_1")
+
+    const message = store.getState().message.ses_1[0]
+    expect(message?.role === "assistant" && message.time.completed !== undefined).toBe(true)
   })
 
   for (const change of ["runtime", "sdk", "request"] as const) {
