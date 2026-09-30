@@ -26,6 +26,10 @@
 //
 // Setup commands, since 5d-4 (DESIGN.md, "Code in and out"): the project's worktree setup commands
 // run inside the space once its code arrived, in the background, and again when the user asks.
+//
+// The chat archive, since 5e-2 (decision 9, journey step 7): a delete takes the space's chats to
+// the host's archive first, starting a stopped space for it, and deletes nothing when they cannot
+// all be saved, unless the user said to delete anyway. See `space-archive.js`.
 
 import crypto from 'node:crypto';
 
@@ -111,6 +115,8 @@ const failureOf = (error) => ({
  * starts, and `restartOpenCodeInside(spaceId)` asks the server inside to restart its OpenCode.
  * `readIdleStop()` and `saveIdleStop(setting)` read and keep the user's idle stop setting, and
  * `serverInside.writeIdleStop(spaceId, setting)` tells it to the server inside.
+ * `archiveChats({ spaceId, name, projectDirectory, running, allowUnsaved })` saves a space's chats
+ * to the host's archive before it goes, see `space-archive.js`; without it the chats go with it.
  */
 export function createSpaceJourney({
   manager,
@@ -123,6 +129,7 @@ export function createSpaceJourney({
   serverInside,
   restartOpenCodeInside,
   listProjectDirectories,
+  archiveChats = null,
   readHostSecret = () => undefined,
   readIdleStop = async () => ({ ...DEFAULT_IDLE_STOP }),
   saveIdleStop = async () => {},
@@ -668,11 +675,44 @@ export function createSpaceJourney({
   });
 
   /**
+   * Saves the space's chats to the archive, starting a stopped one for it; a space that does not
+   * start has no chats to give, which the archive reports as not saved. A space started only for
+   * this, whose chats could not be saved, is stopped again, so the refused delete leaves it as it
+   * was. Its gatekeeper allows nothing meanwhile: the network is not said again for a delete.
+   * Null without an archive.
+   */
+  const saveChatsOf = async (space, allowUnsaved) => {
+    if (!archiveChats) return null;
+    let running = space.state === 'running';
+    let started = false;
+    if (!running && space.state === 'exited') {
+      try {
+        await manager.startSpace({ placeId: place.id, spaceId: space.id });
+        running = true;
+        started = true;
+      } catch (error) {
+        logger.warn?.(`[spaces] space ${space.id} did not start to give its chats: ${error?.code ?? error?.message ?? error}`);
+      }
+    }
+    try {
+      return await archiveChats({ spaceId: space.id, name: space.name, projectDirectory: space.projectDirectory ?? null, running, allowUnsaved });
+    } catch (error) {
+      if (started) {
+        await manager.stopSpace({ placeId: place.id, spaceId: space.id }).catch((stopError) => {
+          logger.warn?.(`[spaces] space ${space.id} started for its chats is still running: ${stopError?.code ?? stopError?.message ?? stopError}`);
+        });
+      }
+      throw error;
+    }
+  };
+
+  /**
    * Removes a space and everything the host kept for it: the containers, networks and volumes,
    * the service refs in the user's repository and the record. A failed creation is forgotten here.
-   * The chat archive of decision 9 is a later stage; today the sessions go with the space.
+   * Its chats go to the archive first (decision 9); when they cannot all be saved the space stays
+   * and the answer is `chats_not_saved`, unless `allowUnsaved` says to save what can be and go on.
    */
-  const removeUnlocked = async (spaceId) => {
+  const removeUnlocked = async (spaceId, { allowUnsaved = false } = {}) => {
     const waiting = pending.get(spaceId);
     if (waiting) {
       if (waiting.state !== 'failed') throw new SpaceError('space_preparing', 'This space is still being made. Wait for it, then remove it.');
@@ -680,16 +720,17 @@ export function createSpaceJourney({
       // A failed creation whose clean-up failed still has containers; those go now, or the space
       // comes back in the list as damaged. One that was cleaned up has nothing left to remove.
       const still = (await manager.listSpaces({ placeId: place.id })).some((space) => space.id === spaceId);
-      if (!still) return { id: spaceId, removed: true, refsRemoved: null, failures: [] };
-      return { id: spaceId, ...(await removeEverything(spaceId, waiting.projectDirectory)) };
+      if (!still) return { id: spaceId, removed: true, refsRemoved: null, failures: [], chats: null };
+      return { id: spaceId, ...(await removeEverything(spaceId, waiting.projectDirectory)), chats: null };
     }
     const space = await requireListed(spaceId);
+    const chats = await saveChatsOf(space, allowUnsaved);
     const { record } = records.read(spaceId);
     const outcome = await removeEverything(spaceId, record?.repository ?? space.projectDirectory);
     onSpacesChanged();
-    return { id: spaceId, ...outcome };
+    return { id: spaceId, ...outcome, chats };
   };
-  const removeSpace = (spaceId) => exclusive(spaceId, () => removeUnlocked(spaceId));
+  const removeSpace = (spaceId, options) => exclusive(spaceId, () => removeUnlocked(spaceId, options));
 
   /**
    * Stops every running space, for the switch being turned off. Each space is tried on its own:
@@ -786,7 +827,8 @@ export function createSpaceJourney({
   /**
    * Brings the work out once more and applies it as a branch or as uncommitted changes. What is
    * applied is what this call fetched, whatever a preview showed. With `removeAfterwards` the
-   * space goes once the apply went through, and only then.
+   * space goes once the apply went through, and only then; when its chats cannot all be saved it
+   * stays, and `kept` says why, because the work is applied either way.
    */
   const applySpace = (spaceId, request) => exclusive(spaceId, async () => {
     const parsed = applyRequestSchema.safeParse(request ?? {});
@@ -798,8 +840,17 @@ export function createSpaceJourney({
     const applied = as === 'branch'
       ? { status: 'applied', ...(await codeOut.applyAsBranch({ repository, spaceId, branch })) }
       : await codeOut.applyAsChanges({ repository, spaceId });
-    const removal = removeAfterwards && applied.status === 'applied' ? await removeUnlocked(spaceId) : null;
-    return { brought, applied, removal };
+    let removal = null;
+    let kept = null;
+    if (removeAfterwards && applied.status === 'applied') {
+      try {
+        removal = await removeUnlocked(spaceId);
+      } catch (error) {
+        if (error?.code !== 'chats_not_saved') throw error;
+        kept = failureOf(error);
+      }
+    }
+    return { brought, applied, removal, kept };
   });
 
   return { createSpace, listSpaces, startSpace, stopSpace, restartSpace, restartOpenCode, removeSpace, stopAllSpaces, reopen, grantAccess, openDomain, readJournal, previewApply, applySpace, readIdleStopSetting, changeIdleStop, runSetup, readSetup };
