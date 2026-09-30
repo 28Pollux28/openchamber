@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../opencode/auth.js', () => ({
-  readAuthFile: () => ({ openrouter: { key: 'test-token' } }),
+  readOpenCodeCredentials: async () => ({ openrouter: { key: 'test-token' } }),
 }));
 
 import { fetchQuota, resolveResetAt } from './openrouter.js';
