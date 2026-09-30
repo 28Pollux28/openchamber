@@ -1288,6 +1288,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
         const updateChatScrollHeight = () => {
             container.style.setProperty('--chat-scroll-height', `${container.clientHeight}px`);
+            // Wide layout lets tables and code blocks grow past the column up
+            // to the visible chat width (typography.css).
+            container.style.setProperty('--chat-scroll-width', `${container.clientWidth}px`);
         };
 
         updateChatScrollHeight();
