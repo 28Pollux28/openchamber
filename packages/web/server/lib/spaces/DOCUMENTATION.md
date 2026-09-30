@@ -613,7 +613,7 @@ DESIGN.md, "Words" and "Gatekeeper", and decisions 4, 5 and 13. Stage 5b takes t
 - The lock on a space is one process's memory, like code out's turns: two OpenChamber processes on one Docker daemon are not coordinated.
 - The chat archive keeps what the export holds: a turn still running when the space is deleted is not in it, and a chat created in the space after its list was read goes with the space.
 - A chat created on the host with an archived chat as its parent is not refused; nothing in the app makes one.
-- VS Code has no guard and no list of archives, since the feature has no entry point there (decision 16). Its Archive page shows such a chat under its folder, with Restore and a message box; a turn sent there reaches the model and runs no tool, because of the permission rule. The OpenCode CLI is the same.
+- VS Code has no guard and no list of archives, since the feature has no entry point there (decision 16), and it mounts no Archive page, so it does not show these chats. A turn that any other OpenCode client, the CLI among them, sends to one reaches the model and runs no tool, because of the permission rule.
 - The phone's layout has no Archive page at all, for any archived chat; the notice after a delete has no "Open" there.
 - A run of the setup commands is one process's memory: a host that restarts in the middle lists it as interrupted, while the command inside may still go on to its end or its hour. A second run started then may run beside it.
 - Whether OpenCode inside takes a provider granted after the instance of the space's project started, without a restart, is what the live file of 5b measures; see the pull request of 5b for the outcome. The restart action of the repair stage is the lever if it does not.
