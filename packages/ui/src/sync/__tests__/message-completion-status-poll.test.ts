@@ -59,11 +59,12 @@ const createStore = (status?: SessionStatus): StoreApi<DirectoryStore> => {
 
 // SAFETY: The recovery path reads only the identity, role, and completion time
 // fields from this synthetic assistant message.
+// Its records are fresh: a turn another process is running right now.
 const unfinishedAssistant = {
   id: "msg_1",
   sessionID: "ses_1",
   role: "assistant",
-  time: { created: 1 },
+  time: { created: Date.now() },
 } as Message
 
 // SAFETY: The recovery path reads only the tool discriminator and state fields
@@ -74,7 +75,7 @@ const runningTool = {
   sessionID: "ses_1",
   type: "tool",
   tool: "bash",
-  state: { status: "running", time: { start: 1 }, input: {} },
+  state: { status: "running", time: { start: Date.now() }, input: {} },
 } as Part
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms))

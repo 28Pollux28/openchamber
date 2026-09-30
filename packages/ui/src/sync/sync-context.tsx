@@ -43,7 +43,7 @@ import { touchStreamingSession, updateChangedStreamingSessions, updateStreamingS
 import { countSyncPerformance } from "./performance-diagnostics"
 import { runBackgroundNetworkTask } from "@/lib/background-network"
 import { recordDirectoryRecoveryEvent } from "./directory-recovery-snapshots"
-import { forgetObservedTurn, hasObservedTurn, recordObservedTurn, releaseJudgedTurn } from "./observed-turns"
+import { forgetObservedTurn, mayJudgeTurn, recordObservedTurn, releaseJudgedTurn } from "./observed-turns"
 import { setActionRefs } from "./session-actions"
 import { setSyncRefs, getAllSyncSessions, emitSyncConfigChanged, getDirectoryState } from "./sync-refs"
 import { useSessionUIStore } from "./session-ui-store"
@@ -2238,10 +2238,11 @@ function hasUnfinishedAssistantTurn(state: DirectoryStore, sessionID: string): b
 
 // Snapshots and message loads reach this path. Neither can tell a turn that
 // died here from one still running in another OpenCode process (#4156), so
-// only a run this page watched is judged.
+// only a run this page watched is judged, or one silent long enough that no
+// process can still be running it.
 function applyInterruptedTurnReconciliation(store: StoreApi<DirectoryStore>, sessionID: string): void {
-  if (!hasObservedTurn(store, sessionID)) return
   const state = store.getState()
+  if (!mayJudgeTurn(store, state, sessionID)) return
   releaseJudgedTurn(store, state, sessionID)
   const interrupted = interruptedTurnToolParts(state, sessionID)
   if (!interrupted) return
@@ -2266,8 +2267,9 @@ function applyInterruptedTurnReconciliation(store: StoreApi<DirectoryStore>, ses
  * settle decision must be repeated after the message records are available.
  * If no per-session status exists yet, fetch one authoritative snapshot first;
  * a successful snapshot that omits the session establishes it as idle.
- * Only a run this page watched is judged; the snapshot is still read first
- * because a busy answer is what makes the run watched (#4156).
+ * Only a run this page watched, or one silent long enough, is judged; the
+ * snapshot is still read first because a busy answer is what makes the run
+ * watched (#4156).
  */
 export async function recoverInterruptedTurnAfterMessageLoad(
   directory: string,
@@ -2295,7 +2297,7 @@ export async function recoverInterruptedTurnAfterMessageLoad(
       applyGlobalSessionStatusSnapshot(directory, snapshot, [sessionID])
     }
   }
-  if (!hasObservedTurn(store, sessionID)) return
+  if (!mayJudgeTurn(store, store.getState(), sessionID)) return
 
   // The messages were read before the status. A turn that finished between
   // the two reads leaves an open assistant message beside an idle status,

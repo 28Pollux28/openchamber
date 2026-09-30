@@ -1,5 +1,5 @@
 import type { StoreApi } from "zustand"
-import type { SessionStatus } from "@/lib/opencode/model"
+import type { Part, SessionStatus } from "@/lib/opencode/model"
 import type { DirectoryStore } from "./child-store"
 
 /**
@@ -18,6 +18,13 @@ import type { DirectoryStore } from "./child-store"
  * snapshot judged against loaded messages. A later turn from another process
  * in the same session must not inherit it. Records belong to one directory
  * store and disappear with it on a runtime switch.
+ *
+ * A turn nobody watched is still judged once its unfinished answer has been
+ * silent for `UNWATCHED_TURN_SILENCE_MS`. A clean quit aborts the running turn
+ * before the managed server stops, but a crash, a force quit or a power loss
+ * leaves it unfinished in the database; the next launch then sees an unwatched
+ * unfinished turn and would otherwise show it running forever. A turn another
+ * process is really running keeps touching its parts within that window.
  */
 const observedTurns = new WeakMap<StoreApi<DirectoryStore>, Set<string>>()
 
@@ -35,8 +42,52 @@ export function recordObservedTurn(
   sessions.add(sessionID)
 }
 
-export function hasObservedTurn(store: StoreApi<DirectoryStore>, sessionID: string): boolean {
+function hasObservedTurn(store: StoreApi<DirectoryStore>, sessionID: string): boolean {
   return observedTurns.get(store)?.has(sessionID) === true
+}
+
+/** Long enough for a tool run or a stretch of reasoning that writes no new part. */
+export const UNWATCHED_TURN_SILENCE_MS = 15 * 60 * 1000
+
+function partActivity(part: Part): number {
+  if (part.type === "tool") {
+    if (part.state.status === "pending") return 0
+    if (part.state.status === "running") return part.state.time.start
+    return part.state.time.end
+  }
+  if (part.type === "text" || part.type === "reasoning") return part.time?.end ?? part.time?.start ?? 0
+  return 0
+}
+
+/**
+ * Whether the session's trailing assistant message is unfinished and none of
+ * its records changed within the silence window.
+ */
+export function isSilentUnwatchedTurn(
+  state: Pick<DirectoryStore, "message" | "part">,
+  sessionID: string,
+  now = Date.now(),
+): boolean {
+  const messages = state.message[sessionID] ?? []
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index]
+    if (message.role === "user") return false
+    if (message.role !== "assistant") continue
+    if (message.time.completed !== undefined) return false
+    let last = message.time.created
+    for (const part of state.part[message.id] ?? []) last = Math.max(last, partActivity(part))
+    return now - last >= UNWATCHED_TURN_SILENCE_MS
+  }
+  return false
+}
+
+/** Snapshot and message-load judgments need a watched run or a long-silent one. */
+export function mayJudgeTurn(
+  store: StoreApi<DirectoryStore>,
+  state: Pick<DirectoryStore, "message" | "part">,
+  sessionID: string,
+): boolean {
+  return hasObservedTurn(store, sessionID) || isSilentUnwatchedTurn(state, sessionID)
 }
 
 /** A settle event ends the run on the server that ran it. */
