@@ -428,13 +428,15 @@ function SessionNodeItemComponent(props: SessionNodeItemProps): React.ReactNode 
       case 'merged':
         return t('sessions.sidebar.group.pr.status.merged');
       case 'open':
-        return (prSummary.canMerge === true || prSummary.mergeableState === 'clean' || prSummary.checks?.state === 'success')
+        // A PR still waiting for a required review is not ready to merge.
+        return prSummary.mergeableState !== 'blocked'
+          && (prSummary.canMerge === true || prSummary.mergeableState === 'clean' || prSummary.checks?.state === 'success')
           ? t('sessions.sidebar.group.pr.status.readyToMerge')
           : t('sessions.sidebar.group.pr.status.open');
       case 'blocked':
-        return prSummary.mergeableState === 'dirty'
-          ? t('sessions.sidebar.group.pr.status.mergeConflicts')
-          : t('sessions.sidebar.group.pr.status.mergeBlocked');
+        if (prSummary.mergeableState === 'dirty') return t('sessions.sidebar.group.pr.status.mergeConflicts');
+        if (prSummary.checks?.state === 'failure') return t('sessions.sidebar.group.pr.status.checksFailing');
+        return t('sessions.sidebar.group.pr.status.mergeBlocked');
       case 'draft':
         return t('sessions.sidebar.group.pr.status.draft');
       case 'closed':
