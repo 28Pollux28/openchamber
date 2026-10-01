@@ -760,94 +760,102 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
           bottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
         }}
       >
-        {canReadAloud ? (
-          <div className="mb-2 flex justify-end">
+        {/* The first row sizes its tiles by their labels so three fit. Only
+            Comment shrinks, hyphenating a long word instead of clipping it;
+            the short Quote and Read labels stay whole. */}
+        <div className="flex flex-col gap-2">
+          <div className="flex gap-2">
             <button
-              onClick={handleReadAloud}
+              onClick={handleOpenMobileComment}
               className={cn(
-                'flex h-9 w-9 items-center justify-center rounded-full',
-                'bg-[var(--surface-muted)]',
-                isReading ? 'text-[var(--primary-text)]' : 'text-[var(--surface-foreground)]',
+                'flex flex-auto items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                'text-sm font-medium leading-tight',
+                'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
                 'active:opacity-80',
                 'transition-opacity duration-150'
               )}
-              aria-label={readAloudLabel}
-              title={readAloudLabel}
+              title={t('chat.textSelection.title.commentOnSelection')}
               type="button"
             >
-              <Icon name={isReading ? 'stop' : 'volume-up'} className="h-5 w-5" />
+              <Icon name="chat-1" className="h-5 w-5 flex-shrink-0" />
+              <span className="whitespace-normal hyphens-auto">{t('chat.textSelection.actions.comment')}</span>
             </button>
+
+            <button
+              onClick={handleAddToChat}
+              className={cn(
+                'flex flex-[1_0_auto] items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                'text-sm font-medium leading-tight',
+                'bg-[var(--primary-base)] text-[var(--primary-foreground)]',
+                'active:opacity-80',
+                'transition-opacity duration-150'
+              )}
+              title={t('chat.textSelection.title.addToCurrentChat')}
+              type="button"
+            >
+              <Icon name="add" className="h-5 w-5 flex-shrink-0" />
+              <span className="whitespace-normal hyphens-auto">{t('chat.textSelection.actions.addToInput')}</span>
+            </button>
+
+            {canReadAloud ? (
+              <button
+                onClick={handleReadAloud}
+                className={cn(
+                  'flex flex-[1_0_auto] items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                  'text-sm font-medium leading-tight',
+                  'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
+                  'active:opacity-80',
+                  'transition-opacity duration-150'
+                )}
+                title={readAloudLabel}
+                type="button"
+              >
+                <Icon name="volume-up" className={cn('h-5 w-5 flex-shrink-0', isReading && 'animate-pulse text-[var(--primary-text)]')} />
+                <span className="whitespace-normal hyphens-auto">
+                  {isReading ? t('chat.textSelection.actions.stopReading') : t('chat.textSelection.actions.read')}
+                </span>
+              </button>
+            ) : null}
           </div>
-        ) : null}
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={handleOpenMobileComment}
-            className={cn(
-              'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
-              'text-sm font-medium leading-tight',
-              'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
-              'active:opacity-80',
-              'transition-opacity duration-150'
-            )}
-            title={t('chat.textSelection.title.commentOnSelection')}
-            type="button"
-          >
-            <Icon name="chat-1" className="h-5 w-5 flex-shrink-0" />
-            <span className="min-w-0 whitespace-normal">{t('chat.textSelection.actions.comment')}</span>
-          </button>
 
-          <button
-            onClick={handleAddToChat}
-            className={cn(
-              'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
-              'text-sm font-medium leading-tight',
-              'bg-[var(--primary-base)] text-[var(--primary-foreground)]',
-              'active:opacity-80',
-              'transition-opacity duration-150'
-            )}
-            title={t('chat.textSelection.title.addToCurrentChat')}
-            type="button"
-          >
-            <Icon name="add" className="h-5 w-5 flex-shrink-0" />
-            <span className="min-w-0 whitespace-normal">{t('chat.textSelection.actions.addToInput')}</span>
-          </button>
+          <div className="grid grid-cols-2 gap-2">
+            {currentSessionId ? (
+              <button
+                onClick={handleAskOpenChamber}
+                className={cn(
+                  'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                  'text-sm font-medium leading-tight',
+                  'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
+                  'active:opacity-80',
+                  'transition-opacity duration-150'
+                )}
+                title={t('chat.textSelection.title.askOpenChamber')}
+                type="button"
+              >
+                <Icon name="chat-ai-3" className="h-5 w-5 flex-shrink-0" />
+                <span className="min-w-0 whitespace-normal">{t('chat.textSelection.actions.askOpenChamber')}</span>
+              </button>
+            ) : null}
 
-          {currentSessionId ? (
-            <button
-              onClick={handleAskOpenChamber}
-              className={cn(
-                'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
-                'text-sm font-medium leading-tight',
-                'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
-                'active:opacity-80',
-                'transition-opacity duration-150'
-              )}
-              title={t('chat.textSelection.title.askOpenChamber')}
-              type="button"
-            >
-              <Icon name="chat-ai-3" className="h-5 w-5 flex-shrink-0" />
-              <span className="min-w-0 whitespace-normal">{t('chat.textSelection.actions.askOpenChamber')}</span>
-            </button>
-          ) : null}
-
-          {!isVSCodeRuntime() ? (
-            <button
-              onClick={handleAddToNotes}
-              disabled={isAddingToNotes}
-              className={cn(
-                'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
-                'text-sm font-medium leading-tight',
-                'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
-                'active:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed',
-                'transition-opacity duration-150'
-              )}
-              title={t('chat.textSelection.title.saveInsightToNotes')}
-              type="button"
-            >
-              {isAddingToNotes ? <Icon name="loader-4" className="h-5 w-5 flex-shrink-0 animate-spin" /> : <Icon name="booklet" className="h-5 w-5 flex-shrink-0" />}
-              <span className="min-w-0 whitespace-normal">{t('chat.textSelection.actions.addToNotes')}</span>
-            </button>
-          ) : null}
+            {!isVSCodeRuntime() ? (
+              <button
+                onClick={handleAddToNotes}
+                disabled={isAddingToNotes}
+                className={cn(
+                  'flex min-w-0 items-center gap-2 rounded-xl px-3 py-2.5 text-left',
+                  'text-sm font-medium leading-tight',
+                  'bg-[var(--surface-muted)] text-[var(--surface-foreground)]',
+                  'active:opacity-80 disabled:opacity-60 disabled:cursor-not-allowed',
+                  'transition-opacity duration-150'
+                )}
+                title={t('chat.textSelection.title.saveInsightToNotes')}
+                type="button"
+              >
+                {isAddingToNotes ? <Icon name="loader-4" className="h-5 w-5 flex-shrink-0 animate-spin" /> : <Icon name="booklet" className="h-5 w-5 flex-shrink-0" />}
+                <span className="min-w-0 whitespace-normal">{t('chat.textSelection.actions.addToNotes')}</span>
+              </button>
+            ) : null}
+          </div>
         </div>
       </div>,
       document.body
@@ -950,7 +958,7 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
                 title={readAloudLabel}
                 type="button"
               >
-                <Icon name={isReading ? 'stop' : 'volume-up'} className="h-4 w-4" />
+                <Icon name="volume-up" className={cn('h-4 w-4', isReading && 'animate-pulse')} />
               </button>
             </>
           ) : null}
