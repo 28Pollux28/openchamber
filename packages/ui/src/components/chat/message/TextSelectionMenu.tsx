@@ -17,6 +17,7 @@ import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { useI18n } from '@/lib/i18n';
 import { isIMECompositionEvent } from '@/lib/ime';
+import { useMessageTTS } from '@/hooks/useMessageTTS';
 import {
     useMobileCommentComposerController,
     useMobileCommentDraft,
@@ -36,6 +37,10 @@ import {
 
 interface TextSelectionMenuProps {
   containerRef: React.RefObject<HTMLElement | null>;
+  // The message's reading key: the menu shows and stops the same reading as
+  // the message's own read-aloud button.
+  readingKey: string;
+  canReadAloud: boolean;
 }
 
 interface MenuPosition {
@@ -58,8 +63,9 @@ const normalizeDistilledInsight = (insight: string): string => (
   insight.trim().replace(/^[-*+]\s+/, '').slice(0, PROJECT_NOTE_BODY_MAX_LENGTH)
 );
 
-export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerRef }) => {
+export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerRef, readingKey, canReadAloud }) => {
   const { t } = useI18n();
+  const { isPlaying: isReading, play: playReading, stop: stopReading } = useMessageTTS(readingKey);
   const [position, setPosition] = React.useState<MenuPosition>({ x: 0, y: 0, placement: 'above', show: false });
   // False while the chat has scrolled the selection out of view; the menu
   // waits hidden instead of pinning itself to an edge.
@@ -510,6 +516,22 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
     });
   }, [currentSessionId, hideMenu, requestBtwComposer, selectedTextMarkdown]);
 
+  // The selection is read word for word: the reader picked exactly what to
+  // hear. While a reading of this message plays the same button stops it, so
+  // stopping never needs a scroll down to the message's own button.
+  const handleReadAloud = React.useCallback(() => {
+    if (isReading) {
+      stopReading();
+      return;
+    }
+    if (!selectedText) return;
+    void playReading(selectedText, { summarize: false });
+    hideMenu();
+    window.getSelection()?.removeAllRanges();
+  }, [hideMenu, isReading, playReading, selectedText, stopReading]);
+
+  const readAloudLabel = isReading ? t('chat.messageBody.tts.stopSpeaking') : t('chat.messageBody.tts.readAloud');
+
   // Taken once the user commits to commenting, not on every selectionchange:
   // it reads the whole message text.
   const captureCommentAnchor = React.useCallback((): ChatQuoteAnchor | null => {
@@ -738,6 +760,25 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
           bottom: 'calc(0.5rem + env(safe-area-inset-bottom, 0px))',
         }}
       >
+        {canReadAloud ? (
+          <div className="mb-2 flex justify-end">
+            <button
+              onClick={handleReadAloud}
+              className={cn(
+                'flex h-9 w-9 items-center justify-center rounded-full',
+                'bg-[var(--surface-muted)]',
+                isReading ? 'text-[var(--primary-text)]' : 'text-[var(--surface-foreground)]',
+                'active:opacity-80',
+                'transition-opacity duration-150'
+              )}
+              aria-label={readAloudLabel}
+              title={readAloudLabel}
+              type="button"
+            >
+              <Icon name={isReading ? 'stop' : 'volume-up'} className="h-5 w-5" />
+            </button>
+          </div>
+        ) : null}
         <div className="grid grid-cols-2 gap-2">
           <button
             onClick={handleOpenMobileComment}
@@ -890,6 +931,26 @@ export const TextSelectionMenu: React.FC<TextSelectionMenuProps> = ({ containerR
               >
                 {isAddingToNotes ? <Icon name="loader-4" className="h-4 w-4 animate-spin" /> : null}
                 <span className="whitespace-nowrap">{t('chat.textSelection.actions.addToNotes')}</span>
+              </button>
+            </>
+          ) : null}
+
+          {canReadAloud ? (
+            <>
+              <div className="mx-0.5 h-5 w-px shrink-0 bg-[var(--interactive-border)]" />
+              <button
+                onClick={handleReadAloud}
+                className={cn(
+                  'flex h-8 w-8 items-center justify-center rounded-full',
+                  isReading ? 'text-[var(--primary-text)]' : 'text-foreground',
+                  'hover:bg-[var(--interactive-hover)]',
+                  'transition-colors duration-150'
+                )}
+                aria-label={readAloudLabel}
+                title={readAloudLabel}
+                type="button"
+              >
+                <Icon name={isReading ? 'stop' : 'volume-up'} className="h-4 w-4" />
               </button>
             </>
           ) : null}
