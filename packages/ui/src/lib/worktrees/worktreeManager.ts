@@ -12,6 +12,7 @@ import {
   startWorktreeBootstrapWatcher,
 } from '@/lib/worktrees/worktreeBootstrap';
 import { invalidateResolvedProjectRootCache, resolveProjectRoot } from '@/lib/worktrees/worktreeStatus';
+import { clearWorktreeRemoval, markWorktreeRemoving } from '@/lib/worktrees/worktreeRemovalState';
 import type {
   CreateGitWorktreePayload,
   GitWorktreeBootstrapStatus,
@@ -501,6 +502,16 @@ const invalidateWorktreeList = (projectDirectory: string): void => {
   _worktreeListCache.delete(projectDirectory);
 };
 
+// The list and root caches are keyed by path, and two instances can have a
+// project at the same path. Bumping every generation also makes a read still
+// in flight against the previous instance retry instead of caching its answer.
+subscribeRuntimeEndpointChanged(() => {
+  const directories = new Set([..._worktreeListGeneration.keys(), ..._worktreeListCache.keys(), ..._worktreeListInflight.keys()]);
+  for (const directory of directories) invalidateWorktreeList(directory);
+  _worktreeListInflight.clear();
+  invalidateResolvedProjectRootCache();
+});
+
 const readProjectWorktrees = async (projectDirectory: string): Promise<WorktreeMetadata[]> => {
   const metadataProjectDirectory = await resolveProjectRoot(projectDirectory).catch(() => projectDirectory);
   const normalizedProjectDirectory = normalizePath(projectDirectory);
@@ -736,21 +747,27 @@ export async function removeProjectWorktree(project: ProjectRef, worktree: Workt
   if (deleteRemote && (!branchName || !remoteName || !options?.network)) {
     throw new Error('Remote branch deletion requires an exact tracked remote and runtime authority');
   }
-  if (deleteRemote && branchName && remoteName && options?.network) {
-    await runBoundRemoteBranchDelete({
-      branch: branchName,
-      directory: projectDirectory,
-      remoteName,
-      sourceControl: options.network.sourceControl,
-      git: options.network.git,
+  markWorktreeRemoving(worktree.path);
+  try {
+    if (deleteRemote && branchName && remoteName && options?.network) {
+      await runBoundRemoteBranchDelete({
+        branch: branchName,
+        directory: projectDirectory,
+        remoteName,
+        sourceControl: options.network.sourceControl,
+        git: options.network.git,
+      });
+    }
+    const raw = await git.worktree.remove(projectDirectory, {
+      directory: worktree.path,
+      deleteLocalBranch,
     });
-  }
-  const raw = await git.worktree.remove(projectDirectory, {
-    directory: worktree.path,
-    deleteLocalBranch,
-  });
-  if (!raw?.success) {
-    throw new Error('Worktree removal failed');
+    if (!raw?.success) {
+      throw new Error('Worktree removal failed');
+    }
+  } catch (error) {
+    clearWorktreeRemoval(worktree.path);
+    throw error;
   }
 
   clearWorktreeBootstrapState(worktree.path);
@@ -789,5 +806,6 @@ export async function removeProjectWorktree(project: ProjectRef, worktree: Workt
     ),
     worktreeMetadata: updatedMetadata,
   });
+  clearWorktreeRemoval(worktree.path);
 
 }

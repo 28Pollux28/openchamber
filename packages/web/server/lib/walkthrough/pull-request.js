@@ -8,11 +8,7 @@ const sameRepository = (left, right) => left.owner.toLowerCase() === right.owner
   && left.repo.toLowerCase() === right.repo.toLowerCase();
 
 /**
- * Raw unified diff for a pull request.
- *
- * GitHub already returns the merge-base diff for a PR, so this matches the
- * three-dot semantics used for local branch reviews: work merged in from the
- * base branch is not part of it.
+ * The account and repository a pull request read goes to.
  *
  * The account comes from the exact read context and the repository from the
  * binding's primary remote. A caller may name the repository the pull request
@@ -20,14 +16,9 @@ const sameRepository = (left, right) => left.owner.toLowerCase() === right.owner
  * network, the repository and the upstream it was forked from, which is exactly
  * what the bound pull request list reads with the same account. So every listed
  * pull request can be opened, and a name outside that network fails instead of
- * reaching a repository the binding never covered. `allowEmpty` lets the
- * comparison view show a pull request that has no diff yet.
+ * reaching a repository the binding never covered.
  */
-export async function getPullRequestDiff(directory, number, readContext, {
-  allowEmpty = false,
-  sourceRepo = null,
-  ...dependencies
-} = {}) {
+async function resolvePullRequestRepo(directory, number, readContext, { sourceRepo = null, ...dependencies } = {}) {
   if (!readContext || readContext.provider !== 'github') {
     throw Object.assign(new Error('A trusted GitHub read context is required'), {
       statusCode: 400,
@@ -71,8 +62,24 @@ export async function getPullRequestDiff(directory, number, readContext, {
     }
     target = { owner: member.owner, repo: member.repo };
   }
+  return { octokit: account.octokit, repo: { owner: target.owner, repo: target.repo } };
+}
 
-  const response = await account.octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', {
+/**
+ * Raw unified diff for a pull request.
+ *
+ * GitHub already returns the merge-base diff for a PR, so this matches the
+ * three-dot semantics used for local branch reviews: work merged in from the
+ * base branch is not part of it. `allowEmpty` lets the comparison view show a
+ * pull request that has no diff yet.
+ */
+export async function getPullRequestDiff(directory, number, readContext, {
+  allowEmpty = false,
+  ...options
+} = {}) {
+  const { octokit, repo: target } = await resolvePullRequestRepo(directory, number, readContext, options);
+
+  const response = await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', {
     owner: target.owner,
     repo: target.repo,
     pull_number: number,
@@ -89,4 +96,52 @@ export async function getPullRequestDiff(directory, number, readContext, {
   }
 
   return { patch, meta: { owner: target.owner, repo: target.repo, number } };
+}
+
+/** Above this the full-context view is no longer a readable diff, and the round trip is wasted. */
+const MAX_FULL_FILE_BYTES = 5 * 1024 * 1024;
+
+/**
+ * Both sides of one file as GitHub has them, so the comparison view can expand
+ * collapsed context for a PR whose commits are not on disk (a fork, a branch
+ * that was never fetched) without ever reading the working tree.
+ *
+ * The base side is the merge base, not the base branch tip: the PR diff is
+ * three-dot, and reading the tip would leak unrelated base-branch work into
+ * the expanded context. Head commits of a fork PR are reachable through the
+ * base repository (`refs/pull/<n>/head`), so every read goes to one repo.
+ */
+export async function getPullRequestFileContents(directory, number, readContext, { path, previousPath, status, ...options }) {
+  const { octokit, repo } = await resolvePullRequestRepo(directory, number, readContext, options);
+  const pull = await octokit.request('GET /repos/{owner}/{repo}/pulls/{pull_number}', {
+    owner: repo.owner, repo: repo.repo, pull_number: number,
+  });
+  const headSha = pull.data?.head?.sha;
+  const baseSha = pull.data?.base?.sha;
+  assert.match(String(headSha), /^[0-9a-f]{40}$/, 'GitHub returned an invalid pull request head');
+  assert.match(String(baseSha), /^[0-9a-f]{40}$/, 'GitHub returned an invalid pull request base');
+  const compare = await octokit.request('GET /repos/{owner}/{repo}/compare/{basehead}', {
+    owner: repo.owner, repo: repo.repo, basehead: `${baseSha}...${headSha}`,
+  });
+  const mergeBaseSha = compare.data?.merge_base_commit?.sha;
+  assert.match(String(mergeBaseSha), /^[0-9a-f]{40}$/, 'GitHub returned an invalid merge base');
+
+  const readFile = async (filePath, ref) => {
+    const response = await octokit.request('GET /repos/{owner}/{repo}/contents/{path}', {
+      owner: repo.owner, repo: repo.repo, path: filePath, ref,
+      headers: { accept: 'application/vnd.github.raw+json' },
+    });
+    const content = response.data;
+    assert.equal(typeof content, 'string', 'GitHub returned invalid file contents');
+    if (Buffer.byteLength(content) > MAX_FULL_FILE_BYTES) {
+      throw Object.assign(new Error('This file is too large to show in full'), { statusCode: 413, code: 'file-too-large' });
+    }
+    return content;
+  };
+
+  const [original, modified] = await Promise.all([
+    status === 'A' ? '' : readFile(previousPath || path, mergeBaseSha),
+    status === 'D' ? '' : readFile(path, headSha),
+  ]);
+  return { original, modified };
 }

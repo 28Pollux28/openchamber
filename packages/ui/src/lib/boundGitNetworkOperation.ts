@@ -10,7 +10,6 @@ import type {
   SourceControlBindingRead,
   SourceControlIdentity,
 } from '@/lib/api/types';
-import { GitNetworkOperationRequestError } from '@/lib/api/types';
 import { effectiveRepositoryBinding } from '@/lib/source-control/types';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { gitOperationRecoveryOwner } from '@/lib/source-control/git-operation-recovery';

@@ -7,6 +7,9 @@ import type {
   ChangeRequestStatus,
   CI,
   CISummary,
+  GitHubIssueLiveSummary,
+  GitHubPullRequestLiveSummary,
+  GitHubPullRequestRef,
   Project,
   RuntimeAPIs,
   SourceControlIdentity,
@@ -17,6 +20,8 @@ import { mapWithConcurrency } from '@/lib/concurrency';
 import { hasSameSourceControlReadContext } from '@/lib/source-control/identity';
 import { createDeferredSafeJSONStorage } from './utils/safeStorage';
 import { getRuntimeKey } from '@/lib/runtime-switch';
+import type { LinkedGitHubPullRequest } from '@/lib/linkedIssues';
+import { useShallow } from 'zustand/react/shallow';
 
 const PR_REVALIDATE_TTL_MS = 90_000;
 const PR_REVALIDATE_INTERVAL_MS = 15_000;
@@ -30,6 +35,9 @@ const PR_PERSIST_TTL_MS = 12 * 60 * 60_000;
 const PR_STATUS_STORAGE_KEY = 'openchamber.source-control-status';
 const LEGACY_PR_STATUS_STORAGE_KEY = 'openchamber.github-pr-status';
 const PR_MAX_ENTRIES = 200;
+// Refs per live-summary request; the server splits them into GraphQL
+// documents of 25.
+const PR_LIVE_SUMMARY_BATCH_SIZE = 100;
 
 const GITHUB_IDENTITY: SourceControlIdentity = { provider: 'github', instance: 'github.com' };
 const statusKeySchema = z.union([
@@ -240,6 +248,15 @@ type SourceControlStatusStore = {
   stopWatching: (key: string) => void;
   refresh: (key: string, options?: RefreshOptions) => Promise<void>;
   refreshTargets: (targets: PrTrackingTarget[], options?: RefreshOptions) => Promise<void>;
+  /** Live status of PRs linked to sessions, keyed like live-summary batches. Runtime-only. */
+  linkedSummaries: Record<string, GitHubPullRequestLiveSummary>;
+  /** Live state of GitHub issues linked to sessions, keyed like live-summary batches. Runtime-only. */
+  linkedIssueSummaries: Record<string, GitHubIssueLiveSummary>;
+  syncOpenPrSummaries: (
+    keys: string[],
+    sourceControl: Pick<RuntimeAPIs['sourceControl'], 'githubSummaries'>,
+    options: { minAgeMs: number; linkedRefs?: GitHubPullRequestRef[]; linkedIssueRefs?: GitHubPullRequestRef[] },
+  ) => Promise<void>;
   updateStatus: (key: string, updater: (prev: SourceControlStatus | null) => SourceControlStatus | null) => void;
   clearDirectoryStatus: (directory: string) => void;
   resetForRuntimeSwitch: () => void;
@@ -249,6 +266,11 @@ const timers = new Map<string, number>();
 const bootstrapTimers = new Map<string, number[]>();
 const inFlightBySignature = new Map<string, symbol>();
 const lastRefreshBySignature = new Map<string, number>();
+// When each open PR last went out in a live-summary batch, keyed by runtime,
+// account and PR. Failed batches count too, so an outage waits for the next
+// cadence.
+const liveSummaryCheckedAt = new Map<string, number>();
+let liveSummarySyncInFlight = false;
 let prRuntimeGeneration = 0;
 let activeContextsRequestId = 0;
 const activeContextsRequestsByDirectory = new Map<string, Map<string, number>>();
@@ -512,6 +534,25 @@ export const getFreshestActiveSourceControlStatusForBranch = (
   entries: Record<string, PrStatusEntry>, contexts: SourceControlReadContext[], branch: string,
 ): SourceControlStatus | null => getFreshestSourceControlEntryForBranch(entries, contexts, branch)?.status ?? null;
 
+/**
+ * Status keys of the bound entries behind these shown branches: one per read
+ * context the branch's directory currently has. Live-summary batches use them
+ * so an answer lands on the entry the sidebar actually reads.
+ */
+export const getActiveSourceControlStatusKeys = (
+  registrations: SourceControlStatusStore['activeContextRegistrations'],
+  targets: Iterable<{ directory: string; branch: string }>,
+): string[] => {
+  const runtimeKey = getRuntimeKey();
+  const keys = new Set<string>();
+  for (const { directory, branch } of targets) {
+    for (const context of getActiveContexts(registrations[getActiveContextsDirectoryKey(runtimeKey, directory)])) {
+      keys.add(getSourceControlStatusKey(context, branch));
+    }
+  }
+  return [...keys];
+};
+
 export const getFreshestPrStatusForBranch = (
   entries: Record<string, PrStatusEntry>, directory: string, branch: string,
 ): SourceControlStatus | null => getFreshestLegacyPrEntryForBranch(entries, GITHUB_IDENTITY, directory, branch)?.status ?? null;
@@ -759,6 +800,104 @@ const createPrStatusStorage = () => {
   };
 };
 
+// Linked PRs and issues belong to no repository binding, so they are read with
+// the current github.com account: their keys carry no account.
+const getLiveSummaryPrKey = (runtimeKey: string, accountId: string | null, ref: GitHubPullRequestRef): string =>
+  JSON.stringify([runtimeKey, accountId ?? '', ref.owner.toLowerCase(), ref.repo.toLowerCase(), ref.number]);
+
+const getLiveSummaryIssueKey = (runtimeKey: string, ref: GitHubPullRequestRef): string =>
+  JSON.stringify(['issue', runtimeKey, ref.owner.toLowerCase(), ref.repo.toLowerCase(), ref.number]);
+
+const getStatusChangeRequest = (status: SourceControlStatus | null | undefined) => status?.changeRequest ?? status?.pr ?? null;
+const getStatusChecks = (status: SourceControlStatus | null | undefined): CISummary | null => status?.ci?.summary ?? status?.checks ?? null;
+
+// The open GitHub PR of an entry that list surfaces keep live through batched
+// summaries, with the account it was read with. Watched entries are skipped:
+// their watcher already runs full refreshes, which carry more than a summary
+// does.
+const getLiveSummaryTarget = (
+  entry: PrStatusEntry | undefined,
+): { accountId: string; ref: GitHubPullRequestRef } | null => {
+  const identity = getIdentityFromEntry(entry);
+  const pr = getStatusChangeRequest(entry?.status);
+  const project = entry?.status?.project;
+  const owner = project?.owner ?? entry?.status?.repo?.owner;
+  const repo = project?.name ?? entry?.status?.repo?.repo;
+  if (!entry || entry.watchers > 0 || identity?.provider !== 'github' || !identity.accountId
+    || !pr || pr.state !== 'open' || !owner || !repo) {
+    return null;
+  }
+  return { accountId: identity.accountId, ref: { owner, repo, number: pr.number } };
+};
+
+const sameChecks = (left: CISummary | null | undefined, right: CISummary | null | undefined): boolean => (
+  (left ?? null) === (right ?? null)
+  || Boolean(left && right
+    && left.state === right.state
+    && left.total === right.total
+    && left.success === right.success
+    && left.failure === right.failure
+    && left.pending === right.pending)
+);
+
+const sameLiveSummary = (
+  left: GitHubPullRequestLiveSummary | undefined,
+  right: GitHubPullRequestLiveSummary,
+): boolean => Boolean(left
+  && left.state === right.state
+  && left.draft === right.draft
+  && left.title === right.title
+  && left.mergeable === right.mergeable
+  && left.mergeableState === right.mergeableState
+  && left.headSha === right.headSha
+  && sameChecks(left.checks, right.checks));
+
+/**
+ * Status with the summary's live fields, or null when nothing changed. Both the
+ * change request and its `pr` alias, and the CI summary and its `checks`
+ * alias, take the new values: readers use either.
+ */
+const applyLiveSummary = (
+  status: SourceControlStatus,
+  summary: GitHubPullRequestLiveSummary,
+  fetchedAt: number,
+): SourceControlStatus | null => {
+  const pr = getStatusChangeRequest(status);
+  if (!pr || pr.number !== summary.number) {
+    return null;
+  }
+  const isOpen = summary.state === 'open';
+  const unchanged = pr.state === summary.state
+    && pr.draft === summary.draft
+    && pr.title === summary.title
+    && (pr.mergeable ?? null) === summary.mergeable
+    && (pr.mergeableState ?? null) === summary.mergeableState
+    && (!summary.headSha || pr.headSha === summary.headSha)
+    && sameChecks(getStatusChecks(status), summary.checks);
+  if (unchanged) {
+    return null;
+  }
+  const live = {
+    state: summary.state,
+    draft: summary.draft,
+    title: summary.title,
+    headSha: summary.headSha ?? pr.headSha,
+    mergeable: summary.mergeable,
+    mergeableState: summary.mergeableState,
+  };
+  const ci: CI | null = summary.checks ? { ...status.ci, summary: summary.checks } : null;
+  return {
+    ...status,
+    fetchedAt,
+    ...(status.changeRequest ? { changeRequest: { ...status.changeRequest, ...live } } : {}),
+    ...(status.pr ? { pr: { ...status.pr, ...live } } : {}),
+    ci,
+    checks: summary.checks,
+    // Merge permission only matters while the PR is open, as in the REST route.
+    canMerge: isOpen ? status.canMerge : false,
+  };
+};
+
 const boundEntries = (entries: Record<string, PrStatusEntry>, retainedKey: string): Record<string, PrStatusEntry> => {
   const all = Object.entries(entries);
   if (all.length <= PR_MAX_ENTRIES) return entries;
@@ -776,6 +915,8 @@ export const useGitHubPrStatusStore = create<SourceControlStatusStore>()(
   persist(
     (set, get) => ({
       entries: {},
+      linkedSummaries: {},
+      linkedIssueSummaries: {},
       activeContextRegistrations: {},
       activeRequestCount: 0,
       totalRequestCount: 0,
@@ -790,7 +931,11 @@ export const useGitHubPrStatusStore = create<SourceControlStatusStore>()(
         lastRefreshBySignature.clear();
         activeContextsRequestsByDirectory.clear();
         activeContextsCommitByDirectory.clear();
+        liveSummaryCheckedAt.clear();
+        liveSummarySyncInFlight = false;
         set((state) => ({
+          linkedSummaries: {},
+          linkedIssueSummaries: {},
           activeRequestCount: 0,
           activeContextRegistrations: {},
           entries: Object.fromEntries(Object.entries(state.entries).map(([key, entry]) => [key, {
@@ -1314,6 +1459,166 @@ export const useGitHubPrStatusStore = create<SourceControlStatusStore>()(
         await mapWithConcurrency(keys, PR_STATUS_REFRESH_CONCURRENCY, (key) => get().refresh(key, options));
       },
 
+      syncOpenPrSummaries: async (keys, sourceControl, { minAgeMs, linkedRefs = [], linkedIssueRefs = [] }) => {
+        if (liveSummarySyncInFlight) {
+          return;
+        }
+        const runtimeKey = getRuntimeKey();
+        const runtimeGeneration = prRuntimeGeneration;
+        const now = Date.now();
+        const { entries, linkedSummaries } = get();
+        // Several keys (remote variants, worktrees on one branch) and linked
+        // sessions can share a PR; it goes out once per account and its answer
+        // lands on all of them.
+        type Candidate = { accountId: string | null; ref: GitHubPullRequestRef; keys: string[]; linked: boolean; lastRefreshAt: number };
+        const candidates = new Map<string, Candidate>();
+        // A linked PR that is also a shown branch's PR rides that entry's
+        // account instead of going out twice.
+        const candidateKeyByRef = new Map<string, string>();
+        const addCandidate = (accountId: string | null, ref: GitHubPullRequestRef, key: string | null, lastRefreshAt: number) => {
+          const refKey = getLiveSummaryPrKey(runtimeKey, null, ref);
+          const prKey = key ? getLiveSummaryPrKey(runtimeKey, accountId, ref) : candidateKeyByRef.get(refKey) ?? refKey;
+          if (!candidateKeyByRef.has(refKey)) candidateKeyByRef.set(refKey, prKey);
+          const candidate = candidates.get(prKey) ?? { accountId, ref, keys: [], linked: false, lastRefreshAt };
+          if (key) {
+            candidate.keys.push(key);
+          } else {
+            candidate.linked = true;
+          }
+          candidate.lastRefreshAt = Math.min(candidate.lastRefreshAt, lastRefreshAt);
+          candidates.set(prKey, candidate);
+        };
+        for (const key of keys) {
+          const entry = entries[key];
+          const target = getLiveSummaryTarget(entry);
+          if (entry && target) {
+            addCandidate(target.accountId, target.ref, key, entry.lastRefreshAt);
+          }
+        }
+        for (const ref of linkedRefs) {
+          // A merged PR cannot change any more; a closed one can reopen.
+          if (linkedSummaries[getLiveSummaryPrKey(runtimeKey, null, ref)]?.state !== 'merged') {
+            addCandidate(null, ref, null, 0);
+          }
+        }
+        const isDue = (checkKey: string, lastRefreshAt: number) => {
+          if (now - Math.max(liveSummaryCheckedAt.get(checkKey) ?? 0, lastRefreshAt) < minAgeMs) {
+            return false;
+          }
+          liveSummaryCheckedAt.set(checkKey, now);
+          return true;
+        };
+        type BatchEntry = { kind: 'pull' | 'issue'; ref: GitHubPullRequestRef };
+        const due = new Map<string, { keys: string[]; linked: boolean }>();
+        const batchesByAccount = new Map<string | null, BatchEntry[]>();
+        const addToBatch = (accountId: string | null, entry: BatchEntry) => {
+          const batch = batchesByAccount.get(accountId) ?? [];
+          batch.push(entry);
+          batchesByAccount.set(accountId, batch);
+        };
+        candidates.forEach((candidate, prKey) => {
+          if (!isDue(prKey, candidate.lastRefreshAt)) {
+            return;
+          }
+          due.set(prKey, { keys: candidate.keys, linked: candidate.linked });
+          addToBatch(candidate.accountId, { kind: 'pull', ref: candidate.ref });
+        });
+        // Issues stay on the cadence whatever their state: any of them can reopen.
+        const dueIssueKeys = new Set<string>();
+        for (const ref of linkedIssueRefs) {
+          const issueKey = getLiveSummaryIssueKey(runtimeKey, ref);
+          if (dueIssueKeys.has(issueKey) || !isDue(issueKey, 0)) {
+            continue;
+          }
+          dueIssueKeys.add(issueKey);
+          addToBatch(null, { kind: 'issue', ref });
+        }
+        if (batchesByAccount.size === 0) {
+          return;
+        }
+
+        liveSummarySyncInFlight = true;
+        try {
+          for (const [accountId, batchEntries] of batchesByAccount) {
+            for (let start = 0; start < batchEntries.length; start += PR_LIVE_SUMMARY_BATCH_SIZE) {
+              const batch = batchEntries.slice(start, start + PR_LIVE_SUMMARY_BATCH_SIZE);
+              const prRefs = batch.filter((entry) => entry.kind === 'pull').map((entry) => entry.ref);
+              const issueRefs = batch.filter((entry) => entry.kind === 'issue').map((entry) => entry.ref);
+              await acquirePrStatusNetworkSlot();
+              let result: Awaited<ReturnType<typeof sourceControl.githubSummaries>>;
+              try {
+                result = await runBackgroundNetworkTask(() => sourceControl.githubSummaries(accountId, prRefs, issueRefs))
+                  .finally(releasePrStatusNetworkSlot);
+              } catch {
+                // Keep the last known status; the next cadence retries. One
+                // account failing leaves the others' batches to run.
+                continue;
+              }
+              if (runtimeGeneration !== prRuntimeGeneration) {
+                return;
+              }
+              if (!result.connected) {
+                continue;
+              }
+              const { fetchedAt, summaries, issueSummaries } = result;
+              set((prev) => {
+                let nextEntries: Record<string, PrStatusEntry> | null = null;
+                let nextLinked: Record<string, GitHubPullRequestLiveSummary> | null = null;
+                let nextIssues: Record<string, GitHubIssueLiveSummary> | null = null;
+                for (const summary of summaries) {
+                  const target = due.get(getLiveSummaryPrKey(runtimeKey, accountId, summary));
+                  if (!target) {
+                    continue;
+                  }
+                  const linkedKey = getLiveSummaryPrKey(runtimeKey, null, summary);
+                  if (target.linked && !sameLiveSummary(prev.linkedSummaries[linkedKey], summary)) {
+                    nextLinked = nextLinked ?? { ...prev.linkedSummaries };
+                    nextLinked[linkedKey] = summary;
+                  }
+                  for (const key of target.keys) {
+                    const current = (nextEntries ?? prev.entries)[key];
+                    // A watcher may have started, or a full refresh landed,
+                    // while this batch was in flight; both are authoritative.
+                    if (!current?.status || !getLiveSummaryTarget(current)
+                      || (current.status.fetchedAt ?? 0) > fetchedAt) {
+                      continue;
+                    }
+                    const status = applyLiveSummary(current.status, summary, fetchedAt);
+                    if (!status) {
+                      continue;
+                    }
+                    nextEntries = nextEntries ?? { ...prev.entries };
+                    nextEntries[key] = { ...current, status, lastRefreshAt: Date.now() };
+                  }
+                }
+                for (const summary of issueSummaries) {
+                  const issueKey = getLiveSummaryIssueKey(runtimeKey, summary);
+                  const current = prev.linkedIssueSummaries[issueKey];
+                  if (!dueIssueKeys.has(issueKey)
+                    || (current && current.state === summary.state && current.title === summary.title)) {
+                    continue;
+                  }
+                  nextIssues = nextIssues ?? { ...prev.linkedIssueSummaries };
+                  nextIssues[issueKey] = summary;
+                }
+                if (!nextEntries && !nextLinked && !nextIssues) {
+                  return prev;
+                }
+                const next: Partial<SourceControlStatusStore> = {};
+                if (nextEntries) next.entries = nextEntries;
+                if (nextLinked) next.linkedSummaries = nextLinked;
+                if (nextIssues) next.linkedIssueSummaries = nextIssues;
+                return next;
+              });
+            }
+          }
+        } finally {
+          if (runtimeGeneration === prRuntimeGeneration) {
+            liveSummarySyncInFlight = false;
+          }
+        }
+      },
+
       updateStatus: (key, updater) => {
         set((state) => {
           const current = state.entries[key] ?? createEntry();
@@ -1400,7 +1705,7 @@ export const useGitHubPrStatusStore = create<SourceControlStatusStore>()(
     },
   ),
 );
-type PrVisualSummary = {
+export type PrVisualSummary = {
   provider: SourceControlProvider | null;
   number: number;
   visualState: string;
@@ -1424,20 +1729,26 @@ const derivePrVisualState = (status: SourceControlStatus | null): string | null 
   if (pr.draft) return 'draft';
   const checksFailed = status?.checks?.state === 'failure';
   const ms = typeof pr.mergeableState === 'string' ? pr.mergeableState : '';
-  const notMergeable = pr.mergeable === false || ms === 'blocked' || ms === 'dirty';
+  // `blocked` merge state alone usually means a required review is missing:
+  // nothing to fix, so it keeps the open colour. Orange is for failed checks
+  // and conflicts.
+  const notMergeable = pr.mergeable === false || ms === 'dirty';
   if (checksFailed || notMergeable) return 'blocked';
   return 'open';
 };
 
-const deriveSummary = (entry: PrStatusEntry): PrVisualSummary | null => {
-  const vs = derivePrVisualState(entry.status ?? null);
-  const pr = entry.status?.changeRequest ?? entry.status?.pr;
-  const checks = entry.status?.ci?.summary ?? entry.status?.checks;
-  const project = entry.status?.project;
-  const legacyRepo = entry.status?.repo;
+const deriveSummary = (
+  status: SourceControlStatus | null,
+  fallbackProvider: SourceControlProvider | null = null,
+): PrVisualSummary | null => {
+  const vs = derivePrVisualState(status);
+  const pr = getStatusChangeRequest(status);
+  const checks = getStatusChecks(status);
+  const project = status?.project;
+  const legacyRepo = status?.repo;
   if (!vs || !pr?.number) return null;
   return {
-    provider: entry.status?.identity?.provider ?? entry.identity?.provider ?? null,
+    provider: status?.identity?.provider ?? fallbackProvider,
     number: pr.number,
     visualState: vs,
     prState: pr.state,
@@ -1449,7 +1760,7 @@ const deriveSummary = (entry: PrStatusEntry): PrVisualSummary | null => {
     checks: checks
       ? { state: checks.state, total: checks.total, success: checks.success, failure: checks.failure, pending: checks.pending }
       : null,
-    canMerge: typeof entry.status?.canMerge === 'boolean' ? entry.status.canMerge : null,
+    canMerge: typeof status?.canMerge === 'boolean' ? status.canMerge : null,
     mergeableState: typeof pr.mergeableState === 'string' ? pr.mergeableState : null,
     repo: project
       ? { owner: project.owner, repo: project.name }
@@ -1469,8 +1780,12 @@ const summarySignature = (s: PrVisualSummary): string =>
 const PR_SUMMARY_CACHE_MAX_ENTRIES = 300;
 const prSummaryCacheByKey = new Map<string, { sig: string; summary: PrVisualSummary }>();
 
-const getCachedPrSummary = (cacheKey: string, entry: PrStatusEntry | null | undefined): PrVisualSummary | null => {
-  const summary = entry ? deriveSummary(entry) : null;
+const getCachedPrSummary = (
+  cacheKey: string,
+  status: SourceControlStatus | null | undefined,
+  fallbackProvider: SourceControlProvider | null = null,
+): PrVisualSummary | null => {
+  const summary = status ? deriveSummary(status, fallbackProvider) : null;
   if (!summary) {
     prSummaryCacheByKey.delete(cacheKey);
     return null;
@@ -1497,6 +1812,54 @@ export const useFreshestSourceControlVisualSummaryForBranch = (
     if (!directory || !branch || !cacheKey) return null;
     const directoryKey = getActiveContextsDirectoryKey(getRuntimeKey(), directory);
     const contexts = getActiveContexts(state.activeContextRegistrations[directoryKey]);
-    return getCachedPrSummary(cacheKey, getFreshestSourceControlEntryForBranch(state.entries, contexts, branch));
+    const entry = getFreshestSourceControlEntryForBranch(state.entries, contexts, branch);
+    return getCachedPrSummary(cacheKey, entry?.status, entry?.identity?.provider ?? null);
   });
+};
+
+// A linked PR's live summary in the status shape the badge derivation reads.
+const linkedPrStatus = (link: LinkedGitHubPullRequest, summary: GitHubPullRequestLiveSummary): SourceControlStatus => ({
+  connected: true,
+  identity: GITHUB_IDENTITY,
+  repo: { owner: link.owner, repo: link.repo, url: '' },
+  pr: {
+    number: summary.number,
+    title: summary.title || link.title,
+    url: link.url,
+    state: summary.state,
+    draft: summary.draft,
+    base: '',
+    head: '',
+    headSha: summary.headSha,
+    mergeable: summary.mergeable,
+    mergeableState: summary.mergeableState,
+  },
+  checks: summary.checks,
+});
+
+/**
+ * Live state of the GitHub issues linked to a session, in link order; an
+ * issue whose state has not arrived yet maps to null.
+ */
+export const useLinkedIssueStates = (
+  refs: readonly GitHubPullRequestRef[],
+): Array<GitHubIssueLiveSummary | null> => {
+  const runtimeKey = getRuntimeKey();
+  return useGitHubPrStatusStore(useShallow((state) => refs.map(
+    (ref) => state.linkedIssueSummaries[getLiveSummaryIssueKey(runtimeKey, ref)] ?? null,
+  )));
+};
+
+/**
+ * Visual summaries of the PRs linked to a session, in link order. A PR whose
+ * live state has not arrived yet is left out rather than shown as unknown.
+ */
+export const useLinkedPrVisualSummaries = (links: readonly LinkedGitHubPullRequest[]): PrVisualSummary[] => {
+  const runtimeKey = getRuntimeKey();
+  return useGitHubPrStatusStore(useShallow((state) => links.flatMap((link) => {
+    const prKey = getLiveSummaryPrKey(runtimeKey, null, link);
+    const summary = state.linkedSummaries[prKey];
+    const visual = summary ? getCachedPrSummary(`linked:${prKey}`, linkedPrStatus(link, summary)) : null;
+    return visual ? [visual] : [];
+  })));
 };

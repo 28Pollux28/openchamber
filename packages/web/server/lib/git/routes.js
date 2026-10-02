@@ -1,3 +1,4 @@
+import { OpenCode } from '@opencode/client';
 import { createGitRedactor, redactGitText } from './redaction.js';
 import { redactRemoteUrl } from '../source-control/url-redaction.js';
 import { parsePublicGitIdentityProfile, toPublicGitIdentityProfile } from './identity-storage.js';
@@ -17,11 +18,33 @@ const toGitRemoteSummary = (remote) => ({
   pushUrl: redactRemoteUrl(remote?.pushUrl),
 });
 
+// A removal should not hang on an unresponsive OpenCode server: disposal is
+// best-effort and `removeWorktree` swallows its failure.
+const WORKTREE_INSTANCE_DISPOSE_TIMEOUT_MS = 5_000;
+
+/**
+ * Builds the best-effort disposal hook handed to `removeWorktree`. The URL and
+ * auth headers are route dependencies, so this module never resolves the
+ * OpenCode runtime itself, and both are read at call time. OpenCode 2 has no
+ * instance route; evicting the location drops its cached services (file
+ * watchers, LSP, MCP), which is what held the worktree folder.
+ */
+const createWorktreeInstanceDisposer = ({ buildOpenCodeUrl, getOpenCodeAuthHeaders }) => {
+  return async (worktreeDirectory) => {
+    const client = OpenCode.make({
+      baseUrl: buildOpenCodeUrl('/', '').replace(/\/$/, ''),
+      headers: getOpenCodeAuthHeaders(),
+      fetch: (input, init) => fetch(input, { ...init, signal: AbortSignal.timeout(WORKTREE_INSTANCE_DISPOSE_TIMEOUT_MS) }),
+    });
+    await client.debug.location.evict({ location: { directory: worktreeDirectory } });
+  };
+};
+
 export function registerGitRoutes(app, {
   networkOperations, managedSshInventory, getSourceControlBinding, contributorProvenance, resolveChangeRequestSource,
   backfillIdentities,
   createHttpsCredentialReference, resolveSourceControlAccount, errorRedactionSecrets = [], worktreeBootstrapStore,
-  emitWorktreeChanged,
+  emitWorktreeChanged, buildOpenCodeUrl, getOpenCodeAuthHeaders,
 } = {}) {
   let gitLibraries = null;
   const getGitLibraries = async () => {
@@ -65,6 +88,8 @@ export function registerGitRoutes(app, {
   };
 
   const isNonRepoGitError = (error) => /not a git repository/i.test(extractGitErrorText(error));
+
+  const canDisposeWorktreeInstance = Boolean(buildOpenCodeUrl && getOpenCodeAuthHeaders);
 
   const nonRepoStatusPayload = () => ({
     isGitRepository: false,
@@ -1604,6 +1629,9 @@ export function registerGitRoutes(app, {
       const result = await removeWorktree(directory, {
         directory: worktreeDirectory,
         deleteLocalBranch: req.body?.deleteLocalBranch === true,
+        disposeInstance: canDisposeWorktreeInstance
+          ? createWorktreeInstanceDisposer({ buildOpenCodeUrl, getOpenCodeAuthHeaders })
+          : undefined,
       }, {
         bootstrapStore: worktreeBootstrapStore,
       });
@@ -1611,6 +1639,20 @@ export function registerGitRoutes(app, {
     } catch (error) {
       console.error('Failed to remove worktree:', error);
       res.status(500).json({ error: error.message || 'Failed to remove worktree' });
+    }
+  });
+
+  app.post('/api/git/worktrees/snapshot', async (req, res) => {
+    const { snapshotWorktree } = await getGitLibraries();
+    try {
+      const directory = resolveDirectoryQuery(req.query.directory);
+      if (!directory) {
+        return res.status(400).json({ error: 'directory parameter is required' });
+      }
+      res.json(await snapshotWorktree(directory, { ref: req.body?.ref }));
+    } catch (error) {
+      console.error('Failed to snapshot worktree:', error);
+      res.status(500).json({ error: error.message || 'Failed to snapshot worktree' });
     }
   });
 

@@ -28,6 +28,9 @@ import { GitHubAccountControl } from '@/components/github/GitHubAccountControl';
 import { isVSCodeRuntime } from '@/lib/desktop';
 import { formatDateTimeForPreference } from '@/lib/timeFormat';
 import { useSessionUIStore } from '@/sync/session-ui-store';
+import * as sessionActions from '@/sync/session-actions';
+import { buildLinkedIssue } from '@/lib/linkedIssues';
+import { normalizePath } from '@/lib/pathNormalization';
 import { useInlineCommentDraftStore, type InlineCommentDraftTarget } from '@/stores/useInlineCommentDraftStore';
 import { getSourceControlAuthKey, getSourceControlReadContextAuthState, useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
 import { getSourceControlStatusKey, useGitHubPrStatusStore, type SourceControlStatus } from '@/stores/useGitHubPrStatusStore';
@@ -88,6 +91,26 @@ const statusColor = (state: string | undefined | null): string => {
   }
 };
 
+// A change request opened here belongs to the session the user is working in,
+// but only when that session works in this directory: the Git view can show
+// another worktree than the open chat.
+const linkCreatedChangeRequestToCurrentSession = (
+  directory: string,
+  changeRequest: { url: string; number: number; title: string },
+) => {
+  const { currentSessionId, getDirectoryForSession } = useSessionUIStore.getState();
+  const sessionDirectory = currentSessionId ? getDirectoryForSession(currentSessionId) : null;
+  if (!currentSessionId || !sessionDirectory || normalizePath(sessionDirectory) !== normalizePath(directory)) {
+    return;
+  }
+  void sessionActions.setLinkedIssue(
+    currentSessionId,
+    sessionDirectory,
+    buildLinkedIssue({ url: changeRequest.url, number: changeRequest.number, title: changeRequest.title, kind: 'pull', linkedAt: Date.now() }),
+    true,
+  ).catch(() => undefined);
+};
+
 const getPrVisualState = (status: SourceControlStatus | null): 'draft' | 'open' | 'blocked' | 'merged' | 'closed' | null => {
   const pr = status?.changeRequest ?? status?.pr;
   if (!pr) {
@@ -104,7 +127,9 @@ const getPrVisualState = (status: SourceControlStatus | null): 'draft' | 'open' 
   }
   const checksFailed = (status?.ci?.summary ?? status?.checks)?.state === 'failure';
   const mergeableState = typeof pr.mergeableState === 'string' ? pr.mergeableState : '';
-  const notMergeable = pr.mergeable === false || mergeableState === 'blocked' || mergeableState === 'dirty';
+  // A `blocked` merge state alone (usually a missing review) keeps the open
+  // colour; orange is for failed checks and conflicts.
+  const notMergeable = pr.mergeable === false || mergeableState === 'dirty';
   if (checksFailed || notMergeable) {
     return 'blocked';
   }
@@ -1310,13 +1335,19 @@ export const PullRequestSection: React.FC<{
       if (payloadBody !== undefined) payload.body = payloadBody;
       if (remote) payload.remote = remote;
       if (headRemote) payload.headRemote = headRemote;
-      await sourceControl.changeRequestCreate(payload);
+      const receipt = await sourceControl.changeRequestCreate(payload);
       mutationSettled = true;
       finishMutation(signature, idempotencyKey, false);
       if (!isMutationScopeCurrent(capturedRuntimeKey, capturedStatusKey)) return;
       toast.success(t('gitView.pr.toast.prCreated'));
       await refresh({ force: true });
       if (!isMutationScopeCurrent(capturedRuntimeKey, capturedStatusKey)) return;
+      // The receipt names the number; the refreshed status has its address.
+      const created = useGitHubPrStatusStore.getState().entries[capturedStatusKey]?.status;
+      const createdChangeRequest = created?.changeRequest ?? created?.pr;
+      if (createdChangeRequest && createdChangeRequest.number === receipt.target.number) {
+        linkCreatedChangeRequestToCurrentSession(directory, createdChangeRequest);
+      }
       scheduleActionRefresh(capturedRuntimeKey, capturedStatusKey);
     } catch (e) {
       const error = e instanceof Error ? e : new Error(String(e));
@@ -1328,7 +1359,7 @@ export const PullRequestSection: React.FC<{
       if (!mutationSettled) finishMutation(signature, idempotencyKey, retainMutationKey);
       setIsCreating(false);
     }
-  }, [beginMutation, body, branch, detectedUpstream, draft, finishMutation, isMutationScopeCurrent, prStatusKey, readContext, reconcileUnknownOutcome, refresh, scheduleActionRefresh, sourceControl, sourceControlCapabilities?.changeRequests, statusProject, targetBaseBranch, title, useDetectedUpstream, t]);
+  }, [beginMutation, body, branch, detectedUpstream, directory, draft, finishMutation, isMutationScopeCurrent, prStatusKey, readContext, reconcileUnknownOutcome, refresh, scheduleActionRefresh, sourceControl, sourceControlCapabilities?.changeRequests, statusProject, targetBaseBranch, title, useDetectedUpstream, t]);
 
   const mergePr = React.useCallback(async (pr: PullRequest) => {
     if (!readContext || !statusProject) {
@@ -1846,8 +1877,9 @@ export const PullRequestSection: React.FC<{
                       pr.body?.trim() ? (
                         <SimpleMarkdownRenderer
                           content={pr.body}
-                          className="typography-markdown-body min-w-0 text-muted-foreground break-words"
+                          className="typography-markdown-body min-w-0 text-muted-foreground break-words [&_img]:h-auto [&_img]:max-w-full"
                           enableFileReferences={false}
+                          allowRawHtml
                         />
                       ) : (
                         <div className="typography-micro text-muted-foreground whitespace-pre-wrap break-words">
@@ -2049,6 +2081,7 @@ export const PullRequestSection: React.FC<{
                                       selfMentionHighlightClass,
                                     ].filter(Boolean).join(' ')}
                                     enableFileReferences={false}
+                                    allowRawHtml
                                   />
                                 </div>
                               </div>
@@ -2122,11 +2155,11 @@ export const PullRequestSection: React.FC<{
                   />
                 </label>
 
-                <label className="space-y-1">
+                <div className="space-y-1">
                   <div className="typography-micro text-muted-foreground">{t('gitView.pr.field.baseBranch')}</div>
                   {availableBaseBranches.length > 0 ? (
                     <Select value={targetBaseBranch} onValueChange={setTargetBaseBranch}>
-                      <SelectTrigger size="lg">
+                      <SelectTrigger size="lg" aria-label={t('gitView.pr.field.baseBranch')}>
                         <SelectValue placeholder={t('gitView.pr.placeholder.selectBaseBranch')} />
                       </SelectTrigger>
                       <SelectContent>
@@ -2140,9 +2173,10 @@ export const PullRequestSection: React.FC<{
                       value={targetBaseBranch}
                       onChange={(e) => setTargetBaseBranch(e.target.value)}
                       placeholder={t('gitView.pr.placeholder.main')}
+                      aria-label={t('gitView.pr.field.baseBranch')}
                     />
                   )}
-                </label>
+                </div>
 
                 <label className="space-y-1">
                   <div className="typography-micro text-muted-foreground">{t('gitView.pr.field.description')}</div>

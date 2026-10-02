@@ -1,6 +1,6 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { getPullRequestDiff } = await import('./pull-request.js');
+const { getPullRequestDiff, getPullRequestFileContents } = await import('./pull-request.js');
 
 const PATCH = `diff --git a/src/a.ts b/src/a.ts
 --- a/src/a.ts
@@ -150,5 +150,83 @@ describe('getPullRequestDiff', () => {
 
     await expect(read()).rejects.toThrow('provider failed');
     expect(onAccountUnavailable).not.toHaveBeenCalled();
+  });
+});
+
+describe('getPullRequestFileContents', () => {
+  const HEAD = 'a'.repeat(40);
+  const BASE_TIP = 'b'.repeat(40);
+  const MERGE_BASE = 'c'.repeat(40);
+  const readContext = {
+    provider: 'github',
+    instance: 'github.com',
+    accountId: 'github.com#7',
+    repositoryId: 'repo-1',
+    bindingRevision: 4,
+    directory: '/repo',
+    primaryRemote: 'origin',
+  };
+  let request;
+  let dependencies;
+
+  // The bound repository is a fork of `upstream/project`; the named file's
+  // repository has to be inside that network.
+  const read = (sourceRepo, file) => getPullRequestFileContents('/repo', 7, readContext, {
+    ...file,
+    sourceRepo,
+    ...dependencies,
+  });
+
+  beforeEach(() => {
+    request = vi.fn(async (route, params) => {
+      if (route === 'GET /repos/{owner}/{repo}/pulls/{pull_number}') return { data: { head: { sha: HEAD }, base: { sha: BASE_TIP } } };
+      if (route === 'GET /repos/{owner}/{repo}/compare/{basehead}') return { data: { merge_base_commit: { sha: MERGE_BASE } } };
+      if (route === 'GET /repos/{owner}/{repo}/contents/{path}') return { data: `${params.path}@${params.ref}` };
+      throw new Error(`unexpected ${route}`);
+    });
+    dependencies = {
+      getOctokitForAccountId: vi.fn().mockResolvedValue({ octokit: { request } }),
+      resolveGitHubRepoFromDirectory: vi.fn().mockResolvedValue({ repo: { owner: 'o', repo: 'r' }, remoteUrl: null }),
+      resolveRepoNetwork: vi.fn().mockResolvedValue([
+        { owner: 'o', repo: 'r', source: 'origin' },
+        { owner: 'upstream', repo: 'project', source: 'upstream' },
+      ]),
+    };
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('reads the base side at the merge base and the head side at the PR head', async () => {
+    const result = await read({ owner: 'upstream', repo: 'project' }, { path: 'src/a.ts', status: 'M' });
+    expect(result).toEqual({ original: `src/a.ts@${MERGE_BASE}`, modified: `src/a.ts@${HEAD}` });
+    expect(request).toHaveBeenCalledWith('GET /repos/{owner}/{repo}/compare/{basehead}', {
+      owner: 'upstream', repo: 'project', basehead: `${BASE_TIP}...${HEAD}`,
+    });
+    expect(request).toHaveBeenCalledWith('GET /repos/{owner}/{repo}/contents/{path}', expect.objectContaining({
+      owner: 'upstream', repo: 'project', headers: { accept: 'application/vnd.github.raw+json' },
+    }));
+  });
+
+  it('skips the missing side of added and deleted files and follows renames', async () => {
+    expect(await read({ owner: 'o', repo: 'r' }, { path: 'new.ts', status: 'A' }))
+      .toEqual({ original: '', modified: `new.ts@${HEAD}` });
+    expect(await read({ owner: 'o', repo: 'r' }, { path: 'gone.ts', status: 'D' }))
+      .toEqual({ original: `gone.ts@${MERGE_BASE}`, modified: '' });
+    expect(await read({ owner: 'o', repo: 'r' }, { path: 'new.ts', previousPath: 'old.ts', status: 'R' }))
+      .toEqual({ original: `old.ts@${MERGE_BASE}`, modified: `new.ts@${HEAD}` });
+  });
+
+  it('rejects oversized files and malformed GitHub metadata', async () => {
+    request.mockImplementationOnce(async () => ({ data: { head: { sha: 'nope' }, base: { sha: BASE_TIP } } }));
+    await expect(read({ owner: 'o', repo: 'r' }, { path: 'a.ts', status: 'M' })).rejects.toThrow(/invalid pull request head/);
+
+    request.mockImplementation(async (route) => {
+      if (route === 'GET /repos/{owner}/{repo}/pulls/{pull_number}') return { data: { head: { sha: HEAD }, base: { sha: BASE_TIP } } };
+      if (route === 'GET /repos/{owner}/{repo}/compare/{basehead}') return { data: { merge_base_commit: { sha: MERGE_BASE } } };
+      return { data: 'x'.repeat(5 * 1024 * 1024 + 1) };
+    });
+    await expect(read({ owner: 'o', repo: 'r' }, { path: 'a.ts', status: 'M' })).rejects.toMatchObject({ code: 'file-too-large', statusCode: 413 });
   });
 });

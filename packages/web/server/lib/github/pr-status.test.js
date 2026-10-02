@@ -1,22 +1,11 @@
 import { afterEach, beforeEach, describe, expect, mock, test, vi } from 'bun:test';
 
+import { findBranchPrCandidates, invalidateRepoPullsCache, isHistoricalPrOfCheckout } from './pr-status.js';
+import { createOctokit, getOctokitCacheIdentity } from './octokit.js';
+
 const listMock = mock(async () => ({ data: [] }));
 
-mock.module('../git/index.js', () => ({
-  getRemotes: async () => [],
-  getTrackingBranch: async () => null,
-}));
-
-mock.module('./repo/index.js', () => ({
-  resolveGitHubRepoFromDirectory: async () => null,
-}));
-
-mock.module('./rate-limit.js', () => ({
-  noteIfGitHubRateLimit: () => {},
-}));
-
-const { findBranchPrCandidates, invalidateRepoPullsCache } = await import('./pr-status.js');
-const { createOctokit, getOctokitCacheIdentity } = await import('./octokit.js');
+const isAncestorMock = mock(async () => false);
 
 const octokitFor = (token, accountId) => ({
   openChamberCacheIdentity: getOctokitCacheIdentity(createOctokit(token, accountId)),
@@ -284,5 +273,29 @@ describe('findBranchPrCandidates', () => {
 
     expect(listMock.mock.calls.some((entry) => entry[0]?.state === 'all')).toBe(true);
     expect(listMock.mock.calls.length).toBeGreaterThan(callsAfterFirst + 1);
+  });
+});
+
+describe('isHistoricalPrOfCheckout', () => {
+  beforeEach(() => {
+    isAncestorMock.mockReset();
+  });
+
+  test('a merged PR whose head commit is in the checkout history belongs to it', async () => {
+    isAncestorMock.mockImplementation(async () => true);
+    const pr = { ...mergedPr, head: { ...mergedPr.head, sha: 'abc1234' } };
+    expect(await isHistoricalPrOfCheckout('/repo', pr, { isAncestor: isAncestorMock })).toBe(true);
+    expect(isAncestorMock).toHaveBeenCalledWith('/repo', 'abc1234');
+  });
+
+  test('a reused branch name without the merged commits does not inherit the PR', async () => {
+    isAncestorMock.mockImplementation(async () => false);
+    const pr = { ...mergedPr, head: { ...mergedPr.head, sha: 'abc1234' } };
+    expect(await isHistoricalPrOfCheckout('/repo', pr, { isAncestor: isAncestorMock })).toBe(false);
+  });
+
+  test('a PR without a head sha is never attributed', async () => {
+    expect(await isHistoricalPrOfCheckout('/repo', mergedPr, { isAncestor: isAncestorMock })).toBe(false);
+    expect(isAncestorMock).not.toHaveBeenCalled();
   });
 });

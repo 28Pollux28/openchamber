@@ -1,4 +1,5 @@
 import { EventEmitter } from 'events';
+import { Readable, Writable } from 'node:stream';
 import path from 'path';
 import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import * as nativeFs from 'node:fs/promises';
@@ -1215,6 +1216,88 @@ describe('fs exec git-read cache', () => {
   });
 });
 
+describe('fs raw byte ranges', () => {
+  const createStreamingResponse = () => {
+    const chunks = [];
+    const headers = new Map();
+    let statusCode = 200;
+    const res = new Writable({
+      write(chunk, _encoding, callback) {
+        chunks.push(Buffer.from(chunk));
+        callback();
+      },
+    });
+    Object.assign(res, {
+      status(code) { statusCode = code; return res; },
+      json(payload) { chunks.push(Buffer.from(JSON.stringify(payload))); return res; },
+      type() { return res; },
+      send(payload) { chunks.push(Buffer.from(payload)); return res; },
+      setHeader(name, value) { headers.set(name.toLowerCase(), value); return res; },
+      getHeader(name) { return headers.get(name.toLowerCase()); },
+    });
+    return {
+      res,
+      finished: new Promise((resolve) => res.on('finish', resolve)),
+      get statusCode() { return statusCode; },
+      get body() { return Buffer.concat(chunks).toString('utf8'); },
+    };
+  };
+
+  const registerRawWithFile = (bytes) => {
+    const open = vi.fn(async () => ({
+      createReadStream: ({ start, end }) => Readable.from([bytes.subarray(start, end + 1)]),
+    }));
+    const readFile = vi.fn(async () => bytes);
+    const handler = registerRaw({
+      stat: async () => ({ isFile: () => true, size: bytes.length }),
+      open,
+      readFile,
+    });
+    return { handler, open, readFile };
+  };
+
+  it('answers a bytes span with 206, the span headers, and only those bytes', async () => {
+    const { handler, open, readFile } = registerRawWithFile(Buffer.from('0123456789'));
+    const response = createStreamingResponse();
+
+    await handler({ query: { path: '/repo/clip.mp4' }, headers: { range: 'bytes=3-' } }, response.res);
+    await response.finished;
+
+    expect(response.statusCode).toBe(206);
+    expect(response.getHeader?.('content-range') ?? response.res.getHeader('content-range')).toBe('bytes 3-9/10');
+    expect(response.res.getHeader('content-length')).toBe('7');
+    expect(response.res.getHeader('accept-ranges')).toBe('bytes');
+    expect(response.body).toBe('3456789');
+    expect(open).toHaveBeenCalledWith('/repo/clip.mp4', 'r');
+    expect(readFile).not.toHaveBeenCalled();
+  });
+
+  it('serves the whole file, advertising ranges, when no span is asked for', async () => {
+    const { handler, open } = registerRawWithFile(Buffer.from('0123456789'));
+    const res = createMockResponse();
+
+    await handler({ query: { path: '/repo/clip.mp4' }, headers: {} }, res);
+
+    expect(res.statusCode).toBe(200);
+    expect(res.getHeader('accept-ranges')).toBe('bytes');
+    expect(res.body.toString('utf8')).toBe('0123456789');
+    expect(open).not.toHaveBeenCalled();
+  });
+
+  it('rejects a span past the end with 416 and the file size', async () => {
+    const { handler, open } = registerRawWithFile(Buffer.from('0123456789'));
+    const res = createMockResponse();
+    res.end = vi.fn(() => res);
+
+    await handler({ query: { path: '/repo/clip.mp4' }, headers: { range: 'bytes=10-' } }, res);
+
+    expect(res.statusCode).toBe(416);
+    expect(res.getHeader('content-range')).toBe('bytes */10');
+    expect(res.end).toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
+  });
+});
+
 describe('fs raw download Content-Disposition', () => {
   it('uses RFC 5987 filename*= encoding for non-ASCII filenames on download', async () => {
     const fsPromises = {
@@ -1353,14 +1436,14 @@ describe('fs git-dirs', () => {
   });
 
   // tree maps directory path -> [[name, type], ...]
-  const registerGitDirs = (tree, { stat, readdir: readdirOverride } = {}) => {
+  const registerGitDirs = (tree, { stat, readdir: readdirOverride, realpath } = {}) => {
     const { app, getRoute } = createRouteRegistry();
     const readdir = readdirOverride ?? vi.fn(async (dirPath) => (tree[dirPath] ?? []).map(([name, type]) => createDirent(name, type)));
     registerFsRoutes(app, {
       os: { homedir: () => '/home/user' },
       path: path.posix,
       fsPromises: {
-        realpath: async (targetPath) => targetPath,
+        realpath: realpath ?? (async (targetPath) => targetPath),
         stat: stat ?? vi.fn(async (targetPath) => ({ isDirectory: () => Boolean(tree[targetPath]) })),
         readdir,
       },
@@ -1468,16 +1551,42 @@ describe('fs git-dirs', () => {
     expect(readdir).not.toHaveBeenCalledWith('/workspace/node_modules', { withFileTypes: true });
   });
 
-  it('never descends into symbolic links', async () => {
+  it('follows symlinked directories and reports repositories under the link path', async () => {
+    // /workspace groups repositories kept elsewhere through links.
+    const links = { '/workspace/api': '/src/api', '/workspace/web': '/src/web' };
     const { handler } = registerGitDirs({
-      '/workspace': [['link', 'symlink'], ['real', 'dir']],
-      '/workspace/real': [['.git', 'dir']],
+      '/workspace': [['api', 'symlink'], ['web', 'symlink'], ['notes.md', 'symlink']],
+      '/workspace/api': [['.git', 'dir']],
+      '/workspace/web': [['.git', 'file']],
+    }, {
+      realpath: async (targetPath) => links[targetPath] ?? targetPath,
     });
 
     const res = await callGitDirs(handler, { path: '/workspace' });
 
     expect(res.statusCode).toBe(200);
-    expect(res.body.repositories).toEqual([{ path: '/workspace/real', name: 'real' }]);
+    expect(res.body.repositories).toEqual([
+      { path: '/workspace/api', name: 'api' },
+      { path: '/workspace/web', name: 'web' },
+    ]);
+  });
+
+  it('walks each real directory once, so a link loop or a second link to a repository does not repeat it', async () => {
+    const links = { '/workspace/loop': '/workspace', '/workspace/again': '/workspace/real' };
+    const { handler, readdir } = registerGitDirs({
+      '/workspace': [['again', 'symlink'], ['loop', 'symlink'], ['real', 'dir']],
+      '/workspace/real': [['.git', 'dir']],
+      '/workspace/again': [['.git', 'dir']],
+      '/workspace/loop': [['again', 'symlink'], ['loop', 'symlink'], ['real', 'dir']],
+    }, {
+      realpath: async (targetPath) => links[targetPath] ?? targetPath,
+    });
+
+    const res = await callGitDirs(handler, { path: '/workspace' });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body.repositories).toEqual([{ path: '/workspace/again', name: 'again' }]);
+    expect(readdir).toHaveBeenCalledTimes(2);
   });
 
   it('returns repositories in deterministic order', async () => {
@@ -1650,6 +1759,7 @@ describe('fs stat directory error handling', () => {
       await mkdir(path.join(directory, 'fs'));
       await mkdir(path.join(directory, 'git'));
       await copyFile(new URL('./routes.js', import.meta.url), path.join(directory, 'fs/routes.mjs'));
+      await copyFile(new URL('./byte-range.js', import.meta.url), path.join(directory, 'fs/byte-range.js'));
       await copyFile(new URL('../path-realpath-cache.js', import.meta.url), path.join(directory, 'path-realpath-cache.js'));
       await copyFile(new URL('../git/redaction.js', import.meta.url), path.join(directory, 'git/redaction.js'));
       expect(() => execFileSync('node', [
@@ -1934,5 +2044,101 @@ describe('canonical managed roots with real filesystem aliases', () => {
       home: reportedHome, chatsRoot: rawChats,
       canonicalChatsRoot: canonicalChats, canonicalLegacyChatsRoot: canonicalChats,
     });
+  });
+});
+
+describe('fs html preview grants', () => {
+  const files = new Map([
+    ['/workspace/site/index.html', '<img src="logo.png">'],
+    ['/workspace/site/logo.png', 'png'],
+    ['/workspace/data.json', '{}'],
+    ['/home/user/.config/openchamber/projects/p1/canvases/c1/index.html', '<h1>canvas</h1>'],
+    ['/home/user/.config/openchamber/projects/p1/canvases/c1/data.json', '[]'],
+    ['/home/user/.config/openchamber/guest-auth.json', '{"token":"secret"}'],
+  ]);
+
+  const register = () => {
+    const routes = [];
+    const app = {
+      get: (routePath, handler) => routes.push({ method: 'GET', routePath, handler }),
+      post: (routePath, handler) => routes.push({ method: 'POST', routePath, handler }),
+    };
+    let uuid = 0;
+    registerFsRoutes(app, {
+      os: { homedir: () => '/home/user' },
+      path: path.posix,
+      fsPromises: {
+        realpath: async (targetPath) => targetPath,
+        stat: async (targetPath) => {
+          if (!files.has(targetPath)) throw Object.assign(new Error('missing'), { code: 'ENOENT' });
+          return { isFile: () => true, size: files.get(targetPath).length };
+        },
+        readFile: async (targetPath) => Buffer.from(files.get(targetPath)),
+      },
+      spawn: vi.fn(),
+      crypto: { randomUUID: () => `grant-${++uuid}` },
+      normalizeDirectoryPath: (p) => p,
+      resolveProjectDirectory: async () => ({ directory: '/workspace' }),
+      buildAugmentedPath: () => '/usr/bin',
+      resolveGitBinaryForSpawn: () => 'git',
+      openchamberUserConfigRoot: '/home/user/.config/openchamber',
+    });
+    const mintHandler = routes.find((route) => route.method === 'POST' && route.routePath === '/api/fs/preview').handler;
+    const serveRoute = routes.find((route) => route.method === 'GET' && route.routePath instanceof RegExp && route.routePath.test('/api/fs/preview/g/x'));
+    const mint = async (pagePath) => {
+      const res = createMockResponse();
+      await mintHandler({ body: { path: pagePath }, query: {} }, res);
+      return res;
+    };
+    const serve = async (url) => {
+      const match = url.match(serveRoute.routePath);
+      const res = createMockResponse();
+      await serveRoute.handler({ params: { 0: decodeURIComponent(match[1]), 1: decodeURIComponent(match[2]) }, query: {} }, res);
+      return res;
+    };
+    return { mint, serve };
+  };
+
+  it('serves a project page and its neighbours sandboxed, readable from script only inside the project', async () => {
+    const { mint, serve } = register();
+    const minted = await mint('/workspace/site/index.html');
+    expect(minted.statusCode).toBe(200);
+    const { grant } = minted.body;
+
+    const page = await serve(`/api/fs/preview/${grant}/workspace/site/index.html`);
+    expect(page.statusCode).toBe(200);
+    expect(page.getHeader('content-security-policy')).toMatch(/^sandbox allow-scripts /);
+    expect(page.getHeader('content-security-policy')).not.toContain('allow-same-origin');
+    expect(page.getHeader('access-control-allow-origin')).toBe('null');
+
+    const sibling = await serve(`/api/fs/preview/${grant}/workspace/data.json`);
+    expect(sibling.statusCode).toBe(200);
+    expect(sibling.getHeader('access-control-allow-origin')).toBe('null');
+
+    // OpenChamber's own folder can be embedded but never read from script.
+    const managed = await serve(`/api/fs/preview/${grant}/home/user/.config/openchamber/guest-auth.json`);
+    expect(managed.statusCode).toBe(200);
+    expect(managed.getHeader('access-control-allow-origin')).toBeUndefined();
+  });
+
+  it('limits a page inside the OpenChamber folder to reading its own folder', async () => {
+    const { mint, serve } = register();
+    const { grant } = (await mint('/home/user/.config/openchamber/projects/p1/canvases/c1/index.html')).body;
+
+    const data = await serve(`/api/fs/preview/${grant}/home/user/.config/openchamber/projects/p1/canvases/c1/data.json`);
+    expect(data.statusCode).toBe(200);
+    expect(data.getHeader('access-control-allow-origin')).toBe('null');
+
+    const secret = await serve(`/api/fs/preview/${grant}/home/user/.config/openchamber/guest-auth.json`);
+    expect(secret.getHeader('access-control-allow-origin')).toBeUndefined();
+  });
+
+  it('refuses unknown grants and files outside the workspace', async () => {
+    const { mint, serve } = register();
+    expect((await serve('/api/fs/preview/forged/workspace/site/index.html')).statusCode).toBe(403);
+
+    const { grant } = (await mint('/workspace/site/index.html')).body;
+    expect((await serve(`/api/fs/preview/${grant}/etc/passwd`)).statusCode).toBe(400);
+    expect((await mint('/etc/passwd')).statusCode).toBe(400);
   });
 });

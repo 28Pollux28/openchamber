@@ -42,6 +42,11 @@ describe('walkthrough routes', () => {
       if (number === 99) throw Object.assign(new Error('GitHub unavailable'), { statusCode: 503 });
       return { patch: number === 1 ? '' : 'diff --git a/a.ts b/a.ts\n' };
     },
+    async getPullRequestFileContents(directory, number, readContext, { sourceRepo, ...file }) {
+      lastArgs = { directory, number, readContext, sourceRepo, file };
+      if (file.path === 'huge.bin') throw Object.assign(new Error('too large'), { statusCode: 413, code: 'file-too-large' });
+      return { original: 'before', modified: 'after' };
+    },
     async getWalkthrough(args) {
       lastArgs = args;
       const result = {
@@ -178,6 +183,45 @@ describe('walkthrough routes', () => {
     for (const source of [{ kind: 'pr', number: -1 }, { kind: 'branch', baseRef: 'main', headRef: 'feature' }, { kind: 'pr', number: 1, sourceRepo: { owner: '../bad', repo: 'repo' } }]) {
       expect((await request(source)).status).toBe(400);
     }
+  });
+
+  it('serves both sides of one PR file and passes GitHub failures through', async () => {
+    const source = { kind: 'pr', number: 42, sourceRepo: { owner: 'upstream', repo: 'project' } };
+    const request = (params) => fetch(`${base}/api/walkthrough/pr-file?${new URLSearchParams({
+      directory: '/repo',
+      source: JSON.stringify(source),
+      ...Object.fromEntries(Object.entries(PR_CONTEXT).map(([key, value]) => [key, String(value)])),
+      ...params,
+    })}`);
+    const ok = await request({ path: 'new.ts', previousPath: 'old.ts', status: 'R' });
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ original: 'before', modified: 'after' });
+    // Same binding authority as the diff: the account comes from the
+    // validated context and the named repository is only checked against it.
+    expect(lastArgs).toEqual({
+      directory: '/repo',
+      number: 42,
+      readContext: expect.objectContaining({ accountId: PR_CONTEXT.accountId, primaryRemote: PR_CONTEXT.primaryRemote }),
+      sourceRepo: source.sourceRepo,
+      file: { path: 'new.ts', previousPath: 'old.ts', status: 'R' },
+    });
+    expect((await request({ path: 'a.ts', status: 'M', source: JSON.stringify({ kind: 'branch', baseRef: 'main', headRef: 'x' }) })).status).toBe(400);
+    expect((await request({ status: 'M' })).status).toBe(400);
+    const huge = await request({ path: 'huge.bin', status: 'M' });
+    expect(huge.status).toBe(413);
+    expect(await huge.json()).toMatchObject({ code: 'file-too-large' });
+  });
+
+  it('reads no pull request file without a validated binding context', async () => {
+    validateReadContext.mockRejectedValue(Object.assign(new Error('Binding changed'), { code: 'INVALID_SOURCE_CONTROL_READ_CONTEXT' }));
+    const response = await fetch(`${base}/api/walkthrough/pr-file?${new URLSearchParams({
+      directory: '/repo',
+      source: JSON.stringify({ kind: 'pr', number: 42 }),
+      path: 'a.ts',
+      status: 'M',
+    })}`);
+    expect(response.status).toBe(400);
+    expect(lastArgs).toBeUndefined();
   });
 
   it('delivers the result to a client that reconnected after a refresh', async () => {

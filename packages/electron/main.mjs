@@ -1,3 +1,4 @@
+import { canReuseManagedOpenCodePreflight } from './opencode-readiness.mjs';
 import { app, BrowserWindow, dialog, ipcMain, Menu, MessageChannelMain, nativeTheme, net as electronNet, Notification, powerMonitor, powerSaveBlocker, protocol, session, shell, webContents } from 'electron';
 import contextMenu from 'electron-context-menu';
 import log from 'electron-log/main.js';
@@ -69,11 +70,14 @@ import {
 } from './linux-autostart.mjs';
 import { unsupportedAppSpecificOpenError, validateLocalPath } from './path-open-utils.mjs';
 import { shouldAllowBrowserPanelCertificateError } from './browser-panel-security.mjs';
+import { shouldBlockGuestFrameNavigation } from './guest-frame-navigation.mjs';
 import { createRelayDevTunnelBridge } from './relay-dev-tunnel.mjs';
 import { attachRendererRecovery } from './renderer-recovery.mjs';
+import { createLoadFailureWarningFilter } from './load-failure-warnings.mjs';
 import { mintOutsideFileGrant } from '@openchamber/web/server/lib/fs/routes.js';
 import { fetchUpdateNotes } from '@openchamber/web/server/lib/changelog/update-notes.js';
 import { applyConnectAttemptTimeout } from '@openchamber/web/server/lib/network-defaults.js';
+import { isNetworkAccessBlocked } from '@openchamber/web/server/lib/enterprise-mode.js';
 
 const execFileAsync = promisify(execFile);
 
@@ -102,6 +106,19 @@ log.transports.console.level = isDev ? 'debug' : 'warn';
 // the fact. Route all console calls through electron-log so server-side
 // diagnostics are persisted.
 Object.assign(console, log.functions);
+
+// Node prints process warnings through console.error, so Electron's per-attempt
+// "Failed to load URL" warnings would flood main.log while the browser panel
+// waits for a dev server. Wrap Node's printer so repeats go to debug instead.
+const printProcessWarning = process.listeners('warning').find((listener) => listener.name === 'onWarning');
+if (printProcessWarning) {
+  const shouldReportWarning = createLoadFailureWarningFilter();
+  process.off('warning', printProcessWarning);
+  process.on('warning', (warning) => {
+    if (shouldReportWarning(warning)) printProcessWarning(warning);
+    else log.debug(`electron: ${warning.message}`);
+  });
+}
 
 const STARTUP_PERF_ENABLED_VALUES = new Set(['1', 'true']);
 const ELECTRON_STARTUP_PERF_PHASES = new Set([
@@ -207,7 +224,7 @@ const LOCAL_DESKTOP_CLIENT_DEDUPE_KEY = 'desktop-local';
 const REMOTE_DESKTOP_CLIENT_KIND = 'desktop';
 const ENV_OVERRIDE_HOST_ID = '__env';
 const GITHUB_BUG_REPORT_URL = 'https://github.com/openchamber/openchamber/issues/new?template=bug_report.yml';
-const GITHUB_FEATURE_REQUEST_URL = 'https://github.com/openchamber/openchamber/issues/new?template=feature_request.yml';
+const GITHUB_IDEAS_URL = 'https://github.com/openchamber/openchamber/discussions/categories/ideas';
 const DISCORD_INVITE_URL = 'https://discord.gg/ZYRSdnwwKA';
 const INSTALLED_APPS_CACHE_TTL_SECS = 60 * 60 * 24;
 const INSTALLED_APPS_CACHE_FILE = 'discovered-apps.json';
@@ -1250,10 +1267,15 @@ const spawnLocalServer = async () => {
   const lanAccessEnabled = settings.desktopLanAccessEnabled === true;
   setDesktopKeepAwakeActive(settings.desktopKeepAwakeEnabled === true);
   const desktopUiPassword = typeof settings.desktopUiPassword === 'string' ? settings.desktopUiPassword.trim() : '';
-  const lanAccessBlockedByMissingPassword = lanAccessEnabled && !desktopUiPassword;
-  const effectiveLanAccessEnabled = lanAccessEnabled && !lanAccessBlockedByMissingPassword;
+  // Enterprise mode keeps the app on this machine unless the administrator
+  // allowed network access (the server refuses a network bind as well).
+  const lanAccessBlockedByEnterprise = lanAccessEnabled && isNetworkAccessBlocked();
+  const lanAccessBlockedByMissingPassword = lanAccessEnabled && !lanAccessBlockedByEnterprise && !desktopUiPassword;
+  const effectiveLanAccessEnabled = lanAccessEnabled && !lanAccessBlockedByEnterprise && !lanAccessBlockedByMissingPassword;
   const bindHost = effectiveLanAccessEnabled ? LAN_BIND_HOST : LOOPBACK_BIND_HOST;
-  if (lanAccessBlockedByMissingPassword) {
+  if (lanAccessBlockedByEnterprise) {
+    log.warn('[desktop] LAN access is turned off by enterprise mode; starting on loopback only.');
+  } else if (lanAccessBlockedByMissingPassword) {
     log.warn('[desktop] LAN access was requested without a desktop UI password; starting on loopback only.');
   }
 
@@ -1278,7 +1300,9 @@ const spawnLocalServer = async () => {
   // both the Electron main and the server running inside it.
   process.env.OPENCHAMBER_HOST = bindHost;
   process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_ACTIVE = effectiveLanAccessEnabled ? 'true' : 'false';
-  if (lanAccessBlockedByMissingPassword) {
+  if (lanAccessBlockedByEnterprise) {
+    process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'enterprise-mode';
+  } else if (lanAccessBlockedByMissingPassword) {
     process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON = 'missing-password';
   } else {
     delete process.env.OPENCHAMBER_DESKTOP_LAN_ACCESS_BLOCKED_REASON;
@@ -1662,6 +1686,21 @@ const setTaskbarProgress = (value) => {
 };
 
 const pendingDeepLinks = [];
+const PENDING_SESSION_LINK_FALLBACK_MS = 10_000;
+
+// Hands the main window's renderer the session links that arrived before it
+// could listen, as { sessionId, messageId? }; the renderer validates both.
+const takePendingSessionDeepLinks = () => {
+  const taken = [];
+  for (let index = pendingDeepLinks.length - 1; index >= 0; index -= 1) {
+    const link = pendingDeepLinks[index];
+    if (link.type !== 'session' || !link.value) continue;
+    pendingDeepLinks.splice(index, 1);
+    const messageId = readDeepLinkQueryParam(link.raw, 'message');
+    taken.unshift(messageId ? { sessionId: link.value, messageId } : { sessionId: link.value });
+  }
+  return taken;
+};
 
 const parseDeepLink = (raw) => {
   if (typeof raw !== 'string') return null;
@@ -1677,6 +1716,16 @@ const parseDeepLink = (raw) => {
       ? decodeURIComponent(segments.join('/'))
       : '';
     return { type, value, raw: trimmed };
+  } catch {
+    return null;
+  }
+};
+
+const readDeepLinkQueryParam = (raw, name) => {
+  if (typeof raw !== 'string') return null;
+  try {
+    const value = new URL(raw).searchParams.get(name);
+    return value && value.trim() ? value.trim() : null;
   } catch {
     return null;
   }
@@ -1933,7 +1982,12 @@ const dispatchDeepLink = (link) => {
   }
 
   if (link.type === 'session' && link.value) {
-    emitToPrimaryWindow('openchamber:open-session', { sessionId: link.value });
+    // A message link (`openchamber://session/<id>?message=<id>`) also names
+    // the message to show; the renderer validates both IDs.
+    const messageId = readDeepLinkQueryParam(link.raw, 'message');
+    emitToPrimaryWindow('openchamber:open-session', messageId
+      ? { sessionId: link.value, messageId }
+      : { sessionId: link.value });
     return;
   }
   if (link.type === 'host' && link.value) {
@@ -1943,10 +1997,21 @@ const dispatchDeepLink = (link) => {
   log.warn('[electron] unknown deep-link action:', link.type);
 };
 
-const flushPendingDeepLinks = () => {
+// Session links wait for the renderer to take them (desktop_take_pending_session_links)
+// once its listener is mounted: an event sent when the page has merely loaded
+// reached no listener on a cold start and the link was lost. The late flush
+// still delivers them to a renderer that never asks (an older remote UI).
+const flushPendingDeepLinks = ({ includeSessions }) => {
+  const kept = [];
   while (pendingDeepLinks.length > 0) {
-    dispatchDeepLink(pendingDeepLinks.shift());
+    const link = pendingDeepLinks.shift();
+    if (link.type === 'session' && !includeSessions) {
+      kept.push(link);
+      continue;
+    }
+    dispatchDeepLink(link);
   }
+  pendingDeepLinks.push(...kept);
 };
 
 const isMainWindowReadyForDeepLink = () =>
@@ -2182,8 +2247,12 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
 
   // Any navigation target that isn't our own UI (local server / configured
   // desktop hosts) should open in the user's default browser, not spawn
-  // another Electron window loading arbitrary web content.
-  const isAllowedNavigationUrl = (raw) => {
+  // another Electron window loading arbitrary web content. Configured hosts
+  // count only for navigating this window (host switching); a link opened
+  // into a new window (`window.open`, `target=_blank`) to a host goes
+  // through openHostWindow instead, since a bare window on a host page lacks
+  // the desktop runtime and its credentials and only shows the lock screen.
+  const isAllowedNavigationUrl = (raw, { includeHosts = true } = {}) => {
     try {
       const url = new URL(raw);
       if (url.protocol === 'devtools:') return true;
@@ -2208,7 +2277,7 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
         } catch {
         }
       }
-      const hosts = readDesktopHostsConfig()?.hosts || [];
+      const hosts = includeHosts ? readDesktopHostsConfig()?.hosts || [] : [];
       for (const entry of hosts) {
         if (typeof entry?.url !== 'string') continue;
         try {
@@ -2223,7 +2292,16 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
   };
 
   browserWindow.webContents.setWindowOpenHandler(({ url }) => {
-    if (isAllowedNavigationUrl(url)) {
+    // A link to a saved instance opens that instance in the app, on the
+    // session it names, not as a bare page of its web UI.
+    const host = findConfiguredHostForUrl(url);
+    if (host) {
+      void openHostWindow(host, sessionRouteFromUrl(url), { reuseOpenWindow: true }).catch((error) => {
+        log.warn('[electron] failed to open host window from link:', error);
+      });
+      return { action: 'deny' };
+    }
+    if (isAllowedNavigationUrl(url, { includeHosts: false })) {
       return { action: 'allow' };
     }
     void shell.openExternal(url).catch(() => {});
@@ -2234,6 +2312,32 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
     if (isAllowedNavigationUrl(url)) return;
     event.preventDefault();
     void shell.openExternal(url).catch(() => {});
+  });
+
+  // An extension frame navigating itself would carry data out in the URL;
+  // refused before the request (see guest-frame-navigation.mjs).
+  browserWindow.webContents.on('will-frame-navigate', (details) => {
+    let frameOrigin;
+    try {
+      frameOrigin = details.frame?.origin;
+    } catch {
+      frameOrigin = undefined;
+    }
+    if (!shouldBlockGuestFrameNavigation({
+      isMainFrame: details.isMainFrame,
+      frameOrigin,
+      url: details.url,
+      isAppOrigin: isAllowedNavigationUrl,
+    })) return;
+    details.preventDefault();
+    let host = '';
+    try {
+      host = new URL(details.url).host;
+    } catch {
+      host = '';
+    }
+    // Only the host: the URL itself may be the data being carried out.
+    log.warn(`[guests] refused an extension frame navigating to ${host || 'an invalid URL'}`);
   });
 
   browserWindow.webContents.setZoomFactor(1);
@@ -2262,8 +2366,10 @@ const createBrowserWindow = ({ label, restoreGeometry, url, runtimeConfig = {}, 
     }
     browserWindow.webContents.setZoomFactor(1);
     if (state.mainWindow && browserWindow.id === state.mainWindow.id && pendingDeepLinks.length > 0) {
-      const timer = setTimeout(flushPendingDeepLinks, 400);
+      const timer = setTimeout(() => flushPendingDeepLinks({ includeSessions: false }), 400);
       if (typeof timer?.unref === 'function') timer.unref();
+      const lateTimer = setTimeout(() => flushPendingDeepLinks({ includeSessions: true }), PENDING_SESSION_LINK_FALLBACK_MS);
+      if (typeof lateTimer?.unref === 'function') lateTimer.unref();
     }
   });
 
@@ -2389,6 +2495,112 @@ const openMainWindow = async () => {
     ? (shouldUsePackagedUi() ? buildPackagedUiUrl('/index.html') : host.url)
     : localUiUrl;
   return activateMainWindow(targetUrl, state.localOrigin, state.bootOutcome, { apiBaseUrl, clientToken, requestHeaders });
+};
+
+// A session (and message) to open in a new window, from a link. IDs end up in
+// the window URL and the renderer's DOM selectors, so only plain identifier
+// characters pass.
+const SESSION_ROUTE_ID_RE = /^[A-Za-z0-9_-]{1,128}$/;
+const parseSessionRoute = (rawSessionId, rawMessageId) => {
+  const sessionId = typeof rawSessionId === 'string' ? rawSessionId.trim() : '';
+  if (!SESSION_ROUTE_ID_RE.test(sessionId)) return null;
+  const messageId = typeof rawMessageId === 'string' ? rawMessageId.trim() : '';
+  return SESSION_ROUTE_ID_RE.test(messageId) ? { sessionId, messageId } : { sessionId };
+};
+
+const sessionRouteFromUrl = (raw) => {
+  try {
+    const url = new URL(raw);
+    return parseSessionRoute(url.searchParams.get('session'), url.searchParams.get('message'));
+  } catch {
+    return null;
+  }
+};
+
+// The window URL carries the route like the web does (`?session=&message=`);
+// the renderer's router opens it once the instance answers.
+const withSessionRoute = (windowUrl, route) => {
+  if (!route) return windowUrl;
+  try {
+    const url = new URL(windowUrl);
+    url.searchParams.set('session', route.sessionId);
+    if (route.messageId) url.searchParams.set('message', route.messageId);
+    return url.toString();
+  } catch {
+    return windowUrl;
+  }
+};
+
+// The configured desktop host a web address belongs to, if any.
+const findConfiguredHostForUrl = (raw) => {
+  let origin;
+  try {
+    origin = new URL(raw).origin;
+  } catch {
+    return null;
+  }
+  const hosts = readDesktopHostsConfig()?.hosts || [];
+  return hosts.find((entry) => [entry?.url, entry?.apiUrl].some((candidate) => {
+    if (typeof candidate !== 'string' || !candidate) return false;
+    try {
+      return new URL(candidate).origin === origin;
+    } catch {
+      return false;
+    }
+  })) || null;
+};
+
+// Opens a saved host in a new app window with its own credentials, optionally
+// on a session. Hosts with a relay leg boot the LOCAL UI and let the renderer
+// pick the transport (direct first, E2EE tunnel fallback) via the injected
+// relay host id — a fixed apiBaseUrl would strand the window when the direct
+// leg is unreachable.
+const openHostWindow = async (host, route = null, { reuseOpenWindow = false } = {}) => {
+  // A link to a host already open in a window lands in that window: brought
+  // to the front and moved to the session there, instead of one more window
+  // per click. "New window" from the switcher always opens one.
+  const existing = reuseOpenWindow
+    ? BrowserWindow.getAllWindows().find((window) => !window.isDestroyed() && window.__ocHostWindowId === host.id)
+    : null;
+  if (existing) {
+    if (existing.isMinimized()) existing.restore();
+    existing.show();
+    existing.focus();
+    if (!route) return;
+    // A window still booting has no listener yet; it reloads on the route.
+    if (existing.webContents.isLoading() && existing.__ocHostWindowBaseUrl) {
+      await navigateWindow(existing, withSessionRoute(existing.__ocHostWindowBaseUrl, route), { allowAbort: true });
+      return;
+    }
+    emitToWindow(existing, 'openchamber:open-session', route);
+    return;
+  }
+
+  let windowUrl;
+  let runtimeConfig;
+  if (host.relay) {
+    windowUrl = shouldUsePackagedUi() ? buildPackagedUiUrl('/index.html') : (state.sidecarUrl || state.localOrigin);
+    runtimeConfig = {
+      apiBaseUrl: '',
+      clientToken: host.clientToken || '',
+      requestHeaders: sanitizeRuntimeRequestHeaders(host.requestHeaders || {}),
+      relayHostId: host.id,
+    };
+  } else {
+    const targetUrl = normalizeHostUrl(host.apiUrl || host.url);
+    if (!targetUrl) throw new Error('Invalid URL');
+    windowUrl = shouldUsePackagedUi() ? buildPackagedUiUrl('/index.html') : targetUrl;
+    runtimeConfig = {
+      apiBaseUrl: targetUrl,
+      clientToken: host.clientToken || '',
+      requestHeaders: sanitizeRuntimeRequestHeaders(host.requestHeaders || {}),
+    };
+  }
+  const browserWindow = await createAdditionalWindow(withSessionRoute(windowUrl, route), runtimeConfig);
+  if (browserWindow) {
+    browserWindow.__ocHostWindowId = host.id;
+    browserWindow.__ocHostWindowBaseUrl = windowUrl;
+  }
 };
 
 const createAdditionalWindow = async (url, runtimeConfig = {}) => {
@@ -3525,6 +3737,13 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       }
       return null;
 
+    case 'desktop_managed_opencode_compatible':
+      return canReuseManagedOpenCodePreflight({
+        apiBaseUrl: args.apiBaseUrl,
+        localOrigin: state.localOrigin,
+        server: state.serverHandle,
+      });
+
     case 'desktop_get_app_version':
       return APP_VERSION;
 
@@ -3893,6 +4112,13 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
       const parsed = new URL(target);
       if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
         throw new Error('Only HTTP URLs can be opened externally');
+      }
+
+      // A saved instance opens in the app, like the window.open path above.
+      const host = findConfiguredHostForUrl(parsed.toString());
+      if (host) {
+        await openHostWindow(host, sessionRouteFromUrl(parsed.toString()), { reuseOpenWindow: true });
+        return null;
       }
 
       await shell.openExternal(parsed.toString());
@@ -4295,32 +4521,11 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
     }
 
     case 'desktop_new_window_for_host': {
-      // Open a saved host in a new window. Hosts with a relay leg boot the
-      // LOCAL UI and let the renderer pick the transport (direct first, E2EE
-      // tunnel fallback) via the injected relay host id — a fixed apiBaseUrl
-      // would strand the window when the direct leg is unreachable.
       const hostId = typeof args.hostId === 'string' ? args.hostId.trim() : '';
       const config = readDesktopHostsConfig();
       const host = config.hosts.find((entry) => entry.id === hostId);
       if (!host) throw new Error('Host not found');
-      if (host.relay) {
-        const windowUrl = shouldUsePackagedUi() ? buildPackagedUiUrl('/index.html') : (state.sidecarUrl || state.localOrigin);
-        await createAdditionalWindow(windowUrl, {
-          apiBaseUrl: '',
-          clientToken: host.clientToken || '',
-          requestHeaders: sanitizeRuntimeRequestHeaders(host.requestHeaders || {}),
-          relayHostId: host.id,
-        });
-        return null;
-      }
-      const targetUrl = normalizeHostUrl(host.apiUrl || host.url);
-      if (!targetUrl) throw new Error('Invalid URL');
-      const windowUrl = shouldUsePackagedUi() ? buildPackagedUiUrl('/index.html') : targetUrl;
-      await createAdditionalWindow(windowUrl, {
-        apiBaseUrl: targetUrl,
-        clientToken: host.clientToken || '',
-        requestHeaders: sanitizeRuntimeRequestHeaders(host.requestHeaders || {}),
-      });
+      await openHostWindow(host);
       return null;
     }
 
@@ -4362,6 +4567,11 @@ const handleInvoke = async (browserWindow, command, args = {}) => {
 
     case 'desktop_get_window_pinned':
       return { pinned: Boolean(browserWindow?.__ocPinned) };
+
+    case 'desktop_take_pending_session_links':
+      // Session links open in the main window only.
+      if (!browserWindow || !state.mainWindow || browserWindow.id !== state.mainWindow.id) return [];
+      return takePendingSessionDeepLinks();
 
     case 'desktop_focus_main_window': {
       const sessionId = typeof args.sessionId === 'string' ? args.sessionId.trim() : '';
@@ -4574,7 +4784,7 @@ const buildMacMenu = () => {
         { label: 'Clear Cache', click: () => void handleInvoke(null, 'desktop_clear_cache') },
         { type: 'separator' },
         { label: 'Report a Bug', click: () => shell.openExternal(GITHUB_BUG_REPORT_URL) },
-        { label: 'Request a Feature', click: () => shell.openExternal(GITHUB_FEATURE_REQUEST_URL) },
+        { label: 'Discuss an Idea', click: () => shell.openExternal(GITHUB_IDEAS_URL) },
         { type: 'separator' },
         { label: 'Join Discord', click: () => shell.openExternal(DISCORD_INVITE_URL) },
       ],
@@ -4691,7 +4901,7 @@ const buildAutoHiddenMenu = () => {
         { label: 'Clear Cache', click: () => void handleInvoke(null, 'desktop_clear_cache') },
         { type: 'separator' },
         { label: 'Report a Bug', click: () => shell.openExternal(GITHUB_BUG_REPORT_URL) },
-        { label: 'Request a Feature', click: () => shell.openExternal(GITHUB_FEATURE_REQUEST_URL) },
+        { label: 'Discuss an Idea', click: () => shell.openExternal(GITHUB_IDEAS_URL) },
         { type: 'separator' },
         { label: 'Join Discord', click: () => shell.openExternal(DISCORD_INVITE_URL) },
       ],

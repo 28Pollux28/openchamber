@@ -57,7 +57,7 @@ const mount = async () => {
   const apis: RuntimeAPIs = {
     runtime: { platform: 'web', isVSCode: false, isDesktop: false }, git: gitApi,
     get sourceControl() { return unused(); }, get terminal() { return unused(); }, get files() { return unused(); },
-    get settings() { return unused(); }, get permissions() { return unused(); }, get notifications() { return unused(); }, get tools() { return unused(); },
+    get settings() { return unused(); }, get permissions() { return unused(); }, get notifications() { return unused(); },
   };
   let view: React.ReactNode;
   let selected = '';

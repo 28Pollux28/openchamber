@@ -2,8 +2,8 @@
  * Where a managed OpenCode child reaches the OpenChamber server, and which
  * peers count as that child.
  *
- * Every callback the server hands its child (agent tool, shell boundary,
- * credential helper) is plain HTTP with a per-child token, so all of them
+ * Every callback the server hands its child (agent tool, credential helper)
+ * is plain HTTP with a per-child token, so all of them
  * share one answer: point at loopback unless the listener is bound to one
  * concrete address, which does not answer on loopback, and accept a peer
  * only when it is that same machine.

@@ -1,4 +1,8 @@
+import { z } from 'zod';
 import { parseSource } from './sources.js';
+
+// The composer's provider, which the model stays on; anything else is no provider.
+const providerIdSchema = z.string().trim().min(1).max(200).optional().catch(undefined);
 
 // `req.destroyed` is true for every healthy request once the body parser has
 // consumed the stream, so using it as a disconnect check silently swallows every
@@ -77,6 +81,7 @@ export function registerWalkthroughRoutes(app, { getWalkthroughService, validate
           directory: readContext?.directory ?? directory,
           source,
           model: typeof req.query.model === 'string' ? req.query.model : undefined,
+          providerID: providerIdSchema.parse(req.query.providerID),
           language: typeof req.query.language === 'string' ? req.query.language : undefined,
           readContext,
         },
@@ -112,13 +117,39 @@ export function registerWalkthroughRoutes(app, { getWalkthroughService, validate
     }
   });
 
+  // One file, both sides, straight from GitHub: the comparison view expands
+  // collapsed context on demand without touching the working tree.
+  app.get('/api/walkthrough/pr-file', async (req, res) => {
+    try {
+      const query = new URL(req.originalUrl, 'http://localhost').searchParams;
+      const directory = query.get('directory')?.trim() ?? '';
+      if (!directory) return res.status(400).json({ error: 'directory parameter is required' });
+      const source = parseSource(readSource(query.get('source')));
+      if (source.kind !== 'pr') return res.status(400).json({ error: 'A pull request source is required' });
+      const path = query.get('path')?.trim() ?? '';
+      if (!path) return res.status(400).json({ error: 'path parameter is required' });
+      const previousPath = query.get('previousPath')?.trim() || undefined;
+      const status = query.get('status') ?? 'M';
+      const readContext = await validatePullRequestContext(source, Object.fromEntries(query), directory);
+      const { getPullRequestFileContents } = await getWalkthroughService();
+      res.json(await getPullRequestFileContents(readContext?.directory ?? directory, source.number, readContext, {
+        path,
+        previousPath,
+        status,
+        sourceRepo: source.sourceRepo ?? null,
+      }));
+    } catch (error) {
+      respondWithError(res, error, 'Failed to load pull request file');
+    }
+  });
+
   // Deliberately not aborted when the client disconnects: generation runs for
   // minutes and a refresh must not throw the work away. Leaving detaches the
   // client; the job finishes and caches its result. Stopping is an explicit
   // request below.
   app.post('/api/walkthrough/generate', async (req, res) => {
     try {
-      const { directory, source, force, model, language } = req.body || {};
+      const { directory, source, force, model, providerID, language } = req.body || {};
       if (!directory || typeof directory !== 'string') {
         return res.status(400).json({ error: 'directory is required' });
       }
@@ -131,6 +162,7 @@ export function registerWalkthroughRoutes(app, { getWalkthroughService, validate
           source,
           force: force === true,
           model: typeof model === 'string' ? model : undefined,
+          providerID: providerIdSchema.parse(providerID),
           language: typeof language === 'string' ? language : undefined,
           readContext,
         },

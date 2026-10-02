@@ -1,4 +1,17 @@
-import type { ChangeRequest, GitBranchDetails, SourceControlReadContext } from '@/lib/api/types';
+import type { GitBranchDetails, SourceControlReadContext } from '@/lib/api/types';
+
+/**
+ * What a PR worktree needs to know about its change request: a provider
+ * change request, or a reference-picker item mapped to the same fields.
+ */
+export type PrWorktreeSource = {
+  number: number;
+  head: string;
+  headSha?: string;
+  headLabel?: string;
+  headProject?: { owner: string } | null;
+  project: { id: string; owner: string; name: string };
+};
 
 const normalizeBranchName = (value: string): string => value
   .trim()
@@ -18,7 +31,7 @@ const sanitizeRemoteName = (value: string): string => {
 };
 
 export const resolvePrWorktreeConfig = (
-  changeRequest: ChangeRequest,
+  changeRequest: PrWorktreeSource,
   context: SourceControlReadContext,
   branches: Record<string, GitBranchDetails>,
 ) => {

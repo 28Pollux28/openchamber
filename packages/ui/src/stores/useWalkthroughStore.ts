@@ -93,11 +93,15 @@ interface WalkthroughState {
 
 interface WalkthroughActions {
   getEntry: (directory: string, target: WalkthroughTarget) => WalkthroughEntry;
-  load: (directory: string, target: WalkthroughTarget, options?: { language?: string }) => Promise<void>;
+  /**
+   * `providerID` is the composer's provider: without a model of its own the
+   * walkthrough stays on it.
+   */
+  load: (directory: string, target: WalkthroughTarget, options?: { language?: string; providerID?: string }) => Promise<void>;
   generate: (
     directory: string,
     target: WalkthroughTarget,
-    options?: { force?: boolean; language?: string }
+    options?: { force?: boolean; language?: string; providerID?: string }
   ) => Promise<void>;
   cancel: (directory: string, target: WalkthroughTarget) => void;
   requestTarget: (directory: string, target: WalkthroughTarget) => void;
@@ -188,6 +192,7 @@ export const useWalkthroughStore = create<WalkthroughState & WalkthroughActions>
         try {
           const result = await fetchWalkthrough(directory, target, {
             model: get().selectedModel[key],
+            providerID: options.providerID,
             language: options.language,
             signal: controller.signal,
           });
@@ -200,7 +205,7 @@ export const useWalkthroughStore = create<WalkthroughState & WalkthroughActions>
           }));
 
           if (result.generating) {
-            void get().generate(directory, target, { language: options.language });
+            void get().generate(directory, target, { language: options.language, providerID: options.providerID });
           }
         } catch (error) {
           if (controller.signal.aborted) return;
@@ -262,6 +267,7 @@ export const useWalkthroughStore = create<WalkthroughState & WalkthroughActions>
           const result = await generateWalkthrough(directory, target, {
             force: options.force,
             model: get().selectedModel[key],
+            providerID: options.providerID,
             language: options.language,
             signal: controller.signal,
           });

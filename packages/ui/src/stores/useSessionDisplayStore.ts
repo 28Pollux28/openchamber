@@ -3,6 +3,10 @@ import { persist } from 'zustand/middleware';
 import { getSettingsSurface } from '@/lib/settings/surface';
 
 type ProjectSortOrder = 'manual' | 'a-z' | 'z-a' | 'date-added' | 'recent';
+// Worktree groups inside a project. 'recent' floats worktrees with the latest
+// session activity to the top, so the list moves as sessions run; 'manual'
+// and 'a-z' keep positions stable.
+type WorktreeSortOrder = 'recent' | 'manual' | 'a-z';
 
 // 'projects' is the grouped sidebar: project zones with worktree sub-headers,
 // optional Recent. 'timeline' is one recency-ordered list of root sessions
@@ -23,17 +27,22 @@ type SessionDisplayStore = {
   setSingleProjectId: (projectId: string) => void;
   sidebarViewMode: SidebarViewMode;
   setSidebarViewMode: (mode: SidebarViewMode) => void;
+  /** Local display preference; motion remains opt-in. */
+  animatedActivityIndicators: boolean;
+  setAnimatedActivityIndicators: (enabled: boolean) => void;
   showRecentSection: boolean;
   // VS Code only: the compact webview keeps archived buckets inline because it
   // has no room for the full Archive page. Web/desktop ignore this flag and
   // always route archived sessions to the Archive page instead.
   showArchivedSessions: boolean;
   projectSortOrder: ProjectSortOrder;
+  worktreeSortOrder: WorktreeSortOrder;
   setShowRecentSection: (show: boolean) => void;
   setShowArchivedSessions: (show: boolean) => void;
   toggleRecentSection: () => void;
   toggleArchivedSessions: () => void;
   setProjectSortOrder: (order: ProjectSortOrder) => void;
+  setWorktreeSortOrder: (order: WorktreeSortOrder) => void;
 };
 
 export const migrateSessionDisplayState = (
@@ -72,12 +81,20 @@ export const migrateSessionDisplayState = (
     // preference (sidebarShowRecentSection) still re-enables it on sync.
     state.showRecentSection = false;
   }
+  if (version < 9 && !state.worktreeSortOrder) {
+    // v9 adds the worktree sort. Everyone starts on a stable manual order:
+    // an activity-sorted list moved rows under the pointer, next to
+    // destructive actions like deleting a worktree.
+    state.worktreeSortOrder = 'manual';
+  }
   return state;
 };
 
 export const useSessionDisplayStore = create<SessionDisplayStore>()(
   persist(
     (set) => ({
+      animatedActivityIndicators: false,
+      setAnimatedActivityIndicators: (enabled) => set({ animatedActivityIndicators: enabled }),
       projectDisplayMode: 'all',
       singleProjectId: null,
       setProjectDisplayMode: (mode) => set({ projectDisplayMode: mode }),
@@ -92,15 +109,17 @@ export const useSessionDisplayStore = create<SessionDisplayStore>()(
       // disappear once the persisted preference rehydrates.
       showArchivedSessions: false,
       projectSortOrder: 'manual',
+      worktreeSortOrder: 'manual',
       setShowRecentSection: (show) => set({ showRecentSection: show }),
       setShowArchivedSessions: (show) => set({ showArchivedSessions: show }),
       toggleRecentSection: () => set((state) => ({ showRecentSection: !state.showRecentSection })),
       toggleArchivedSessions: () => set((state) => ({ showArchivedSessions: !state.showArchivedSessions })),
       setProjectSortOrder: (order) => set({ projectSortOrder: order }),
+      setWorktreeSortOrder: (order) => set({ worktreeSortOrder: order }),
     }),
     {
       name: 'session-display-mode',
-      version: 8,
+      version: 9,
       // v1→v2 adds projectSortOrder using the canonical manual ordering.
       // v2→v3 replaces the previously shipped recent default with manual.
       // v3→v4 removes displayMode (single sidebar row layout).
@@ -108,9 +127,10 @@ export const useSessionDisplayStore = create<SessionDisplayStore>()(
       // v5→v6 drops sessionGroupingMode in favour of sidebarViewMode.
       // v6→v7 drops stickyZoneHeaders (derived from the view mode now).
       // v7→v8 defaults showRecentSection to false.
+      // v8→v9 adds worktreeSortOrder (manual by default).
       migrate: migrateSessionDisplayState,
     },
   ),
 );
 
-export type { ProjectDisplayMode, ProjectSortOrder, SidebarViewMode };
+export type { ProjectDisplayMode, ProjectSortOrder, SidebarViewMode, WorktreeSortOrder };

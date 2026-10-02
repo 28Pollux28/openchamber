@@ -67,4 +67,7 @@ export const createVSCodeSourceControlAPI = (): SourceControlAPI => ({
   issueComments: unsupported,
   projectUpstream: unsupported,
   projectBranches: unsupported,
+  githubReferences: unsupported,
+  githubReferenceDetail: unsupported,
+  githubSummaries: unsupported,
 });

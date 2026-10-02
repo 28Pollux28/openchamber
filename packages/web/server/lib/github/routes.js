@@ -1,4 +1,5 @@
 import { digestMutationInput, mutationReceipt } from '../source-control/mutation-executor.js';
+import { dedupeCheckRuns, summarizeCheckRuns, summarizeCombinedStatuses } from './checks-summary.js';
 
 const PR_STATUS_CACHE_TTL_MS = 90_000;
 const PR_STATUS_CACHE_MAX_ENTRIES = 200;
@@ -60,83 +61,6 @@ function invalidatePrContextCache(directory, number, authority = null) {
       pendingPrContextWrites.delete(token);
     }
   }
-}
-
-// Aggregate check runs into the summary shape shared by pr/status and
-// pulls/context. Keeps `pending` as queued+in_progress+unconcluded for
-// existing consumers while exposing the split and the earliest start time so
-// the UI can show live "running for N minutes" state.
-// A re-run leaves the previous completed check run in the listForRef payload
-// alongside the new in-progress one. GitHub's UI shows only the latest run
-// per (app, name); mirror that so counts match what users see on github.com.
-function dedupeCheckRuns(checkRuns) {
-  const byName = new Map();
-  for (const run of checkRuns) {
-    const key = `${run?.app?.id ?? run?.app?.slug ?? ''}::${run?.name ?? ''}`;
-    const previous = byName.get(key);
-    if (!previous) {
-      byName.set(key, run);
-      continue;
-    }
-    const previousStartedAt = Date.parse(previous?.started_at || '') || 0;
-    const startedAt = Date.parse(run?.started_at || '') || 0;
-    if (startedAt > previousStartedAt
-      || (startedAt === previousStartedAt && (run?.id ?? 0) > (previous?.id ?? 0))) {
-      byName.set(key, run);
-    }
-  }
-  return Array.from(byName.values());
-}
-
-function summarizeCheckRuns(checkRuns) {
-  const counts = { success: 0, failure: 0, pending: 0, inProgress: 0, queued: 0 };
-  let startedAt = null;
-  for (const run of checkRuns) {
-    const status = run?.status;
-    const conclusion = run?.conclusion;
-    if (status === 'in_progress') {
-      counts.pending += 1;
-      counts.inProgress += 1;
-      const runStartedAt = typeof run?.started_at === 'string' ? run.started_at : null;
-      if (runStartedAt && (!startedAt || runStartedAt < startedAt)) {
-        startedAt = runStartedAt;
-      }
-      continue;
-    }
-    if (status === 'queued') {
-      counts.pending += 1;
-      counts.queued += 1;
-      continue;
-    }
-    if (!conclusion) {
-      counts.pending += 1;
-      continue;
-    }
-    if (conclusion === 'success' || conclusion === 'neutral' || conclusion === 'skipped') {
-      counts.success += 1;
-    } else {
-      counts.failure += 1;
-    }
-  }
-  const total = counts.success + counts.failure + counts.pending;
-  const state = counts.failure > 0
-    ? 'failure'
-    : (counts.pending > 0 ? 'pending' : (total > 0 ? 'success' : 'unknown'));
-  return { state, total, ...counts, ...(startedAt ? { startedAt } : {}) };
-}
-
-function summarizeCombinedStatuses(statuses) {
-  const counts = { success: 0, failure: 0, pending: 0 };
-  statuses.forEach((s) => {
-    if (s.state === 'success') counts.success += 1;
-    else if (s.state === 'failure' || s.state === 'error') counts.failure += 1;
-    else if (s.state === 'pending') counts.pending += 1;
-  });
-  const total = counts.success + counts.failure + counts.pending;
-  const state = counts.failure > 0
-    ? 'failure'
-    : (counts.pending > 0 ? 'pending' : (total > 0 ? 'success' : 'unknown'));
-  return { state, total, ...counts, inProgress: counts.pending, queued: 0 };
 }
 
 function withTimeout(promise, timeoutMs, label) {
@@ -1588,6 +1512,49 @@ export function registerGitHubRoutes(app, options = {}) {
     }
   });
 
+  // Batched live status for PRs and issues the client already knows by
+  // number. The sidebar polls this instead of re-resolving every branch.
+  // `accountId` names the account the entries were read with; without one the
+  // current github.com account answers, which is how links outside any bound
+  // repository are read.
+  app.post(canonicalGitHubRoutePath('/pr/summaries'), async (req, res) => {
+    const { parseSummaryRefs, fetchPrSummaries, isGraphqlRateLimitError, MAX_SUMMARY_REFS } = await import('./pr-summaries.js');
+    const refs = parseSummaryRefs(req.body?.refs);
+    const issueRefs = parseSummaryRefs(req.body?.issueRefs ?? []);
+    if (!refs || !issueRefs || refs.length + issueRefs.length > MAX_SUMMARY_REFS) {
+      return res.status(400).json({ error: 'refs and issueRefs must be lists of { owner, repo, number }, at most 100 in total' });
+    }
+    try {
+      const octokit = (await getOctokitForRequest(req))?.octokit;
+      if (!octokit) {
+        return res.json({ connected: false });
+      }
+      const { isGitHubRateLimited } = await import('./rate-limit.js');
+      if (isGitHubRateLimited()) {
+        return res.status(503).json({ error: 'GitHub rate limited' });
+      }
+      const fetchedAt = Date.now();
+      const { summaries, issueSummaries } = refs.length + issueRefs.length > 0
+        ? await fetchPrSummaries({ octokit, refs, issueRefs })
+        : { summaries: [], issueSummaries: [] };
+      return res.json({ connected: true, fetchedAt, summaries, issueSummaries });
+    } catch (error) {
+      const accountError = sendExactAccountError(res, error);
+      if (accountError) return accountError;
+      if (error?.status === 401) {
+        await invalidateRequestAccount(error);
+        return res.json({ connected: false });
+      }
+      const { isGitHubRateLimitError, noteGitHubRateLimit } = await import('./rate-limit.js');
+      if (isGraphqlRateLimitError(error) || isGitHubRateLimitError(error)) {
+        noteGitHubRateLimit(error);
+        return res.status(503).json({ error: 'GitHub rate limited' });
+      }
+      console.error('Failed to load GitHub PR summaries:', error);
+      return res.status(500).json({ error: error.message || 'Failed to load GitHub PR summaries' });
+    }
+  });
+
   app.post(canonicalGitHubRoutePath('/pr/create'), (req, res) => runCanonicalMutation('create', req, res));
 
   app.post(canonicalGitHubRoutePath('/pr/update'), (req, res) => runCanonicalMutation('update', req, res));
@@ -1754,6 +1721,135 @@ export function registerGitHubRoutes(app, options = {}) {
   });
 
   // ================= GitHub Issue APIs =================
+
+  // One page of issues or PRs for the reference picker, or the item a pasted
+  // link or number names, read with the repository's account across its
+  // repository network. Failures are errors, never an empty page: the picker
+  // keeps what it showed and offers a retry.
+  app.get(canonicalGitHubRoutePath('/references'), async (req, res) => {
+    const { readReferenceFilter, readReferenceKind, searchGitHubReferences } = await import('./reference-search.js');
+    const directory = readQueryString(req, 'directory');
+    const kind = readReferenceKind(req.query?.kind);
+    if (!directory || !kind) {
+      return res.status(400).json({ error: 'directory and kind (issue or pull) are required' });
+    }
+    try {
+      const trustedContext = await validateReadContext(req, directory);
+      if (!trustedContext) {
+        return res.status(501).json({ error: 'Bound source control read is unavailable' });
+      }
+      const octokit = (await getOctokitForRead(req, trustedContext))?.octokit;
+      if (!octokit) {
+        return res.json({ connected: false });
+      }
+      const { isGitHubRateLimited } = await import('./rate-limit.js');
+      if (isGitHubRateLimited()) {
+        return res.status(503).json({ error: 'GitHub rate limited' });
+      }
+      const resolveGitHubRepoFromDirectory = options.resolveGitHubRepoFromDirectory
+        ?? (await import('./index.js')).resolveGitHubRepoFromDirectory;
+      const resolveRepoNetwork = options.resolveRepoNetwork
+        ?? (await import('./repo/fork-detection.js')).resolveRepoNetwork;
+      const remoteName = trustedContext.primaryRemote;
+      const { repo } = await resolveGitHubRepoFromDirectory(directory, remoteName);
+      if (!repo) {
+        return res.json({ connected: true, repo: null, items: [], cursor: null, hasMore: false, total: 0 });
+      }
+      const repoNetwork = await resolveRepoNetwork(octokit, directory, remoteName, { strictErrors: true });
+      const repos = requireGitHubRepoNetwork(repoNetwork, repo) ?? [{ ...repo, source: 'origin' }];
+      const page = await searchGitHubReferences({
+        octokit,
+        repos,
+        kind,
+        filter: readReferenceFilter(req.query?.filter),
+        text: readQueryString(req, 'query'),
+        cursor: readQueryString(req, 'cursor') || null,
+      });
+      return res.json({ connected: true, repo, ...page });
+    } catch (error) {
+      if (isReadContextError(error)) {
+        return res.status(error.status ?? 400).json(readContextErrorBody(error));
+      }
+      const accountError = sendExactAccountError(res, error);
+      if (accountError) return accountError;
+      if (error?.status === 401) {
+        await invalidateRequestAccount(error);
+        return res.json({ connected: false });
+      }
+      const { isGraphqlRateLimitError } = await import('./pr-summaries.js');
+      const { isGitHubRateLimitError, noteGitHubRateLimit } = await import('./rate-limit.js');
+      if (isGraphqlRateLimitError(error) || isGitHubRateLimitError(error)) {
+        noteGitHubRateLimit(error);
+        return res.status(503).json({ error: 'GitHub rate limited' });
+      }
+      console.error('Failed to search GitHub references:', error);
+      return res.status(500).json({ error: error.message || 'Failed to search GitHub issues and pull requests' });
+    }
+  });
+
+  // Comments of one issue or PR the picker previews, and a PR's size, review
+  // decision and checks. The repository must be in the bound repository's
+  // network, like every other per-item route.
+  app.get(canonicalGitHubRoutePath('/references/detail'), async (req, res) => {
+    const { fetchReferenceDetail } = await import('./reference-search.js');
+    const directory = readQueryString(req, 'directory');
+    const number = readPositiveIntegerQuery(req, 'number');
+    const owner = readQueryString(req, 'owner');
+    const repoName = readQueryString(req, 'repo');
+    if (!directory || !owner || !repoName || !number) {
+      return res.status(400).json({ error: 'directory, owner, repo and number are required' });
+    }
+    try {
+      const trustedContext = await validateReadContext(req, directory);
+      if (!trustedContext) {
+        return res.status(501).json({ error: 'Bound source control read is unavailable' });
+      }
+      const octokit = (await getOctokitForRead(req, trustedContext))?.octokit;
+      if (!octokit) {
+        return res.json({ connected: false });
+      }
+      const { isGitHubRateLimited } = await import('./rate-limit.js');
+      if (isGitHubRateLimited()) {
+        return res.status(503).json({ error: 'GitHub rate limited' });
+      }
+      const repo = await resolveRepoForRequest(
+        octokit,
+        directory,
+        { owner, repo: repoName },
+        trustedContext.primaryRemote,
+        {
+          resolveGitHubRepoFromDirectory: options.resolveGitHubRepoFromDirectory,
+          resolveRepoNetwork: options.resolveRepoNetwork,
+          strictNetworkErrors: true,
+          strictMetadataErrors: true,
+          requireResolvedRepo: true,
+        },
+      );
+      if (!repo) {
+        return res.status(400).json({ error: 'Repository is not part of this project' });
+      }
+      const detail = await fetchReferenceDetail({ octokit, owner: repo.owner, repo: repo.repo, number });
+      return res.json({ connected: true, detail });
+    } catch (error) {
+      if (isReadContextError(error)) {
+        return res.status(error.status ?? 400).json(readContextErrorBody(error));
+      }
+      const accountError = sendExactAccountError(res, error);
+      if (accountError) return accountError;
+      if (error?.status === 401) {
+        await invalidateRequestAccount(error);
+        return res.json({ connected: false });
+      }
+      const { isGraphqlRateLimitError } = await import('./pr-summaries.js');
+      const { isGitHubRateLimitError, noteGitHubRateLimit } = await import('./rate-limit.js');
+      if (isGraphqlRateLimitError(error) || isGitHubRateLimitError(error)) {
+        noteGitHubRateLimit(error);
+        return res.status(503).json({ error: 'GitHub rate limited' });
+      }
+      console.error('Failed to load GitHub issue or pull request detail:', error);
+      return res.status(500).json({ error: error.message || 'Failed to load issue or pull request detail' });
+    }
+  });
 
   app.get(canonicalGitHubRoutePath('/issues/list'), async (req, res) => {
     try {

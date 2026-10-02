@@ -1,5 +1,5 @@
 import React from 'react';
-import type { Session } from '@opencode-ai/sdk/v2/client';
+import type { Session } from '@/lib/opencode/model';
 
 import { Button } from '@/components/ui/button';
 import { MobileOverlayPanel } from '@/components/ui/MobileOverlayPanel';
@@ -7,8 +7,9 @@ import { toast } from '@/components/ui';
 import { useI18n } from '@/lib/i18n';
 import { cn } from '@/lib/utils';
 import { getWorktreeStatus } from '@/lib/worktrees/worktreeStatus';
-import { removeProjectWorktree, type ProjectRef, getWorktreeDisplayName } from '@/lib/worktrees/worktreeManager';
+import { getWorktreeDisplayName, removeProjectWorktree, type ProjectRef } from '@/lib/worktrees/worktreeManager';
 import { removeWorktreeThenArchiveSessions } from '@/lib/worktrees/worktreeRemovalFlow';
+import { clearWorktreeRemoval, markWorktreeRemoving } from '@/lib/worktrees/worktreeRemovalState';
 import { BoundGitNetworkOperationError, GitOperationResultError } from '@/lib/boundGitNetworkOperation';
 import { PendingGitOperationError } from '@/lib/source-control/git-operation-recovery';
 import { useDirectoryStore } from '@/stores/useDirectoryStore';
@@ -119,6 +120,8 @@ export const MobileDeleteWorktreeDialog: React.FC<MobileDeleteWorktreeDialogProp
   const removeWorktreeInBackground = React.useCallback((target: WorktreeMetadata, sessionIds: string[]) => {
     const name = getWorktreeDisplayName(target);
     const toastId = toast.loading(t('sessions.sidebar.sessionDialogs.worktree.removingTitle', { name }));
+    // The row shows it from here, through archiving the sessions too.
+    markWorktreeRemoving(target.path);
     void (async () => {
       try {
         const result = await removeWorktreeThenArchiveSessions({
@@ -158,6 +161,8 @@ export const MobileDeleteWorktreeDialog: React.FC<MobileDeleteWorktreeDialogProp
             ? t('gitView.publish.remoteNotGranted')
             : error instanceof Error ? error.message : t('sessions.sidebar.dialogs.deleteResult.tryAgain');
         toast.error(t('sessions.sidebar.sessionDialogs.worktree.errorRemoveTitle', { name }), { id: toastId, description });
+      } finally {
+        clearWorktreeRemoval(target.path);
       }
     })();
   }, [archiveSessions, deleteRemoteBranch, hasBranch, onDeleted, removeWorktree, t]);
