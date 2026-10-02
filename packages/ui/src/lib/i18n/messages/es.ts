@@ -2142,6 +2142,7 @@ export const dict: Record<I18nKey, string> = {
   "session.newWorktree.branchName": "Nombre de la rama",
   "session.newWorktree.branchNamePlaceholder": "feature/my-awesome-feature",
   "session.newWorktree.actions.startFromGitHubIssuePr": "Iniciar desde Issue/PR de GitHub",
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'Una incidencia o merge request de GitLab',
   "session.newWorktree.worktreeDirectory": "Directorio del worktree",
   "session.newWorktree.worktreeDirectoryPlaceholder": "my-worktree-directory",
   "session.newWorktree.resetToMatchBranchName": "Restablecer para coincidir con el nombre de la rama",

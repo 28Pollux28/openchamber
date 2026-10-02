@@ -3041,6 +3041,7 @@ export const dict: Record<I18nKey, string> = {
   'session.newWorktree.mode.fromItem': 'PR lub issue',
   'session.newWorktree.error.attachLinkedFailed': 'Nie udało się dołączyć {item}',
   'session.newWorktree.actions.startFromGitHubIssuePr': 'Rozpocznij ze zgłoszenia/PR GitHub',
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'Zgłoszenie lub merge request z GitLaba',
   'session.newWorktree.branchName': 'Nazwa gałęzi',
   'session.newWorktree.branchNamePlaceholder': 'feature/my-awesome-feature',
   'session.newWorktree.chooseBranch': 'Wybierz gałąź...',

@@ -1914,6 +1914,7 @@ export const dict = {
   'session.newWorktree.branchName': 'Nom de la branche',
   'session.newWorktree.branchNamePlaceholder': 'fonctionnalité/ma-fonctionnalité-géniale',
   'session.newWorktree.actions.startFromGitHubIssuePr': 'À partir de GitHub Issue/PR',
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'Un ticket ou une merge request GitLab',
   'session.newWorktree.worktreeDirectory': 'Répertoire du worktree',
   'session.newWorktree.worktreeDirectoryPlaceholder': 'mon-répertoire-worktree',
   'session.newWorktree.resetToMatchBranchName': 'Réinitialiser pour correspondre au nom de la branche',

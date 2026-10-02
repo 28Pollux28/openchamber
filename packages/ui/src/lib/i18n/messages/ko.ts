@@ -2176,6 +2176,7 @@ export const dict: Record<I18nKey, string> = {
   'session.newWorktree.branchName': '브랜치 이름',
   'session.newWorktree.branchNamePlaceholder': 'feature/my-awesome-feature',
   'session.newWorktree.actions.startFromGitHubIssuePr': 'GitHub 이슈/PR에서 시작',
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'GitLab 이슈 또는 머지 리퀘스트',
   'session.newWorktree.worktreeDirectory': '워크트리 디렉터리',
   'session.newWorktree.worktreeDirectoryPlaceholder': 'my-워크트리-디렉터리',
   'session.newWorktree.resetToMatchBranchName': '브랜치 이름에 맞게 초기화',

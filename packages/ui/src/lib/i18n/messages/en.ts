@@ -2174,6 +2174,7 @@ export const dict = {
   'session.newWorktree.branchName': 'Branch name',
   'session.newWorktree.branchNamePlaceholder': 'feature/my-awesome-feature',
   'session.newWorktree.actions.startFromGitHubIssuePr': 'A GitHub issue or pull request',
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'A GitLab issue or merge request',
   'session.newWorktree.worktreeDirectory': 'Folder name',
   'session.newWorktree.worktreeDirectoryPlaceholder': 'my-worktree-directory',
   'session.newWorktree.resetToMatchBranchName': 'Reset to match branch name',

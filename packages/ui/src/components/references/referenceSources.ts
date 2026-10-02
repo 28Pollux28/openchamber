@@ -3,9 +3,10 @@
  * answer. Cache keys carry the runtime, the account and the project, so a
  * different account or host never sees another one's list.
  *
- * GitHub items are read with the repository's read context: the account its
- * binding names, or the current github.com account for a repository nobody
- * bound, the same one the Git view reads with.
+ * Repository items are read with the project's read context: the account its
+ * binding names, or the current account of the host for a repository nobody
+ * bound, the same one the Git view reads with. A GitLab project lists through
+ * the same rows and preview as a GitHub one (`gitlabReferences.ts`).
  */
 
 import * as React from 'react';
@@ -19,14 +20,17 @@ import type {
     LinearAPI,
     LinearIssue,
     LinearIssueSummary,
+    SourceControlProvider,
     SourceControlReadContext,
 } from '@/lib/api/types';
 import { getRuntimeKey } from '@/lib/runtime-switch';
 import { GITHUB_SOURCE_CONTROL_IDENTITY } from '@/lib/source-control/identity';
+import { getSourceControlAuthKey, useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
 import { useRepositoryBinding } from '@/lib/source-control/repository-binding';
 import { useLinearAuthStore } from '@/stores/useLinearAuthStore';
-import { useSourceControlAuthEntry } from '@/stores/useSourceControlAuthStore';
 
+
+import { fetchGitLabReferenceDetail, fetchGitLabReferencePage } from './gitlabReferences';
 import { createListCache, createValueCache, useCachedList, useCachedValue, type ListPage } from './referenceCache';
 import type { LinearReferenceFilter } from './referencePickerItems';
 
@@ -37,25 +41,43 @@ const githubDetails = createValueCache<GitHubReferenceDetail>();
 
 export type ReferenceSourceStatus = 'ready' | 'disconnected' | 'unsupported';
 
-/** Whether GitHub can list here: no account at all reads as disconnected. */
-export function useGitHubSourceStatus(): ReferenceSourceStatus {
-    const { runtime } = useRuntimeAPIs();
-    const auth = useSourceControlAuthEntry(GITHUB_SOURCE_CONTROL_IDENTITY);
-    if (runtime.isVSCode) return 'unsupported';
-    return auth?.hasChecked && auth.status?.connected !== true ? 'disconnected' : 'ready';
-}
-
 /**
- * The GitHub read context of a project, once its binding has been read: null
- * while it loads, and `missing` when the project has no GitHub remote or no
- * account to read it with.
+ * The read context a project's issues and change requests come from, once its
+ * binding has been read: GitHub's when the project has one, else GitLab's.
+ * Null while it loads, and `missing` when the project has no remote on a
+ * connected host.
  */
 export function useGitHubReadContext(directory: string | null): SourceControlReadContext | 'missing' | null {
     const { sourceControl } = useRuntimeAPIs();
     const binding = useRepositoryBinding(directory, sourceControl, Boolean(directory));
-    const context = binding.contexts.find((candidate) => candidate.provider === 'github') ?? null;
+    const context = binding.contexts.find((candidate) => candidate.provider === 'github')
+        ?? binding.contexts.find((candidate) => candidate.provider === 'gitlab')
+        ?? null;
     if (context) return context;
     return binding.status === 'ready' || binding.status === 'error' ? 'missing' : null;
+}
+
+/** The host a project's items come from; GitHub until its binding says otherwise. */
+export function useRepositoryReferenceProvider(directory: string | null): SourceControlProvider {
+    const context = useGitHubReadContext(directory);
+    return context && context !== 'missing' ? context.provider : 'github';
+}
+
+/**
+ * Whether the project's issues and change requests can be listed: a project
+ * with no readable remote, while no GitHub or GitLab account is connected at
+ * all, reads as disconnected.
+ */
+export function useGitHubSourceStatus(directory: string | null): ReferenceSourceStatus {
+    const { runtime } = useRuntimeAPIs();
+    const context = useGitHubReadContext(directory);
+    const anyConnected = useSourceControlAuthStore((state) => Object.values(state.entries)
+        .some((entry) => entry.status?.connected === true));
+    const githubChecked = useSourceControlAuthStore((state) => Boolean(
+        state.entries[getSourceControlAuthKey(GITHUB_SOURCE_CONTROL_IDENTITY)]?.hasChecked,
+    ));
+    if (runtime.isVSCode) return 'unsupported';
+    return context === 'missing' && githubChecked && !anyConnected ? 'disconnected' : 'ready';
 }
 
 export function useLinearSourceStatus(): ReferenceSourceStatus {
@@ -83,6 +105,7 @@ export function useGitHubReferenceList(options: {
         : null;
     const fetchPage = React.useCallback(async (cursor: string | null): Promise<ListPage<GitHubReference>> => {
         if (!context || context === 'missing') return { kind: 'unavailable', reason: 'no-repo' };
+        if (context.provider === 'gitlab') return fetchGitLabReferencePage(sourceControl, context, kind, text, cursor);
         const result = await sourceControl.githubReferences(context, { kind, filter, query: text, cursor });
         if (!result.connected) return { kind: 'unavailable', reason: 'disconnected' };
         if (!result.repo) return { kind: 'unavailable', reason: 'no-repo' };
@@ -121,12 +144,13 @@ export function useGitHubReferenceDetail(directory: string | null, reference: Gi
         ? JSON.stringify([getRuntimeKey(), context.accountId, directory, owner, repo, number])
         : null;
     const fetch = React.useCallback(async (): Promise<GitHubReferenceDetail> => {
-        if (!context || context === 'missing') throw new Error('GitHub is not available here');
+        if (!context || context === 'missing' || !reference) throw new Error('GitHub is not available here');
+        if (context.provider === 'gitlab') return fetchGitLabReferenceDetail(sourceControl, context, reference);
         const result = await sourceControl.githubReferenceDetail(context, { owner, repo, number });
         if (!result.connected) throw new Error('GitHub is not connected');
         if (!result.detail) throw new Error('Not found');
         return result.detail;
-    }, [context, number, owner, repo, sourceControl]);
+    }, [context, number, owner, reference, repo, sourceControl]);
     return useCachedValue(githubDetails, key, fetch);
 }
 

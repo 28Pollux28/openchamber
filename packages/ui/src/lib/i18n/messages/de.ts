@@ -1981,6 +1981,7 @@ export const dict = {
   'session.newWorktree.branchName': 'Branch-Name',
   'session.newWorktree.branchNamePlaceholder': 'feature/mein-geil-feature',
   'session.newWorktree.actions.startFromGitHubIssuePr': 'Starte von GitHub Issue/PR',
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'Ein GitLab-Issue oder Merge Request',
   'session.newWorktree.worktreeDirectory': 'Worktree-Verzeichnis',
   'session.newWorktree.worktreeDirectoryPlaceholder': 'mein-worktree-verzeichnis',
   'session.newWorktree.resetToMatchBranchName': 'Zurücksetzen, um mit Branch-Namen übereinzustimmen',

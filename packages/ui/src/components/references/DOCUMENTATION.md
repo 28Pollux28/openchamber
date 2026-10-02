@@ -17,6 +17,18 @@ every source, GitHub, Linear and each extension, as its own row.
 | `resolveComposerReferences.ts`, `useAttachReferences.ts` | Turning confirmed items into composer chips with their full context. |
 | `referencePickerItems.ts` | Item union, keys, state looks, filters. |
 
+## GitLab projects
+
+The GitHub source is the project's repository source. When the project's read
+context is GitLab's (`useGitHubReadContext` prefers GitHub, then GitLab), the
+same tabs list its issues and merge requests (`gitlabReferences.ts`): pages
+come from the provider-neutral `issuesList` / `changeRequestsList` (open items,
+page number as cursor, no filter chips), the preview from `issueComments` /
+`changeRequestContext`, and items carry `provider: 'gitlab'` so rows read `!N`
+for a merge request. GitLab gives no close reason, so a closed issue reads as
+done. The + menu, the picker title and New Worktree name GitLab for such a
+project.
+
 ## Lists and the cache
 
 - A list is cached per key `[runtime, account or Linear workspace, project, kind, filter, search text]`. Switching tabs or filters, or reopening the picker, shows the cached list at once; one older than 60 s refreshes in the background and is replaced when the answer lands.

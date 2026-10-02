@@ -11,6 +11,7 @@
  * survives the expand.
  */
 
+import type { SourceControlProvider } from '@/lib/api/types';
 import React from 'react';
 
 import { SessionGoalButton, SessionGoalObjectiveCounter } from '@/components/chat/SessionGoalButton';
@@ -57,6 +58,8 @@ export interface ComposerFooterProps {
     onOpenSettings?: () => void;
     onPickLocalFiles: () => void;
     onOpenGitHubPicker: () => void;
+    /** The host the project's issues and change requests come from. */
+    repositoryProvider?: SourceControlProvider;
     showLinearPicker?: boolean;
     onOpenLinearPicker?: () => void;
     attachGuests?: readonly GuestAttachItem[];
@@ -107,6 +110,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
         onOpenSettings,
         onPickLocalFiles,
         onOpenGitHubPicker,
+        repositoryProvider,
         showLinearPicker,
         onOpenLinearPicker,
         attachGuests,
@@ -152,6 +156,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                                 iconSizeClass={iconSizeClass}
                                 handlePickLocalFiles={onPickLocalFiles}
                                 openGitHubPicker={onOpenGitHubPicker}
+                                repositoryProvider={repositoryProvider}
                                 showLinearPicker={showLinearPicker}
                                 openLinearPicker={onOpenLinearPicker}
                                 onOpenSettings={isBtw ? undefined : onOpenSettings}
@@ -225,6 +230,7 @@ export function ComposerFooter(props: ComposerFooterProps) {
                             iconSizeClass={iconSizeClass}
                             handlePickLocalFiles={onPickLocalFiles}
                             openGitHubPicker={onOpenGitHubPicker}
+                            repositoryProvider={repositoryProvider}
                             showLinearPicker={showLinearPicker}
                             openLinearPicker={onOpenLinearPicker}
                             onOpenSettings={isBtw ? undefined : onOpenSettings}

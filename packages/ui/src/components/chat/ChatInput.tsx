@@ -79,6 +79,7 @@ import { MobileOverlayPanel } from '@/components/ui/MobileOverlayPanel';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { ReferencePickerDialog } from '@/components/references/ReferencePickerDialog';
 import { useAttachReferences } from '@/components/references/useAttachReferences';
+import { useRepositoryReferenceProvider } from '@/components/references/referenceSources';
 import {
     composerReferenceKey,
     toContextReference,
@@ -1436,6 +1437,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
         setReferencePicker({ source: 'github' });
     }, []);
     const referencePickerDirectory = currentSessionDirectoryForSync ?? currentDirectory ?? null;
+    const repositoryProvider = useRepositoryReferenceProvider(isVSCodeRuntime() ? null : referencePickerDirectory);
     const addLinkedReferences = React.useCallback((references: ComposerReference[]) => {
         setLinkedReferences((current) => withComposerReferences(current, references));
     }, []);
@@ -3819,6 +3821,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onQueueMessage={() => { void handleQueueMessage(); }}
                         onPickLocalFiles={handlePickLocalFiles}
                         onOpenGitHubPicker={openGitHubPicker}
+                        repositoryProvider={repositoryProvider}
                         showLinearPicker={showLinearPicker}
                         onOpenLinearPicker={openLinearPicker}
                         onOpenAttachSheet={openMobileAttachSheet}
@@ -4019,6 +4022,7 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                         onOpenSettings={onOpenSettings}
                         onPickLocalFiles={handlePickLocalFiles}
                         onOpenGitHubPicker={openGitHubPicker}
+                        repositoryProvider={repositoryProvider}
                         showLinearPicker={showLinearPicker}
                         onOpenLinearPicker={openLinearPicker}
                         attachGuests={isMobile ? [] : guestAttachItems}
@@ -4210,8 +4214,8 @@ const ChatInputComponent: React.FC<ChatInputProps> = ({
                             requestAnimationFrame(openGitHubPicker);
                         }}
                     >
-                        <Icon name="github" className="h-[18px] w-[18px] flex-shrink-0 text-muted-foreground" />
-                        {t('chat.chatInput.actions.linkGithub')}
+                        <Icon name={repositoryProvider === 'gitlab' ? 'gitlab' : 'github'} className="h-[18px] w-[18px] flex-shrink-0 text-muted-foreground" />
+                        {t(repositoryProvider === 'gitlab' ? 'chat.chatInput.actions.linkGitlab' : 'chat.chatInput.actions.linkGithub')}
                     </button>
                     {showLinearPicker ? (
                         <button

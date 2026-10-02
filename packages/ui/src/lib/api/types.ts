@@ -22,6 +22,7 @@ import type {
   SourceControlMutationReceipt,
   SourceControlReadyMutationResult,
   SourceControlBindingRead,
+  SourceControlProvider,
   SourceControlProviderBindingMutation,
   SourceControlReadContext,
   SourceControlRepositoryBindingResetIntent,
@@ -1630,6 +1631,11 @@ type GitHubReferenceCommon = {
   labels: GitHubIssueLabel[];
   commentCount: number;
   sourceRepo: GitHubRepoSelector & { source: string };
+  /**
+   * Set on items read from a GitLab project, which the picker shows the same
+   * way; absent on GitHub's own answers.
+   */
+  provider?: SourceControlProvider;
 };
 
 export type GitHubIssueReference = GitHubReferenceCommon & {

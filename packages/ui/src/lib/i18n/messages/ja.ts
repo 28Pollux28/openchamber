@@ -2170,6 +2170,7 @@ export const dict: Record<I18nKey, string> = {
   'session.newWorktree.branchName': 'ブランチ名',
   'session.newWorktree.branchNamePlaceholder': 'feature/my-awesome-feature',
   'session.newWorktree.actions.startFromGitHubIssuePr': 'GitHub Issue/PRから開始',
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'GitLab の Issue またはマージリクエスト',
   'session.newWorktree.worktreeDirectory': 'ワークツリーディレクトリ',
   'session.newWorktree.worktreeDirectoryPlaceholder': 'my-worktree-directory',
   'session.newWorktree.resetToMatchBranchName': 'ブランチ名に合わせてリセット',

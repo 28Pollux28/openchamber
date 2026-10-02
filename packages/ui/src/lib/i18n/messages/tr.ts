@@ -2036,6 +2036,7 @@ export const dict = {
   'session.newWorktree.branchName': 'Branch Adı',
   'session.newWorktree.branchNamePlaceholder': 'feature/my-awesome-feature',
   'session.newWorktree.actions.startFromGitHubIssuePr': 'GitHub Issue/PR\'dan başla',
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'Bir GitLab issue’su veya merge request’i',
   'session.newWorktree.worktreeDirectory': 'Worktree Dizini',
   'session.newWorktree.worktreeDirectoryPlaceholder': 'my-worktree-directory',
   'session.newWorktree.resetToMatchBranchName': 'Branch adıyla eşleşecek şekilde sıfırla',

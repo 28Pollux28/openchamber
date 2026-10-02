@@ -16,6 +16,11 @@ export type ReferencePickerSelection =
 
 export type LinearReferenceFilter = 'open' | 'assigned';
 
+/** `#12` for an issue or a GitHub PR, `!12` for a GitLab merge request. */
+export const referenceNumberLabel = (reference: GitHubReference): string => (
+    reference.kind === 'pull' && reference.provider === 'gitlab' ? `!${reference.number}` : `#${reference.number}`
+);
+
 export const referencePickerItemKey = (item: ReferencePickerItem | ReferencePickerSelection): string => {
     if (item.source === 'linear') return `linear:${item.issue.identifier.toUpperCase()}`;
     const { sourceRepo, number } = item.reference;

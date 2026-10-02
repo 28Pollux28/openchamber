@@ -2140,6 +2140,7 @@ export const dict: Record<I18nKey, string> = {
   'session.newWorktree.branchName': '分支名',
   'session.newWorktree.branchNamePlaceholder': 'feature/my-awesome-feature',
   'session.newWorktree.actions.startFromGitHubIssuePr': '从 GitHub Issue/PR 开始',
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'GitLab 议题或合并请求',
   'session.newWorktree.worktreeDirectory': '工作树目录',
   'session.newWorktree.worktreeDirectoryPlaceholder': 'my-worktree-directory',
   'session.newWorktree.resetToMatchBranchName': '重置为与分支名一致',

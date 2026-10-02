@@ -13,6 +13,7 @@
  */
 
 import type React from 'react';
+import type { SourceControlProvider } from '@/lib/api/types';
 import { Button } from '@/components/ui/button';
 import { Icon } from '@/components/icon/Icon';
 import { StopIcon } from '@/components/icons/StopIcon';
@@ -45,6 +46,8 @@ export interface MobilePillComposerProps {
     onQueueMessage: () => void;
     onPickLocalFiles: () => void;
     onOpenGitHubPicker: () => void;
+    /** The host the project's issues and change requests come from. */
+    repositoryProvider?: SourceControlProvider;
     showLinearPicker?: boolean;
     onOpenLinearPicker?: () => void;
     onOpenAttachSheet: () => void;
@@ -74,6 +77,7 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
         onQueueMessage,
         onPickLocalFiles,
         onOpenGitHubPicker,
+        repositoryProvider,
         showLinearPicker,
         onOpenLinearPicker,
         onOpenAttachSheet,
@@ -122,6 +126,7 @@ export function MobilePillComposer(props: MobilePillComposerProps) {
                     iconSizeClass={iconSizeClass}
                     handlePickLocalFiles={onPickLocalFiles}
                     openGitHubPicker={onOpenGitHubPicker}
+                    repositoryProvider={repositoryProvider}
                     showLinearPicker={showLinearPicker}
                     openLinearPicker={onOpenLinearPicker}
                     onOpenMobileSheet={onOpenAttachSheet}

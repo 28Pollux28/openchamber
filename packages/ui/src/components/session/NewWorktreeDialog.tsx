@@ -21,7 +21,7 @@ import { toast } from '@/components/ui';
 import { cn } from '@/lib/utils';
 import { useProjectsStore } from '@/stores/useProjectsStore';
 import { useSourceControlAuthEntry } from '@/stores/useSourceControlAuthStore';
-import { GITHUB_SOURCE_CONTROL_IDENTITY } from '@/lib/source-control/identity';
+import { formatChangeRequestReference, GITHUB_SOURCE_CONTROL_IDENTITY } from '@/lib/source-control/identity';
 import { useLinearAuthStore } from '@/stores/useLinearAuthStore';
 import { useUIStore } from '@/stores/useUIStore';
 import { useSessionUIStore } from '@/sync/session-ui-store';
@@ -584,8 +584,12 @@ export function NewWorktreeDialog({
   };
 
   const isGitHubConnected = githubAuthChecked && githubAuthStatus?.connected === true;
+  // A GitLab project lists its issues and merge requests in the same picker,
+  // read with the account its context names.
+  const isGitLabProject = githubContext !== null && githubContext !== 'missing' && githubContext.provider === 'gitlab';
+  const isRepositoryConnected = isGitHubConnected || isGitLabProject;
   const isLinearConnected = Boolean(linear) && linearAuthChecked && linearAuthStatus?.connected === true;
-  const canLinkItems = isGitHubConnected || isLinearConnected || dialogGuests.length > 0;
+  const canLinkItems = isRepositoryConnected || isLinearConnected || dialogGuests.length > 0;
 
   const isFormValid = Boolean(normalizeBranchName(branchName))
     && Boolean(slugifyWorktreeName(worktreeName))
@@ -613,7 +617,9 @@ export function NewWorktreeDialog({
 
   // Where the chosen item comes from: one source opens straight away, several ask which.
   const itemSources = [
-    ...(isGitHubConnected ? [{ id: 'github', name: 'GitHub', label: t('session.newWorktree.actions.startFromGitHubIssuePr'), icon: <Icon name="github" className="size-4 shrink-0" />, open: () => setReferencePickerSource('github') }] : []),
+    ...(isRepositoryConnected ? [isGitLabProject
+      ? { id: 'github', name: 'GitLab', label: t('session.newWorktree.actions.startFromGitLabIssueMr'), icon: <Icon name="gitlab" className="size-4 shrink-0" />, open: () => setReferencePickerSource('github') }
+      : { id: 'github', name: 'GitHub', label: t('session.newWorktree.actions.startFromGitHubIssuePr'), icon: <Icon name="github" className="size-4 shrink-0" />, open: () => setReferencePickerSource('github') }] : []),
     ...(isLinearConnected ? [{ id: 'linear', name: 'Linear', label: t('session.newWorktree.actions.startFromLinearIssue'), icon: <Icon name="linear" className="size-4 shrink-0" />, open: () => setReferencePickerSource('linear') }] : []),
     ...dialogGuests.map((guest) => ({
       id: guest.id,
@@ -630,9 +636,9 @@ export function NewWorktreeDialog({
     : undefined;
   const linkedView = linked
     ? linked.kind === 'pr'
-      ? { id: t('session.newWorktree.prNumber', { number: linked.pr.number }), title: linked.pr.title, url: linked.pr.url, icon: <Icon name="git-pull-request" className="size-4 shrink-0 text-muted-foreground" /> }
+      ? { id: linked.context.provider === 'gitlab' ? formatChangeRequestReference('gitlab', linked.pr.number) : t('session.newWorktree.prNumber', { number: linked.pr.number }), title: linked.pr.title, url: linked.pr.url, icon: <Icon name="git-pull-request" className="size-4 shrink-0 text-muted-foreground" /> }
       : linked.kind === 'issue'
-        ? { id: t('session.newWorktree.issueNumber', { number: linked.number }), title: linked.title, url: linked.url, icon: <Icon name="github" className="size-4 shrink-0 text-muted-foreground" /> }
+        ? { id: t('session.newWorktree.issueNumber', { number: linked.number }), title: linked.title, url: linked.url, icon: <Icon name={isGitLabProject ? 'gitlab' : 'github'} className="size-4 shrink-0 text-muted-foreground" /> }
         : linked.kind === 'linear'
           ? { id: linked.identifier, title: linked.title, url: linked.url, icon: <Icon name="linear" className="size-4 shrink-0 text-muted-foreground" /> }
           : { id: linked.guest.id, title: linked.guest.title, url: linked.guest.url, icon: <GuestIcon icon={linkedGuestEntry?.icon ?? 'window'} iconSrc={linkedGuestEntry?.iconSrc} className="size-4 shrink-0" /> }

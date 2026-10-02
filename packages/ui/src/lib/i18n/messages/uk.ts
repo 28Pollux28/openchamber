@@ -2142,6 +2142,7 @@ export const dict: Record<I18nKey, string> = {
   "session.newWorktree.branchName": "Назва гілки",
   "session.newWorktree.branchNamePlaceholder": "feature/my-awesome-feature",
   "session.newWorktree.actions.startFromGitHubIssuePr": "Почати з GitHub issue/PR",
+  'session.newWorktree.actions.startFromGitLabIssueMr': 'Issue або merge request з GitLab',
   "session.newWorktree.worktreeDirectory": "Каталог worktree",
   "session.newWorktree.worktreeDirectoryPlaceholder": "my-worktree-directory",
   "session.newWorktree.resetToMatchBranchName": "Скинути відповідно до назви гілки",
