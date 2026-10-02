@@ -3296,7 +3296,11 @@ process.exit(safe ? 0 : 1);
       spawnResults: [{
         code: 0,
         onSpawn: async () => {
-          await fs.rm(temporary, { recursive: true });
+          // The replaced directory stays on disk under another name: a
+          // filesystem without birth times may hand a freshly created
+          // directory the inode just freed, and that reuse is not what
+          // this test is about.
+          await fs.rename(temporary, `${temporary}.replaced`);
           await fs.mkdir(temporary);
           await fs.writeFile(path.join(temporary, 'other-owner'), 'keep');
         },
@@ -3346,7 +3350,11 @@ process.exit(safe ? 0 : 1);
       copyFile: vi.fn(async (source, target, mode) => {
         if (!replaced) {
           replaced = true;
-          await fs.rm(destination, { recursive: true });
+          // The replaced directory stays on disk under another name: a
+          // filesystem without birth times may hand a freshly created
+          // directory the inode just freed, and that reuse is not what
+          // this test is about.
+          await fs.rename(destination, `${destination}.replaced`);
           await fs.mkdir(destination);
           await fs.writeFile(path.join(destination, 'other-owner'), 'keep');
         }
