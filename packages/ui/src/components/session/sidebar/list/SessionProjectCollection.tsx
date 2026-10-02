@@ -6,6 +6,7 @@ import { usePrefetchSessionMessages } from '@/sync/use-sync';
 import { useGitHubAuthStore } from '@/stores/useGitHubAuthStore';
 import { getGitHubPrStatusKey, useGitHubPrStatusStore } from '@/stores/useGitHubPrStatusStore';
 import { useOpenPrSummarySync } from '@/hooks/useOpenPrSummarySync';
+import { useLinearIssueStateSync } from '@/hooks/useLinearIssueStateSync';
 import { getLinkedGitHubPullRequests, getLinkedSidebarIssues } from '@/lib/linkedIssues';
 import type { GitHubPullRequestRef } from '@/lib/api/types';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
@@ -321,7 +322,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     createFolder,
     addSessionToFolder,
   });
-  const { github } = useRuntimeAPIs();
+  const { github, linear } = useRuntimeAPIs();
   const githubAuthStatus = useGitHubAuthStore((state) => state.status);
   const githubAuthChecked = useGitHubAuthStore((state) => state.hasChecked);
   const ensureEntry = useGitHubPrStatusStore((state) => state.ensureEntry);
@@ -460,6 +461,9 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     // branch.
     const linkedRefs = new Map<string, GitHubPullRequestRef>();
     const linkedIssueRefs = new Map<string, GitHubPullRequestRef>();
+    // Linear issues linked to the sessions on screen; their state comes from
+    // Linear, on its own cadence below.
+    const linearIdentifiers = new Set<string>();
     const addTarget = (directory: string | null, branch: string | null | undefined) => {
       const trimmed = branch?.trim();
       if (directory && trimmed) targets.set(getGitHubPrStatusKey(directory, trimmed), { directory, branch: trimmed });
@@ -474,6 +478,8 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
         for (const issue of getLinkedSidebarIssues(node.session)) {
           if (issue.source === 'github') {
             linkedIssueRefs.set(`${issue.owner.toLowerCase()}/${issue.repo.toLowerCase()}#${issue.number}`, { owner: issue.owner, repo: issue.repo, number: issue.number });
+          } else if (issue.source === 'linear') {
+            linearIdentifiers.add(issue.identifier.toUpperCase());
           }
         }
       }
@@ -482,7 +488,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     workItems.forEach((item) => addNode(item.node));
     if (timelineMode) {
       timelineItems.forEach((item) => addNode(item.node));
-      return { targets, linkedRefs: [...linkedRefs.values()], linkedIssueRefs: [...linkedIssueRefs.values()] };
+      return { targets, linkedRefs: [...linkedRefs.values()], linkedIssueRefs: [...linkedIssueRefs.values()], linearIdentifiers: [...linearIdentifiers] };
     }
     recentActivitySections.forEach((section) => section.items.forEach((item) => addNode(item.node)));
     projectSections.forEach((section) => {
@@ -497,7 +503,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
         addTarget(directory, group.branch?.trim() || topology.gitBranches.get(directory || ''));
       });
     });
-    return { targets, linkedRefs: [...linkedRefs.values()], linkedIssueRefs: [...linkedIssueRefs.values()] };
+    return { targets, linkedRefs: [...linkedRefs.values()], linkedIssueRefs: [...linkedIssueRefs.values()], linearIdentifiers: [...linearIdentifiers] };
   }, [projectSections, projectView.collapsedProjects, recentActivitySections, timelineItems, timelineMode, topology.gitBranches, topology.isVSCode, workItems]);
   const shownPrTargets = shownPrs.targets;
   const shownPrKeys = React.useMemo(() => [...shownPrTargets.keys()], [shownPrTargets]);
@@ -527,6 +533,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     if (targets.size) void refreshTargets([...targets.values()], { silent: true, markInitialResolved: true });
   }, [ensureEntry, github, githubAuthChecked, githubConnected, refreshTargets, setParams, shownPrTargets]);
   useOpenPrSummarySync(shownPrKeys, shownPrs.linkedRefs, shownPrs.linkedIssueRefs, github, githubConnected);
+  useLinearIssueStateSync(shownPrs.linearIdentifiers, linear);
 
   const { groupStatusByKey, bootstrapSnapshot } = useSidebarGroupStatus({
     childStores,
