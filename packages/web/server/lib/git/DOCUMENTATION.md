@@ -309,6 +309,7 @@ installed.
 ## Internal Helpers
 
 The following functions are internal helpers used by exported functions:
+- `createGit()` hands `buildGitEnv()` to simple-git through `.env()` (a constructor `env` option is ignored), turning on only the `unsafe` switches the variables present need (`simple-git-env.js`): Git inherited those variables before, and now also gets the prompt guard and the AppImage clean-up.
 - `buildGitEnv()`: Build Git environment with SSH_AUTH_SOCK resolution and `GIT_TERMINAL_PROMPT=0` (unless the server was started with it set): the server has no terminal a user could answer, so a Git command that would ask for a username or password fails instead of waiting forever on a console nobody sees. Credential helpers, including GUI ones, still run before Git would prompt. Inside a Linux AppImage it also drops what the AppImage launcher added to `PATH`, `LD_LIBRARY_PATH`, `GSETTINGS_SCHEMA_DIR` and `XDG_DATA_DIRS` (`stripAppImageLauncherEnv`, #4177), so hooks run with the user's values.
 - `createGit(directory)`: Create simple-git instance with environment.
 - `normalizeDirectoryPath(value)`: Normalize directory paths (supports ~ expansion).

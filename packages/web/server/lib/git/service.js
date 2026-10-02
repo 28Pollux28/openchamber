@@ -1,6 +1,7 @@
 import simpleGit from 'simple-git';
 import { createSerialRefresh } from './serial-refresh.js';
 import { stripAppImageLauncherEnv } from '../inherited-env.js';
+import { unsafeSwitchesForEnv } from './simple-git-env.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -410,14 +411,17 @@ const createGit = async (directory, { stallTimeoutMs = 0 } = {}) => {
   if (typeof baseDir !== 'string' || !baseDir.trim()) {
     throw new Error('Git directory is required');
   }
+  // simple-git takes the environment only through `.env()`; an `env` option
+  // is ignored and Git would inherit the raw process environment (no prompt
+  // guard, AppImage launcher paths in hooks). The switches accept exactly the
+  // variables Git inherited before.
   return createSimpleGit({
     baseDir,
-    env,
     spawnOptions,
     binary,
-    unsafe,
+    unsafe: { ...unsafeSwitchesForEnv(env), ...unsafe },
     ...(timeout ? { timeout } : {}),
-  });
+  }).env(env);
 };
 
 // Global config reads do not need a repository; use the home directory as a

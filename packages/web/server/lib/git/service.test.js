@@ -3480,3 +3480,40 @@ describe('getStatus untracked directories', () => {
   });
 });
 
+describe('git environment inside an AppImage', () => {
+  // Worktree population never runs hooks (an untrusted checkout must not run
+  // code), so a branch switch is where a post-checkout hook runs.
+  it('runs a post-checkout hook without the AppImage launcher library path', async () => {
+    if (!canRunGit() || process.platform === 'win32') return;
+    const previous = {
+      APPDIR: process.env.APPDIR,
+      LD_LIBRARY_PATH: process.env.LD_LIBRARY_PATH,
+    };
+    process.env.APPDIR = '/tmp/.mount_OpenChAbC123';
+    process.env.LD_LIBRARY_PATH = '/tmp/.mount_OpenChAbC123/usr/lib:/opt/x:';
+
+    try {
+      const repo = createTempDir();
+      runGit(repo, ['init', '-b', 'main']);
+      runGit(repo, ['config', 'user.email', 'test@example.com']);
+      runGit(repo, ['config', 'user.name', 'Test User']);
+      fs.writeFileSync(path.join(repo, 'README.md'), '# Test\n');
+      runGit(repo, ['add', 'README.md']);
+      runGit(repo, ['commit', '-m', 'Initial commit']);
+      runGit(repo, ['branch', 'other']);
+      const hookLog = path.join(createTempDir(), 'post-checkout-env.log');
+      const hookPath = path.join(repo, '.git', 'hooks', 'post-checkout');
+      fs.writeFileSync(hookPath, `#!/bin/sh\nprintf '%s' "\${LD_LIBRARY_PATH-<unset>}" > ${JSON.stringify(hookLog)}\n`);
+      fs.chmodSync(hookPath, 0o755);
+
+      await checkoutBranch(repo, 'other');
+
+      expect(fs.readFileSync(hookLog, 'utf8')).toBe('/opt/x');
+    } finally {
+      for (const [key, value] of Object.entries(previous)) {
+        if (value === undefined) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+  });
+});
