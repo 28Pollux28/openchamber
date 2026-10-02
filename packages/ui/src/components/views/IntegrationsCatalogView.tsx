@@ -61,6 +61,12 @@ type ConfirmRequest =
   | { kind: 'plugin-install'; entry: CatalogEntry }
   | { kind: 'uninstall'; entry: CatalogEntry };
 
+/** What the catalog rail selects: a category, or the installed-only view. */
+type RailSelection =
+  | { kind: 'all' }
+  | { kind: 'installed' }
+  | { kind: 'category'; category: CatalogCategory };
+
 // Stable empty references: a selector returning a fresh [] or {} on every
 // call re-renders the component forever (Maximum update depth exceeded).
 const EMPTY_MCP_SERVERS: never[] = [];
@@ -178,7 +184,7 @@ export function IntegrationsCatalogView(): React.ReactNode {
 
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState('');
-  const [selectedCategory, setSelectedCategory] = React.useState<CatalogCategory | null>(null);
+  const [railSelection, setRailSelection] = React.useState<RailSelection>({ kind: 'all' });
   const [busyId, setBusyId] = React.useState<string | null>(null);
   const [confirm, setConfirm] = React.useState<ConfirmRequest | null>(null);
   const [inputValues, setInputValues] = React.useState<Record<string, Record<string, string>>>({});
@@ -197,7 +203,7 @@ export function IntegrationsCatalogView(): React.ReactNode {
     if (!open) {
       setSelectedId(null);
       setQuery('');
-      setSelectedCategory(null);
+      setRailSelection({ kind: 'all' });
       setBusyId(null);
       setConfirm(null);
       setInputValues({});
@@ -252,18 +258,28 @@ export function IntegrationsCatalogView(): React.ReactNode {
       return isSkillInstalled(skillReportedName(component));
     }), [isExtensionInstalled, isMcpInstalled, isPluginInstalled, isSkillInstalled]);
 
+  /** How many catalog entries are fully installed right now. */
+  const installedCount = React.useMemo(
+    () => CATALOG_ENTRIES.filter((entry) => isEntryInstalled(entry)).length,
+    [isEntryInstalled],
+  );
+
   const filteredEntries = React.useMemo(() => {
     const entries = [...CATALOG_ENTRIES];
-    const category = selectedCategory;
-    const categoryFiltered = category ? entries.filter((entry) => entry.categories.includes(category)) : entries;
+    const selection = railSelection;
+    const selectionFiltered = selection.kind === 'category'
+      ? entries.filter((entry) => entry.categories.includes(selection.category))
+      : selection.kind === 'installed'
+        ? entries.filter((entry) => isEntryInstalled(entry))
+        : entries;
     const normalizedQuery = query.trim().toLowerCase();
-    if (!normalizedQuery) return categoryFiltered;
-    return rankByQuery(categoryFiltered, normalizedQuery, (entry) => [
+    if (!normalizedQuery) return selectionFiltered;
+    return rankByQuery(selectionFiltered, normalizedQuery, (entry) => [
       entry.name,
       entry.publisher,
       t(entry.descriptionKey),
     ]);
-  }, [query, selectedCategory, t]);
+  }, [query, isEntryInstalled, railSelection, t]);
 
   const componentKindLabelKey = (component: CatalogComponent): I18nKey => {
     if (component.kind === 'plugin') return 'integrationsCatalog.status.plugin';
@@ -658,21 +674,21 @@ export function IntegrationsCatalogView(): React.ReactNode {
 
   const selectedEntry = selectedId ? CATALOG_ENTRIES.find((entry) => entry.id === selectedId) : undefined;
 
-  const categoryCount = (category: CatalogCategory | null): number =>
-    category === null
-      ? CATALOG_ENTRIES.length
-      : CATALOG_ENTRIES.filter((entry) => entry.categories.includes(category)).length;
+  const sameSelection = (a: RailSelection, b: RailSelection): boolean => {
+    if (a.kind !== b.kind) return false;
+    if (a.kind === 'category' && b.kind === 'category') return a.category === b.category;
+    return true;
+  };
 
-  const renderCategoryItem = (category: CatalogCategory | null): React.ReactNode => {
-    const selected = !selectedEntry && selectedCategory === category;
-    const label = category === null ? t('integrationsCatalog.category.all') : t(CATEGORY_LABEL_KEY[category]);
+  const renderRailItem = (selection: RailSelection, label: string, count: number): React.ReactNode => {
+    const selected = !selectedEntry && sameSelection(railSelection, selection);
     return (
       <button
-        key={category ?? '__all__'}
+        key={selection.kind === 'category' ? `category-${selection.category}` : selection.kind}
         type="button"
         onClick={() => {
           setSelectedId(null);
-          setSelectedCategory(category);
+          setRailSelection(selection);
         }}
         aria-pressed={selected}
         className={cn(
@@ -683,7 +699,7 @@ export function IntegrationsCatalogView(): React.ReactNode {
         )}
       >
         <span className="min-w-0 flex-1 truncate">{label}</span>
-        <span className="shrink-0 typography-micro text-muted-foreground/70">{categoryCount(category)}</span>
+        <span className="shrink-0 typography-micro text-muted-foreground/70">{count}</span>
       </button>
     );
   };
@@ -945,8 +961,12 @@ export function IntegrationsCatalogView(): React.ReactNode {
     <div className="absolute inset-0 z-10 flex bg-background">
       <div className="flex w-52 shrink-0 flex-col border-r border-border/50">
         <div className="flex-1 overflow-y-auto p-2">
-          {renderCategoryItem(null)}
-          {CATALOG_CATEGORY_ORDER.map((category) => renderCategoryItem(category))}
+          {renderRailItem({ kind: 'all' }, t('integrationsCatalog.category.all'), CATALOG_ENTRIES.length)}
+          <div className="my-1.5 border-t border-[var(--interactive-border)]/60" />
+          {renderRailItem({ kind: 'installed' }, t('integrationsCatalog.filter.installed'), installedCount)}
+          <div className="my-1.5 border-t border-[var(--interactive-border)]/60" />
+          {CATALOG_CATEGORY_ORDER.map((category) =>
+            renderRailItem({ kind: 'category', category }, t(CATEGORY_LABEL_KEY[category]), CATALOG_ENTRIES.filter((entry) => entry.categories.includes(category)).length))}
         </div>
       </div>
 

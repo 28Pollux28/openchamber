@@ -125,6 +125,33 @@ test('the category filter narrows the grid', async () => {
     expect(body.textContent?.includes('Playwright')).toBe(false);
   });
 
+test('the installed filter shows only installed entries and returns to all', async () => {
+  useMcpConfigStore.setState({
+    mcpServers: [{
+      name: 'atlassian',
+      type: 'remote',
+      url: 'https://mcp.atlassian.com/v2/mcp',
+      scope: 'user',
+    }],
+  });
+  await act(async () => root.render(<I18nProvider><IntegrationsCatalogView /></I18nProvider>));
+  const body = browser.document.body;
+
+  const installedChip = [...body.querySelectorAll('button')].find((button) => button.textContent?.startsWith('Installed'));
+  if (!installedChip) throw new Error('Installed filter missing');
+  // The rail shows the installed count next to the label.
+  expect(installedChip.textContent).toBe('Installed1');
+  await act(async () => installedChip.click());
+  expect(body.textContent?.includes('Atlassian')).toBe(true);
+  expect(body.textContent?.includes('Playwright')).toBe(false);
+
+  // "All" undoes the filter.
+  const allChip = [...body.querySelectorAll('button')].find((button) => button.textContent?.startsWith('All'));
+  if (!allChip) throw new Error('All filter missing');
+  await act(async () => allChip.click());
+  expect(body.textContent?.includes('Playwright')).toBe(true);
+});
+
 test('the catalog flag follows the mutually exclusive full-page surface contract', () => {
   const store = useUIStore.getState();
   store.setIntegrationsCatalogOpen(true);
