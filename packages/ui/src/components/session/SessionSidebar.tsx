@@ -136,6 +136,7 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
   const setSessionSwitcherOpen = useUIStore((state) => state.setSessionSwitcherOpen);
   const setScheduledTasksDialogOpen = useUIStore((state) => state.setScheduledTasksDialogOpen);
   const setArchivePageOpen = useUIStore((state) => state.setArchivePageOpen);
+  const setIntegrationsCatalogOpen = useUIStore((state) => state.setIntegrationsCatalogOpen);
   const setUsageStatsPageOpen = useUIStore((state) => state.setUsageStatsPageOpen);
   const setWorktreesPageProjectId = useUIStore((state) => state.setWorktreesPageProjectId);
   const notifyOnSubtasks = useUIStore((state) => state.notifyOnSubtasks);
@@ -648,6 +649,10 @@ const SessionSidebarComponent: React.FC<SessionSidebarProps> = ({
         onOpenArchive={() => {
           if (mobileVariant) setSessionSwitcherOpen(false);
           setArchivePageOpen(true);
+        }}
+        onOpenIntegrationsCatalog={() => {
+          if (mobileVariant) setSessionSwitcherOpen(false);
+          setIntegrationsCatalogOpen(true);
         }}
         headerActionIconClass={headerActionIconClass}
         headerActionButtonClass={headerActionButtonClass}

@@ -29,6 +29,7 @@ type Props = {
   handleOpenDirectoryDialog: () => void;
   onOpenScheduled: () => void;
   onOpenArchive: () => void;
+  onOpenIntegrationsCatalog: () => void;
   headerActionIconClass: string;
   headerActionButtonClass: string;
   isSessionSearchOpen: boolean;
@@ -52,6 +53,7 @@ export function SidebarHeader(props: Props): React.ReactNode {
     handleOpenDirectoryDialog,
     onOpenScheduled,
     onOpenArchive,
+    onOpenIntegrationsCatalog,
     headerActionIconClass,
     headerActionButtonClass,
     isSessionSearchOpen,
@@ -136,6 +138,21 @@ export function SidebarHeader(props: Props): React.ReactNode {
               </TooltipTrigger>
               <TooltipContent side="bottom" sideOffset={4}><p>{t('sessions.sidebar.nav.archive')}</p></TooltipContent>
             </Tooltip>
+
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={onOpenIntegrationsCatalog}
+                  className={cn(headerActionButtonClass, 'text-muted-foreground hover:text-foreground hover:bg-transparent')}
+                  aria-label={t('integrationsCatalog.sidebar.open')}
+                >
+                  <Icon name="plug-2" className={headerActionIconClass} />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom" sideOffset={4}><p>{t('integrationsCatalog.sidebar.open')}</p></TooltipContent>
+            </Tooltip>
+
             {guestPages.length > 0 && <DropdownMenu>
               <DropdownMenuTrigger asChild>
                 <Button variant="ghost" size="xs" className="w-6 text-muted-foreground" aria-label={t('sessions.sidebar.header.actions.extensionPages')}>
