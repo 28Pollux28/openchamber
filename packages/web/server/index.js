@@ -118,6 +118,8 @@ import { migrateLegacyUserDirs } from './lib/data-dir-migration.js';
 import { createProjectContextRuntime } from './lib/project-context/runtime.js';
 import { createAgentMemoryRuntime } from './lib/agent-memory/runtime.js';
 import { createAgentMemoryActions } from './lib/agent-memory/actions.js';
+import { createCanvasRuntime } from './lib/canvas/store.js';
+import { createCanvasActions } from './lib/canvas/actions.js';
 import { createMemoryProjectResolver } from './lib/agent-memory/project-resolution.js';
 import { isAgentMemoryFeatureAvailable } from './lib/agent-memory/feature-flag.js';
 import { createSpacesHost } from './lib/spaces/host.js';
@@ -614,6 +616,14 @@ const agentMemoryRuntime = createAgentMemoryRuntime({
   path,
   projectsDirPath: OPENCHAMBER_PROJECTS_CONFIG_DIR,
   userConfigRoot: OPENCHAMBER_USER_CONFIG_ROOT,
+});
+
+// Canvases are server-owned project data, stored under the same bounded
+// project stem as context, plans and memory; see lib/canvas/store.js.
+const canvasRuntime = createCanvasRuntime({
+  fsPromises,
+  path,
+  projectsDirPath: OPENCHAMBER_PROJECTS_CONFIG_DIR,
 });
 
 /**
@@ -1550,6 +1560,27 @@ const emitAgentMemoryChangedEvent = (event) => {
     }
   }
 };
+/**
+ * Tells open panels that a canvas changed, so a new version is visible
+ * without reopening anything. Carries only which project moved — the panel
+ * re-reads from the server, so the event cannot go stale between being sent
+ * and being handled.
+ */
+const emitCanvasChangedEvent = (event) => {
+  for (const client of uiOpenChamberEventClients) {
+    try {
+      writeSseEvent(client, {
+        type: 'openchamber:canvas-updated',
+        properties: {
+          projectId: event.projectId,
+          ...(event.canvasId ? { canvasId: event.canvasId } : {}),
+        },
+      });
+    } catch {
+      uiOpenChamberEventClients.delete(client);
+    }
+  }
+};
 const scheduledTaskService = createScheduledTaskService({
   readSettingsFromDiskMigrated,
   sanitizeProjects,
@@ -1685,6 +1716,12 @@ const openChamberControlService = createOpenChamberControlService({
     createError: (message, status) => new OpenChamberControlError(message, status),
     onMemoryChanged: emitAgentMemoryChangedEvent,
     isAgentMemoryEnabled,
+    resolveProjectId: resolveMemoryProjectId,
+  }),
+  canvasActions: createCanvasActions({
+    canvasRuntime,
+    createError: (message, status) => new OpenChamberControlError(message, status),
+    onCanvasChanged: emitCanvasChangedEvent,
     resolveProjectId: resolveMemoryProjectId,
   }),
 });
@@ -2352,6 +2389,7 @@ async function main(options = {}) {
     projectConfigRuntime,
     projectContextRuntime,
     agentMemoryRuntime,
+    canvasRuntime,
     isAgentMemoryEnabled,
     sessionKnowledgeRuntime,
     scheduledTasksRuntime,

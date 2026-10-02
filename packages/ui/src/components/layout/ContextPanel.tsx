@@ -22,6 +22,7 @@ const LinearIssuesView = lazyWithChunkRecovery(() => import('@/components/views/
 const PlanView = lazyWithChunkRecovery(() => import('@/components/views/PlanView').then((m) => ({ default: m.PlanView })));
 import { ProjectContextPanel } from './RightSidebarTabs';
 import { SidebarFilesTree } from './SidebarFilesTree';
+import { CanvasView } from '@/components/canvas/CanvasView';
 import { useThemeSystem } from '@/contexts/useThemeSystem';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useGuestSurfaces } from '@/hooks/useGuestSurfaces';
@@ -182,6 +183,7 @@ const getModeLabel = (
   if (mode === 'linear') return t('contextPanel.mode.linear');
   if (mode === 'notes') return t('contextRail.surface.notes');
   if (mode === 'terminal') return t('layout.mainTab.terminal');
+  if (mode === 'canvas') return t('contextPanel.mode.canvas');
   if (isPluginContextPanelMode(mode)) {
     const guest = useGuestsStore.getState().guests.find((entry) => entry.id === pluginIdFromMode(mode));
     return guest?.name ?? t('contextRail.surface.plugin');
@@ -306,6 +308,10 @@ const getTabIcon = (
 
   if (tab.mode === 'chat') {
     return <Icon name="chat-4" className="h-3.5 w-3.5" />;
+  }
+
+  if (tab.mode === 'canvas') {
+    return <Icon name="layout-masonry-fill" className="h-3.5 w-3.5" />;
   }
 
   if (isPluginContextPanelMode(tab.mode)) {
@@ -1066,7 +1072,7 @@ export const ContextPanel: React.FC = () => {
   // The rail switches between surfaces (modes); the in-panel strip only lists
   // instances of the active multi-instance surface (open files, split chats,
   // browser targets).
-  const isMultiInstanceMode = activeTab?.mode === 'file' || activeTab?.mode === 'chat' || activeTab?.mode === 'browser';
+  const isMultiInstanceMode = activeTab?.mode === 'file' || activeTab?.mode === 'chat' || activeTab?.mode === 'browser' || activeTab?.mode === 'canvas';
   const activeModeTabs = React.useMemo(
     () => (activeTab ? tabs.filter((tab) => tab.mode === activeTab.mode) : []),
     [activeTab, tabs],
@@ -1132,6 +1138,12 @@ export const ContextPanel: React.FC = () => {
   }, [browserTabs, loadedBrowserTabs, wakeBrowserTab]);
   const diffTabs = React.useMemo(
     () => tabs.filter((tab) => tab.mode === 'diff'),
+    [tabs],
+  );
+  // Keep-alive like the walkthrough: a canvas holds a rendered document and a
+  // chosen version that a remount would throw away.
+  const canvasTabs = React.useMemo(
+    () => tabs.filter((tab) => tab.mode === 'canvas'),
     [tabs],
   );
   const terminalTab = React.useMemo(
@@ -1497,6 +1509,18 @@ export const ContextPanel: React.FC = () => {
             />
           </div>
         ) : null}
+        {canvasTabs.map((tab) => (
+          <div
+            key={tab.id}
+            className={cn('absolute inset-0', activeTab?.id !== tab.id && 'hidden')}
+          >
+            <CanvasView
+              directory={directoryKey}
+              canvasId={(tab.targetPath ?? '').startsWith('canvas:') ? (tab.targetPath ?? '').slice('canvas:'.length) : ''}
+              visible={isOpen && activeTab?.id === tab.id}
+            />
+          </div>
+        ))}
         {hasWalkthroughTab ? (
           <div className={cn('absolute inset-0', activeTab?.mode === 'walkthrough' ? 'block' : 'hidden')}>
             <React.Suspense fallback={null}>
@@ -1539,7 +1563,7 @@ export const ContextPanel: React.FC = () => {
             </div>
           );
         })}
-        {activeTab?.mode !== 'chat' && !isFileTabActive && activeTab?.mode !== 'browser' && activeTab?.mode !== 'diff' && activeTab?.mode !== 'terminal' && activeTab?.mode !== 'walkthrough' && !(activeTab && isPluginContextPanelMode(activeTab.mode)) ? activeNonChatContent : null}
+        {activeTab?.mode !== 'chat' && !isFileTabActive && activeTab?.mode !== 'browser' && activeTab?.mode !== 'diff' && activeTab?.mode !== 'terminal' && activeTab?.mode !== 'walkthrough' && activeTab?.mode !== 'canvas' && !(activeTab && isPluginContextPanelMode(activeTab.mode)) ? activeNonChatContent : null}
       </div>
       </div>
     </aside>

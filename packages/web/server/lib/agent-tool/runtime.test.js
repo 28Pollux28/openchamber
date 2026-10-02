@@ -214,7 +214,7 @@ describe('managed agent tool runtime', () => {
 
   it('omits a tool the user turned off', async () => {
     const { runtime, dataDir } = await createRuntime();
-    await prepareManagedEnv(runtime, { includeControl: false, includeWeb: true, includeMemory: false });
+    await prepareManagedEnv(runtime, { includeControl: false, includeWeb: true, includeMemory: false, includeCanvas: false });
     const tool = await loadTools(dataDir, 'web');
 
     expect(Object.keys(tool)).toEqual(['openchamber_web']);
@@ -222,7 +222,7 @@ describe('managed agent tool runtime', () => {
 
   it('exposes memory as its own tool carrying only its own inputs', async () => {
     const { runtime, dataDir } = await createRuntime();
-    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: true });
+    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: true, includeCanvas: false });
     const tool = await loadTools(dataDir, 'memory');
 
     expect(Object.keys(tool)).toEqual(['openchamber', 'openchamber_memory']);
@@ -235,7 +235,7 @@ describe('managed agent tool runtime', () => {
 
   it('omits memory entirely when the user turns it off', async () => {
     const { runtime, dataDir } = await createRuntime();
-    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: false });
+    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: false, includeCanvas: false });
     const tool = await loadTools(dataDir, 'nomemory');
 
     expect(Object.keys(tool)).toEqual(['openchamber']);
@@ -243,7 +243,7 @@ describe('managed agent tool runtime', () => {
 
   it('injects the plugin when memory is the only tool left on', async () => {
     const { runtime, dataDir } = await createRuntime();
-    await prepareManagedEnv(runtime, { includeControl: false, includeWeb: false, includeMemory: true });
+    await prepareManagedEnv(runtime, { includeControl: false, includeWeb: false, includeMemory: true, includeCanvas: false });
     const tool = await loadTools(dataDir, 'onlymemory');
 
     expect(Object.keys(tool)).toEqual(['openchamber_memory']);
@@ -251,7 +251,7 @@ describe('managed agent tool runtime', () => {
 
   it('exposes notify as its own tool only when switched on', async () => {
     const { runtime, dataDir } = await createRuntime();
-    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: false, includeNotify: true });
+    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: false, includeCanvas: false, includeNotify: true });
     const tool = await loadTools(dataDir, 'notify');
 
     expect(Object.keys(tool)).toEqual(['openchamber', 'openchamber_notify']);
@@ -260,19 +260,40 @@ describe('managed agent tool runtime', () => {
     expect(Object.keys(tool.openchamber.input.properties.parameters.properties)).not.toContain('showWhenFocused');
 
     const { runtime: plain, dataDir: plainDir } = await createRuntime();
-    await prepareManagedEnv(plain, { includeControl: true, includeWeb: false, includeMemory: false });
+    await prepareManagedEnv(plain, { includeControl: true, includeWeb: false, includeMemory: false, includeCanvas: false });
     expect(Object.keys(await loadTools(plainDir, 'nonotify'))).toEqual(['openchamber']);
+  });
+
+  it('exposes canvas as its own tool carrying only its own inputs', async () => {
+    const { runtime, dataDir } = await createRuntime();
+    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: false, includeCanvas: true });
+    const tool = await loadTools(dataDir, 'canvas');
+
+    expect(Object.keys(tool)).toEqual(['openchamber', 'openchamber_canvas']);
+    expect(Object.keys(tool.openchamber_canvas.input.properties.parameters.properties).sort())
+      .toEqual(['canvasId', 'html', 'title', 'version']);
+    // The canvas inputs must not leak into the control tool's schema.
+    expect(Object.keys(tool.openchamber.input.properties.parameters.properties)).not.toContain('html');
+    expect(Object.keys(tool.openchamber.input.properties.parameters.properties)).not.toContain('canvasId');
+  });
+
+  it('omits canvas entirely when the user turns it off', async () => {
+    const { runtime, dataDir } = await createRuntime();
+    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: false, includeMemory: false, includeCanvas: false });
+    const tool = await loadTools(dataDir, 'nocanvas');
+
+    expect(Object.keys(tool)).toEqual(['openchamber']);
   });
 
   it('registers every tool as a direct tool unless Code Mode is asked for', async () => {
     const { runtime, dataDir } = await createRuntime();
-    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: true, includeMemory: true, includeNotify: true });
+    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: true, includeMemory: true, includeCanvas: true, includeNotify: true });
     const direct = await loadTools(dataDir, 'direct');
     for (const tool of Object.values(direct)) {
       expect(tool.options).toEqual({ codemode: false });
     }
 
-    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: true, includeMemory: true, includeNotify: true, codeMode: true });
+    await prepareManagedEnv(runtime, { includeControl: true, includeWeb: true, includeMemory: true, includeCanvas: true, includeNotify: true, codeMode: true });
     const behindExecute = await loadTools(dataDir, 'codemode');
     for (const tool of Object.values(behindExecute)) {
       expect(tool.options).toEqual({ codemode: true });
@@ -283,7 +304,7 @@ describe('managed agent tool runtime', () => {
     const { runtime } = await createRuntime();
     let failed = false;
     try {
-      await prepareManagedEnv(runtime, { includeControl: false, includeWeb: false, includeMemory: false });
+      await prepareManagedEnv(runtime, { includeControl: false, includeWeb: false, includeMemory: false, includeCanvas: false });
     } catch {
       failed = true;
     }

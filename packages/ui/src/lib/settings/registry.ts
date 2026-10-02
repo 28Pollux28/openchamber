@@ -271,6 +271,7 @@ export const SETTINGS_REGISTRY = {
   }),
   agentControlToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentControlToolEnabled', (v) => useUIStore.getState().setAgentControlToolEnabled(v)) }),
   agentWebToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentWebToolEnabled', (v) => useUIStore.getState().setAgentWebToolEnabled(v)) }),
+  agentCanvasToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentCanvasToolEnabled', (v) => useUIStore.getState().setAgentCanvasToolEnabled(v)) }),
   // `builtin` or an installed extension id; the server falls back to `builtin` when that extension cannot serve.
   browserProvider: field({ scope: 'instance', parse: parseNonEmptyString, ui: uiStore('browserProvider', (v) => useUIStore.getState().setBrowserProvider(v)) }),
   agentNotifyToolEnabled: field({ scope: 'instance', parse: parseBoolean, ui: uiStore('agentNotifyToolEnabled', (v) => useUIStore.getState().setAgentNotifyToolEnabled(v)) }),

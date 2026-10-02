@@ -80,13 +80,14 @@ export const createManagedConfigRuntime = ({
     const settings = await Promise.resolve(readSettings()).catch(() => null);
     const includeControl = settings?.agentControlToolEnabled !== false;
     const includeWeb = settings?.agentWebToolEnabled !== false;
+    const includeCanvas = settings?.agentCanvasToolEnabled !== false;
     const includeMemory = isAgentMemoryAvailable() && settings?.agentMemoryToolEnabled === true;
     const includeNotify = settings?.agentNotifyToolEnabled === true;
     const codeMode = settings?.agentToolsCodeMode === true;
 
     const directories = [];
-    if (agentToolRuntime && (includeControl || includeWeb || includeMemory || includeNotify)) {
-      directories.push(await agentToolRuntime.materializePlugin({ includeControl, includeWeb, includeMemory, includeNotify, codeMode }));
+    if (agentToolRuntime && (includeControl || includeWeb || includeCanvas || includeMemory || includeNotify)) {
+      directories.push(await agentToolRuntime.materializePlugin({ includeControl, includeWeb, includeCanvas, includeMemory, includeNotify, codeMode }));
     }
     return directories;
   };

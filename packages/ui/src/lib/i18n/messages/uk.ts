@@ -5,6 +5,7 @@ import { linearPanelI18n } from './linear-panel.i18n';
 import { routingI18n } from './routing.i18n';
 import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
+import { canvasI18n } from './canvas.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
@@ -62,6 +63,7 @@ export const dict: Record<I18nKey, string> = {
   ...routingI18n.uk,
   ...pluginPanelI18n.uk,
   ...surfacePanelI18n.uk,
+  ...canvasI18n.uk,
   ...fileArtifactsI18n.uk,
   ...usageStatsI18n.uk,
   ...webSearchI18n.uk,
@@ -3349,6 +3351,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.workStatus.subagent.needsPermission': 'потребує дозволу',
   'chat.workStatus.subagent.askedQuestion': 'поставив питання',
   'chat.workStatus.section.contextBreakdown': 'Джерела контексту',
+  'chat.workStatus.section.canvases': 'Канваси',
+  'chat.workStatus.canvases.open': 'Відкрити канвас {title}',
   'chat.workStatus.breakdown.skills': 'Скіли',
   'chat.workStatus.breakdown.pinnedNote': 'нотатка',
   'chat.workStatus.breakdown.unpin': 'Відкріпити від контексту',

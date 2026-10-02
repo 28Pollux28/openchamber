@@ -71,6 +71,18 @@ type AgentMemoryChangedEvent = {
 };
 
 /**
+ * The agent created or updated a canvas. Carries only which project (and
+ * which canvas, when it is a specific one): listeners re-read the list and
+ * the open canvas from the server, so the event cannot carry a stale
+ * document.
+ */
+const canvasUpdatedSchema = z.object({
+  projectId: z.string().min(1),
+  canvasId: z.string().min(1).optional(),
+});
+type CanvasUpdatedEvent = { type: 'canvas-updated' } & z.infer<typeof canvasUpdatedSchema>;
+
+/**
  * The extension chosen as browser provider can no longer serve (paused,
  * removed, or approval withdrawn), so the server put the in-app browser back.
  * The setting is already written; listeners update the store and tell the user.
@@ -149,7 +161,8 @@ type OpenChamberEvent =
   | BrowserControlRequestEvent
   | FileOpenRequestEvent
   | BrowserProviderResetEvent
-  | AgentMemoryChangedEvent;
+  | AgentMemoryChangedEvent
+  | CanvasUpdatedEvent;
 type Listener = (event: OpenChamberEvent) => void;
 
 const worktreeChangedPropertiesSchema = z.object({
@@ -368,6 +381,12 @@ const dispatchFromEnvelope = (envelope: { type: string; properties: unknown }) =
     for (const listener of listeners) {
       listener(nextEvent);
     }
+    return;
+  }
+
+  if (envelope.type === 'openchamber:canvas-updated') {
+    const parsed = canvasUpdatedSchema.safeParse(envelope.properties);
+    if (parsed.success) for (const listener of listeners) listener({ type: 'canvas-updated', ...parsed.data });
     return;
   }
 

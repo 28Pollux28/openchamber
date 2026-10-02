@@ -624,6 +624,9 @@ export const createSettingsHelpers = (dependencies) => {
     if (typeof candidate.agentWebToolEnabled === 'boolean') {
       result.agentWebToolEnabled = candidate.agentWebToolEnabled;
     }
+    if (typeof candidate.agentCanvasToolEnabled === 'boolean') {
+      result.agentCanvasToolEnabled = candidate.agentCanvasToolEnabled;
+    }
     if (typeof candidate.browserProvider === 'string' && candidate.browserProvider.trim()) {
       result.browserProvider = candidate.browserProvider.trim();
     }

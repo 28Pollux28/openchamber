@@ -54,14 +54,16 @@ const setup = (allowExternalHttp = true) => {
   const appLinks: string[] = [];
   const httpLinks: string[] = [];
   const sessionLinks: SessionLinkTarget[] = [];
+  const canvasLinks: string[] = [];
   const cleanup = attachAppLinkInteractions(container, {
     allowExternalHttp,
     openAppLink: (url) => appLinks.push(url),
     openExternalHttp: (url) => httpLinks.push(url),
     openSessionLink: (target) => sessionLinks.push(target),
+    openCanvasLink: (canvasId) => canvasLinks.push(canvasId),
     ownOrigins: ['https://chamber.example'],
   });
-  return { container, appLinks, httpLinks, sessionLinks, cleanup };
+  return { container, appLinks, httpLinks, sessionLinks, canvasLinks, cleanup };
 };
 
 describe('app link interactions', () => {
@@ -105,6 +107,32 @@ describe('app link interactions', () => {
       { sessionId: 'ses_b', messageId: null },
     ]);
     expect(httpLinks).toEqual([]);
+  });
+
+  test('opens canvas links in place on every activation, without the trust dialog', () => {
+    const { container, canvasLinks, appLinks } = setup();
+    const href = 'canvas:cv-coverage';
+
+    expect(container.dispatch('click', href).defaultPrevented).toBe(true);
+    expect(container.dispatch('click', href, { metaKey: true }).defaultPrevented).toBe(true);
+    expect(container.dispatch('auxclick', href, { button: 1 }).defaultPrevented).toBe(true);
+    expect(container.dispatch('dragstart', href).defaultPrevented).toBe(true);
+    // Plain and middle clicks open; a modifier click is refused in place and
+    // a drag only blocks — no external handler exists for the scheme.
+    expect(canvasLinks).toEqual(['cv-coverage', 'cv-coverage']);
+    expect(appLinks).toEqual([]);
+  });
+
+  test('accepts both canvas link spellings and blocks junk ids without the trust dialog', () => {
+    const { container, canvasLinks, appLinks } = setup();
+
+    expect(container.dispatch('click', 'canvas://cv-coverage').defaultPrevented).toBe(true);
+    expect(canvasLinks).toEqual(['cv-coverage']);
+    // A `canvas:` href with a malformed id is still ours: blocked in place,
+    // never confirmed as an app link and never opened.
+    expect(container.dispatch('click', 'canvas:../escape').defaultPrevented).toBe(true);
+    expect(canvasLinks).toEqual(['cv-coverage']);
+    expect(appLinks).toEqual([]);
   });
 
   test('leaves a modifier click on a web session link and other origins to the browser path', () => {

@@ -156,6 +156,7 @@ export const createOpenChamberControlService = (dependencies) => {
     fileOpen = null,
     notifyUser = null,
     agentMemoryActions = null,
+    canvasActions = null,
     // Archive lives in OpenChamber's own store now — v2 has no route that sets
     // Session.time.archived — so an unwired store simply means nothing is archived.
     archiveStore = null,
@@ -530,6 +531,12 @@ export const createOpenChamberControlService = (dependencies) => {
           throw new OpenChamberControlError('Agent memory is not available on this server', 503);
         }
         return agentMemoryActions.execute(action, input, contextDirectory);
+      }
+      if (action.startsWith('canvas.')) {
+        if (!canvasActions) {
+          throw new OpenChamberControlError('Canvases are not available on this server', 503);
+        }
+        return canvasActions.execute(action, input, contextDirectory);
       }
       if (action.startsWith('browser.')) {
         if (!browserControl) {

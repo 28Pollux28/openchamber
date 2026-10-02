@@ -1,6 +1,8 @@
 import {
   OPENCHAMBER_AGENT_TOOL_ACTION_DEFINITIONS,
   OPENCHAMBER_AGENT_TOOL_ACTIONS,
+  OPENCHAMBER_CANVAS_ACTION_DEFINITIONS,
+  OPENCHAMBER_CANVAS_ACTIONS,
   OPENCHAMBER_MEMORY_ACTION_DEFINITIONS,
   OPENCHAMBER_MEMORY_ACTIONS,
   OPENCHAMBER_NOTIFY_ACTION_DEFINITIONS,
@@ -19,6 +21,7 @@ const ACTIONS = new Set([
   ...OPENCHAMBER_WEB_ACTIONS,
   ...OPENCHAMBER_MEMORY_ACTIONS,
   ...OPENCHAMBER_NOTIFY_ACTIONS,
+  ...OPENCHAMBER_CANVAS_ACTIONS,
 ]);
 const AGENT_TOOL_ACTION_TITLES = Object.fromEntries(
   [
@@ -26,6 +29,7 @@ const AGENT_TOOL_ACTION_TITLES = Object.fromEntries(
     ...OPENCHAMBER_WEB_ACTION_DEFINITIONS,
     ...OPENCHAMBER_MEMORY_ACTION_DEFINITIONS,
     ...OPENCHAMBER_NOTIFY_ACTION_DEFINITIONS,
+    ...OPENCHAMBER_CANVAS_ACTION_DEFINITIONS,
   ].map(({ action, title }) => [action, title]),
 );
 
@@ -41,6 +45,9 @@ const WEB_PARAMETER_NAMES = ['url', 'selector', 'text', 'value', 'submit', 'dire
 // names memory alone introduces are kept out of the other schemas.
 const MEMORY_ONLY_PARAMETER_NAMES = ['body', 'scope', 'memoryId', 'type'];
 const MEMORY_PARAMETER_NAMES = [...MEMORY_ONLY_PARAMETER_NAMES, 'title'];
+// Canvas owns these; `html` in particular is far too tempting a name for the
+// control tool's schema to expose without meaning anything there.
+const CANVAS_ONLY_PARAMETER_NAMES = ['canvasId', 'html', 'version'];
 
 /**
  * `title` is shared with the control tool, where it means a session title, so
@@ -108,13 +115,25 @@ const pickParameters = (names) => Object.fromEntries(
 
 const CONTROL_PARAMETER_PROPERTIES = pickParameters(
   Object.keys(ALL_PARAMETER_PROPERTIES).filter((name) => (
-    !WEB_PARAMETER_NAMES.includes(name) && !MEMORY_ONLY_PARAMETER_NAMES.includes(name)
+    !WEB_PARAMETER_NAMES.includes(name)
+    && !MEMORY_ONLY_PARAMETER_NAMES.includes(name)
+    && !CANVAS_ONLY_PARAMETER_NAMES.includes(name)
   )),
 );
 const WEB_PARAMETER_PROPERTIES = pickParameters(WEB_PARAMETER_NAMES);
 const MEMORY_PARAMETER_PROPERTIES = {
   ...pickParameters(MEMORY_PARAMETER_NAMES),
   ...MEMORY_PARAMETER_OVERRIDES,
+};
+
+// Its own names, not the shared map: `title` means a session title in the
+// control tool and a memory title in the memory tool, so canvas states what
+// its own `title` is.
+const CANVAS_PARAMETER_PROPERTIES = {
+  canvasId: { type: 'string', description: 'Canvas ID from a canvas.update result. Pass it to update that canvas (a new version); omit to create one' },
+  title: { type: 'string', description: 'Short name of the canvas, shown on the card and the canvas tab' },
+  html: { type: 'string', description: 'The complete standalone HTML document: inline styles and scripts, no external files, no network access. Data goes inline as JSON' },
+  version: { type: 'integer', minimum: 1, description: 'Version number from a canvas.list or canvas.update result; canvas.read only' },
 };
 
 // Its own names, not the shared map: `title` and `body` mean something else in
@@ -132,6 +151,8 @@ const WEB_TOOL_DESCRIPTION = "Look at and interact with a web page in OpenChambe
 const MEMORY_TOOL_DESCRIPTION = "Keep what you learn across sessions, so the user does not have to explain the same thing twice. Use one action per call. The session already lists the titles of what is stored. A title is an abbreviation, not the memory: read the entry with memory.read once before acting on it (it then stays in your context; do not re-read it on later turns), because titles leave out the conditions and exceptions that decide how the memory applies, and the ones that look self-explanatory hide them most often. Save something only when it will still be true in a later session — a stable preference, a project convention, a decision and its reason, or a hard-won pointer. Do not save one-off task state, anything you can read from the code, secrets or credentials, or anything the user asked you not to keep; when the user explicitly asks you to remember something, save it, unless it is a secret or credential. Choose the scope deliberately: global is about the user and reaches every project, so put a project's conventions in project scope. Save in the moment, without asking first, when the user corrects how you work or states a preference, confirms that a non-obvious approach worked, or when you learn a project fact that took real effort to find. One fact per entry. The user can review and remove what you save, so save when it fits and mention it briefly.";
 
 const NOTIFY_TOOL_DESCRIPTION = "Send the user a notification through OpenChamber, so they learn about something without watching the session. Use it when you finish work that took long enough for the user to step away, when you are blocked on something only the user can resolve, or when the user asked to be told about something. Do not use it for routine progress, for every finished step, or to repeat what your reply already says to a user who is present. Keep the title short and put detail in the body.";
+
+const CANVAS_TOOL_DESCRIPTION = "Build a canvas: a standalone HTML view the user opens next to the chat, instead of scrolling a long reply. Reach for it when the result is something to look at — a dashboard, a comparison, an audit, a timeline, a report with sections, stats and tables — and when the user asks for one by name. Keep short answers, code, and one-off explanations in your reply; a canvas for two sentences is noise. The panel injects OpenChamber's theme: page background, text, and font are already the app's own and cannot be changed; style only the content. Use the provided kit instead of custom styling: .oc-card blocks (with .oc-label and .oc-value inside) in an .oc-grid for stats, plain tables, .oc-muted for secondary text; --oc-* variables exist for chart colors. No gradients, glass effects, shadows, or decorative visuals; charts may use color, the chrome may not. A simple report: <h1>title</h1>, one <p> summary, an .oc-grid of stat cards, then h2 sections with tables or one inline SVG/Canvas chart. Data goes inline as JSON; the document is standalone: inline styles and scripts only, no external files, no network access. Update an existing canvas with another canvas.update and the id it returned; each update is a version the user can step back through, so regenerate in one piece rather than patching fragments into the old document.";
 
 const asNonEmptyString = (value) => {
   if (typeof value !== 'string') return null;
@@ -264,7 +285,7 @@ const createToolEntry = ({ name, description, definitions, parameters, codeMode 
     })
 `;
 
-const createPluginSource = ({ includeControl, includeWeb, includeMemory, includeNotify, codeMode }) => {
+const createPluginSource = ({ includeControl, includeWeb, includeMemory, includeNotify, includeCanvas, codeMode }) => {
   const entries = [];
   if (includeControl) {
     entries.push(createToolEntry({
@@ -299,6 +320,15 @@ const createPluginSource = ({ includeControl, includeWeb, includeMemory, include
       description: NOTIFY_TOOL_DESCRIPTION,
       definitions: OPENCHAMBER_NOTIFY_ACTION_DEFINITIONS,
       parameters: NOTIFY_PARAMETER_PROPERTIES,
+      codeMode,
+    }));
+  }
+  if (includeCanvas) {
+    entries.push(createToolEntry({
+      name: 'openchamber_canvas',
+      description: CANVAS_TOOL_DESCRIPTION,
+      definitions: OPENCHAMBER_CANVAS_ACTION_DEFINITIONS,
+      parameters: CANVAS_PARAMETER_PROPERTIES,
       codeMode,
     }));
   }
@@ -365,13 +395,13 @@ export const createAgentToolRuntime = (dependencies) => {
    * change while it runs, so the source on disk always matches the settings —
    * the running OpenCode reloads the directory it already has configured.
    */
-  const materializePlugin = async ({ includeControl = true, includeWeb = true, includeMemory = true, includeNotify = false, codeMode = false } = {}) => {
-    if (!includeControl && !includeWeb && !includeMemory && !includeNotify) {
+  const materializePlugin = async ({ includeControl = true, includeWeb = true, includeMemory = true, includeNotify = false, includeCanvas = true, codeMode = false } = {}) => {
+    if (!includeControl && !includeWeb && !includeMemory && !includeNotify && !includeCanvas) {
       throw new Error('At least one OpenChamber managed tool must be enabled to inject the plugin');
     }
     await fsPromises.mkdir(pluginDirectory, { recursive: true });
     await fsPromises.writeFile(pluginManifestPath, PLUGIN_PACKAGE_JSON, { mode: 0o600 });
-    await fsPromises.writeFile(pluginPath, createPluginSource({ includeControl, includeWeb, includeMemory, includeNotify, codeMode }), { mode: 0o600 });
+    await fsPromises.writeFile(pluginPath, createPluginSource({ includeControl, includeWeb, includeMemory, includeNotify, includeCanvas, codeMode }), { mode: 0o600 });
     return pluginDirectory;
   };
 

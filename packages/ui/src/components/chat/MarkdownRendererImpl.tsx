@@ -100,12 +100,20 @@ const useLinkInteractions = ({
 
     // VS Code keeps session links inert: its sessions live on its own OpenCode.
     const opensSessionLinks = !isVSCodeRuntime();
+    // Canvas links open the context panel; mobile surfaces have no canvas
+    // panel yet, and VS Code has neither the panel nor the OpenChamber API.
+    const opensCanvasLinks = opensSessionLinks && !isMobileSurfaceRuntime();
     return attachAppLinkInteractions(container, {
       allowExternalHttp: enabled !== false,
       openAppLink: (href) => void openAppLinkWithConfirmation(href),
       openExternalHttp: (href) => void openExternalUrl(href),
       openSessionLink: opensSessionLinks
         ? (target) => void openSessionLink(target.sessionId, target.messageId)
+        : undefined,
+      openCanvasLink: opensCanvasLinks
+        ? // Lazy import: the handler's store graph (directory, projects) must
+          // not join the markdown renderer's eager module graph.
+          (canvasId) => void import('./canvasLink').then((module) => module.openCanvasLink(canvasId))
         : undefined,
       ownOrigins: resolveOwnOrigins(),
     });

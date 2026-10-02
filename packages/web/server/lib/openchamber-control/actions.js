@@ -89,6 +89,21 @@ export const OPENCHAMBER_NOTIFY_ACTIONS = Object.freeze(
 );
 
 /**
+ * Canvas is its own tool for the same reason: composing a view for the user to
+ * look at is a distinct intent from controlling a session, and the description
+ * has to carry when a view serves the user better than the reply.
+ */
+export const OPENCHAMBER_CANVAS_ACTION_DEFINITIONS = Object.freeze([
+  { action: 'canvas.update', title: 'Create or update a canvas', description: 'Create a canvas — a standalone HTML view the user opens next to the chat — or replace one you made before; requires title and the complete standalone HTML document (inline styles and scripts, no external files). Omit canvasId to create; pass the id a previous result gave to update, which saves a new version. Use it for a dashboard, comparison, audit, timeline, or report the user will look at rather than quote; keep short answers in your reply. The panel already owns the page background, text and font — style only the content, with the provided kit: .oc-card stat blocks (.oc-label/.oc-value) in an .oc-grid, plain tables, .oc-muted secondary text, --oc-* variables for chart colors; no gradients or decorative visuals' },
+  { action: 'canvas.list', title: 'List canvases', description: 'List this project\'s canvases: id, title, version; no parameters' },
+  { action: 'canvas.read', title: 'Read a canvas back', description: 'Read a canvas you created: requires canvasId, version is optional (default: latest). Use it before regenerating one with fresh data, or when the user asks what a canvas shows' },
+]);
+
+export const OPENCHAMBER_CANVAS_ACTIONS = Object.freeze(
+  OPENCHAMBER_CANVAS_ACTION_DEFINITIONS.map(({ action }) => action),
+);
+
+/**
  * Which actions each managed tool may ask for.
  *
  * The callback needs this because models routinely drop the namespace: asked
@@ -103,6 +118,7 @@ const ACTIONS_BY_TOOL = Object.freeze({
   openchamber_web: OPENCHAMBER_WEB_ACTIONS,
   openchamber_memory: OPENCHAMBER_MEMORY_ACTIONS,
   openchamber_notify: OPENCHAMBER_NOTIFY_ACTIONS,
+  openchamber_canvas: OPENCHAMBER_CANVAS_ACTIONS,
 });
 
 const bareName = (action) => {
@@ -150,4 +166,5 @@ export const OPENCHAMBER_ALL_ACTIONS = Object.freeze([
   ...OPENCHAMBER_WEB_ACTIONS,
   ...OPENCHAMBER_MEMORY_ACTIONS,
   ...OPENCHAMBER_NOTIFY_ACTIONS,
+  ...OPENCHAMBER_CANVAS_ACTIONS,
 ]);

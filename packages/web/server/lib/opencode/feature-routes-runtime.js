@@ -15,6 +15,7 @@ import { registerSessionFoldersRoutes } from '../session-folders/routes.js';
 import { registerProjectContextRoutes } from '../project-context/routes.js';
 import { registerProjectSetupRoutes } from '../projects/routes.js';
 import { registerAgentMemoryRoutes } from '../agent-memory/routes.js';
+import { registerCanvasRoutes } from '../canvas/routes.js';
 import { registerSessionKnowledgeRoutes } from '../session-knowledge/routes.js';
 import { registerMessageSearchRoutes } from '../message-search/routes.js';
 import { registerPermissionAutoAcceptRoutes } from '../permission-auto-accept/runtime.js';
@@ -137,6 +138,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
       projectConfigRuntime,
       projectContextRuntime,
       agentMemoryRuntime,
+      canvasRuntime,
       isAgentMemoryEnabled,
       sessionKnowledgeRuntime,
       scheduledTasksRuntime,
@@ -361,6 +363,7 @@ export const createFeatureRoutesRuntime = (dependencies) => {
     registerProjectContextRoutes(app, { projectContextRuntime });
     registerProjectSetupRoutes(app, { projectConfigRuntime });
     registerAgentMemoryRoutes(app, { agentMemoryRuntime, isAgentMemoryEnabled });
+    registerCanvasRoutes(app, { canvasRuntime });
     registerSessionKnowledgeRoutes(app, { sessionKnowledgeRuntime });
     registerMessageSearchRoutes(app, { messageSearchRuntime });
 

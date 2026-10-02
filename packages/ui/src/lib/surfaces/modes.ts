@@ -11,6 +11,9 @@ const BUILT_IN_CONTEXT_PANEL_MODES = [
   'linear',
   'notes',
   'terminal',
+  // No rail surface of its own: a canvas opens from its chat card, a
+  // canvas: link, or "Open Canvas" in the palette, and lives here as a tab.
+  'canvas',
 ] as const;
 
 export type BuiltInContextPanelMode = (typeof BUILT_IN_CONTEXT_PANEL_MODES)[number];

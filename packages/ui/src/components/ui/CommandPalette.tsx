@@ -32,7 +32,10 @@ import { useFileSearchStore } from '@/stores/useFileSearchStore';
 import { useDeviceInfo } from '@/lib/device';
 import { useDebouncedValue } from '@/hooks/useDebouncedValue';
 import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
+import { useProjectContextOwner } from '@/hooks/useProjectContextOwner';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
+import { listCanvases } from '@/lib/canvasApi';
+import { createProjectIdFromPath } from '@/lib/projectId';
 import { getContextFileOpenFailureMessage, validateContextFileOpen } from '@/lib/contextFileOpenGuard';
 import { toast } from '@/components/ui';
 import { FileTypeIcon } from '@/components/icons/FileTypeIcon';
@@ -158,6 +161,9 @@ export const CommandPalette: React.FC = () => {
     [isCommandPaletteOpen],
   ));
   const currentDirectory = useDirectoryStore((s) => s.currentDirectory);
+  // The newest canvas to open comes from the project the directory belongs to,
+  // derived the same way the Canvas panel and agent memory resolve theirs.
+  const canvasOwner = useProjectContextOwner(currentDirectory);
   const activeProject = useProjectsStore((s) => s.getActiveProject());
   const projects = useProjectsStore((s) => s.projects);
   const effectiveDirectory = useEffectiveDirectory();
@@ -396,6 +402,30 @@ export const CommandPalette: React.FC = () => {
             setProjectContextTab('notes');
             openContextSurface(currentDirectory, 'notes');
           }
+        }),
+      },
+      {
+        id: 'open-canvas',
+        secondary: true,
+        title: t('commandPalette.item.openCanvas'),
+        icon: <Icon name="layout-masonry-fill" className="mr-2 h-4 w-4" />,
+        searchText: t('commandPalette.item.openCanvas'),
+        onSelect: run(async () => {
+          if (!currentDirectory || !canvasOwner) return;
+          // The store may hold a list from an earlier visit; read it fresh
+          // because the palette can be the first thing opened after the
+          // agent built a canvas.
+          const canvases = await listCanvases(createProjectIdFromPath(canvasOwner.path)).catch(() => null);
+          if (!canvases) {
+            toast.error(t('canvas.list.error', { error: '' }));
+            return;
+          }
+          if (canvases.length === 0) {
+            toast.info(t('canvas.list.empty'));
+            return;
+          }
+          const newest = canvases.reduce((latest, canvas) => (canvas.updatedAt > latest.updatedAt ? canvas : latest), canvases[0]);
+          useUIStore.getState().openCanvasTab(currentDirectory, { id: newest.id, title: newest.title });
         }),
       },
       {

@@ -11,6 +11,7 @@ import { WorkStatusUsageSection } from './WorkStatusUsageSection';
 import { WorkStatusTelemetrySection } from './WorkStatusTelemetrySection';
 import { WorkStatusSubagentsSection } from './WorkStatusSubagentsSection';
 import { WorkStatusMcpSection } from './WorkStatusMcpSection';
+import { WorkStatusCanvasesSection } from './WorkStatusCanvasesSection';
 import { WorkStatusPinnedSection } from './WorkStatusPinnedSection';
 import { WorkStatusContextSection } from './WorkStatusContextSection';
 import { WorkStatusSectionsDialog } from './WorkStatusSectionsDialog';
@@ -181,6 +182,7 @@ export const WorkStatusPanel: React.FC<Props> = ({ sessionId, directory, visible
     telemetry: <WorkStatusTelemetrySection sessionId={sessionId} directory={directory} />,
     subagents: <WorkStatusSubagentsSection sessionId={sessionId} directory={directory} />,
     mcp: <WorkStatusMcpSection directory={directory} />,
+    canvases: <WorkStatusCanvasesSection directory={directory} />,
     pinned: <WorkStatusPinnedSection sessionId={sessionId} directory={directory} />,
     contextSources: <WorkStatusContextSection sessionId={sessionId} directory={directory} />,
   } satisfies Record<Exclude<WorkStatusSectionId, 'session' | 'repository'>, React.ReactNode>;

@@ -144,6 +144,9 @@
     "agentWebToolEnabled": {
       "scope": "instance"
     },
+    "agentCanvasToolEnabled": {
+      "scope": "instance"
+    },
     "browserProvider": {
       "scope": "instance"
     },

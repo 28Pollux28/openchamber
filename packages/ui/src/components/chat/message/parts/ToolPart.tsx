@@ -46,6 +46,8 @@ import { MinDurationShineText } from './MinDurationShineText';
 import { ToolRevealOnMount } from './ToolRevealOnMount';
 import { getToolIcon } from './toolPresentation';
 import { GuestToolTable } from './GuestToolTable';
+import { CanvasToolCard } from './CanvasToolCard';
+import { parseCanvasToolResult } from '@/lib/canvasApi';
 import type { JsonValue } from '@openchamber/sdk';
 import {
     guestToolTableRows,
@@ -1314,6 +1316,7 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
         || part.tool === 'openchamber_web'
         || part.tool === 'openchamber_memory'
         || part.tool === 'openchamber_notify'
+        || part.tool === 'openchamber_canvas'
         || isPatchTool(part.tool)
         || isEditTool(part.tool)
         || isExecuteTool(part.tool);
@@ -1472,6 +1475,19 @@ const ToolExpandedContent: React.FC<ToolExpandedContentProps> = React.memo(({
                     onShowPopup={onShowPopup}
                 />,
                 { className: 'p-1' }
+            );
+        }
+
+        // The canvas tool's card: the first managed-tool call that renders a
+        // specific body instead of the neutral JSON views. A canvas is a
+        // thing to open, so the card is the reference to it, not the content.
+        if (part.tool === 'openchamber_canvas') {
+            return (
+                <CanvasToolCard
+                    directory={currentDirectory}
+                    result={parseCanvasToolResult(outputString)}
+                    running={state.status === 'running'}
+                />
             );
         }
 

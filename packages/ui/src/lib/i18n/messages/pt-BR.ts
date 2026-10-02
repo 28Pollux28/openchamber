@@ -5,6 +5,7 @@ import { linearPanelI18n } from './linear-panel.i18n';
 import { routingI18n } from './routing.i18n';
 import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
+import { canvasI18n } from './canvas.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
@@ -62,6 +63,7 @@ export const dict: Record<I18nKey, string> = {
   ...routingI18n['pt-BR'],
   ...pluginPanelI18n['pt-BR'],
   ...surfacePanelI18n['pt-BR'],
+  ...canvasI18n['pt-BR'],
   ...fileArtifactsI18n['pt-BR'],
   ...usageStatsI18n['pt-BR'],
   ...webSearchI18n['pt-BR'],
@@ -3349,6 +3351,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.workStatus.subagent.needsPermission': 'precisa de permissão',
   'chat.workStatus.subagent.askedQuestion': 'fez uma pergunta',
   'chat.workStatus.section.contextBreakdown': 'Fontes de contexto',
+  'chat.workStatus.section.canvases': 'Telas',
+  'chat.workStatus.canvases.open': 'Abrir a tela {title}',
   'chat.workStatus.breakdown.skills': 'Habilidades',
   'chat.workStatus.breakdown.pinnedNote': 'nota',
   'chat.workStatus.breakdown.unpin': 'Desafixar do contexto',

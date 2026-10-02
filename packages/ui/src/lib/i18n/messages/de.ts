@@ -4,6 +4,7 @@ import { linearPanelI18n } from './linear-panel.i18n';
 import { routingI18n } from './routing.i18n';
 import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
+import { canvasI18n } from './canvas.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
@@ -61,6 +62,7 @@ export const dict = {
   ...routingI18n.de,
   ...pluginPanelI18n.de,
   ...surfacePanelI18n.de,
+  ...canvasI18n.de,
   ...fileArtifactsI18n.de,
   ...usageStatsI18n.de,
   ...webSearchI18n.de,
@@ -3346,6 +3348,8 @@ export const dict = {
   'chat.workStatus.subagent.needsPermission': 'braucht Berechtigung',
   'chat.workStatus.subagent.askedQuestion': 'hat gefragt',
   'chat.workStatus.section.contextBreakdown': 'Kontextquellen',
+  'chat.workStatus.section.canvases': 'Canvases',
+  'chat.workStatus.canvases.open': 'Canvas {title} öffnen',
   'chat.workStatus.breakdown.skills': 'Skills',
   'chat.workStatus.breakdown.pinnedNote': 'Notiz',
   'chat.workStatus.breakdown.unpin': 'Vom Kontext lösen',

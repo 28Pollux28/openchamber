@@ -5,6 +5,7 @@ import { linearPanelI18n } from './linear-panel.i18n';
 import { routingI18n } from './routing.i18n';
 import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
+import { canvasI18n } from './canvas.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
@@ -62,6 +63,7 @@ export const dict: Record<I18nKey, string> = {
   ...routingI18n.ko,
   ...pluginPanelI18n.ko,
   ...surfacePanelI18n.ko,
+  ...canvasI18n.ko,
   ...fileArtifactsI18n.ko,
   ...usageStatsI18n.ko,
   ...webSearchI18n.ko,
@@ -3348,6 +3350,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.workStatus.subagent.needsPermission': '권한 필요',
   'chat.workStatus.subagent.askedQuestion': '질문함',
   'chat.workStatus.section.contextBreakdown': '컨텍스트 소스',
+  'chat.workStatus.section.canvases': '캔버스',
+  'chat.workStatus.canvases.open': '캔버스 {title} 열기',
   'chat.workStatus.breakdown.skills': '스킬',
   'chat.workStatus.breakdown.pinnedNote': '노트',
   'chat.workStatus.breakdown.unpin': '컨텍스트에서 고정 해제',

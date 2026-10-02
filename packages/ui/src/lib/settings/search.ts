@@ -646,6 +646,14 @@ const SETTINGS_SEARCH_ITEMS: readonly SettingsSearchItem[] = [
     isAvailable: (ctx) => !ctx.isVSCode,
   },
   {
+    id: 'sessions.agent-canvas-tool',
+    page: 'general',
+    titleKey: 'settings.openchamber.tools.field.agentCanvasTool',
+    descriptionKey: 'settings.openchamber.tools.field.agentCanvasToolInfo',
+    keywords: ['agent', 'tool', 'canvas', 'dashboard', 'report', 'view', 'openchamber'],
+    isAvailable: (ctx) => !ctx.isVSCode,
+  },
+  {
     id: 'sessions.browser-provider',
     page: 'general',
     titleKey: 'settings.openchamber.tools.browserProvider.label',

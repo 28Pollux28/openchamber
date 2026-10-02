@@ -44,6 +44,7 @@ const ensureNotificationTemplateShape = (templates) => {
 const MANAGED_PLUGIN_SETTINGS_KEYS = new Set([
   'agentControlToolEnabled',
   'agentWebToolEnabled',
+  'agentCanvasToolEnabled',
   'agentMemoryToolEnabled',
   'agentNotifyToolEnabled',
   'agentToolsCodeMode',

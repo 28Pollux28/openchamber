@@ -5,6 +5,7 @@ import { linearPanelI18n } from './linear-panel.i18n';
 import { routingI18n } from './routing.i18n';
 import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
+import { canvasI18n } from './canvas.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
@@ -62,6 +63,7 @@ export const dict: Record<I18nKey, string> = {
   ...routingI18n.ja,
   ...pluginPanelI18n.ja,
   ...surfacePanelI18n.ja,
+  ...canvasI18n.ja,
   ...fileArtifactsI18n.ja,
   ...usageStatsI18n.ja,
   ...webSearchI18n.ja,
@@ -3348,6 +3350,8 @@ export const dict: Record<I18nKey, string> = {
   'chat.workStatus.subagent.needsPermission': '許可が必要',
   'chat.workStatus.subagent.askedQuestion': '質問があります',
   'chat.workStatus.section.contextBreakdown': 'コンテキストソース',
+  'chat.workStatus.section.canvases': 'キャンバス',
+  'chat.workStatus.canvases.open': 'キャンバス {title} を開く',
   'chat.workStatus.breakdown.skills': 'スキル',
   'chat.workStatus.breakdown.pinnedNote': 'メモ',
   'chat.workStatus.breakdown.unpin': 'コンテキストからピンを外す',

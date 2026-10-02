@@ -1039,6 +1039,8 @@ interface UIStore {
   showOpenCodeUpdateNotifications: boolean;
   agentControlToolEnabled: boolean;
   agentWebToolEnabled: boolean;
+  /** The agent's canvas tool: standalone HTML views shown in the Canvas panel. */
+  agentCanvasToolEnabled: boolean;
   /** Full-text message search (server index). Opt-in: off keeps every part of it idle. */
   messageSearchEnabled: boolean;
   /** Also index the agent's reasoning. Opt-in: it can make the index much bigger. */
@@ -1109,6 +1111,12 @@ interface UIStore {
   openContextSurface: (directory: string, mode: ContextPanelMode) => void;
   openContextPanelTab: (directory: string, tab: ContextPanelTabDescriptor, options?: { reveal?: boolean }) => void;
   openContextDiff: (directory: string, filePath: string, staged?: boolean, scope?: PendingDiffScope | null) => void;
+  /**
+   * Opens (or reveals) the canvas tab for an agent-built canvas. One tab per
+   * canvas, named after it; `canvas.update` on the same id re-reveals this
+   * tab rather than stacking a second one.
+   */
+  openCanvasTab: (directory: string, canvas: { id: string; title: string }) => void;
   /** `preview` opens it as the replaceable preview tab (a files-tree click). */
   openContextFile: (directory: string, filePath: string, options?: { preview?: boolean }) => void;
   /** Turns a preview file tab into a regular one. */
@@ -1276,6 +1284,7 @@ interface UIStore {
   setShowOpenCodeUpdateNotifications: (value: boolean) => void;
   setAgentControlToolEnabled: (value: boolean) => void;
   setAgentWebToolEnabled: (value: boolean) => void;
+  setAgentCanvasToolEnabled: (value: boolean) => void;
   setMessageSearchEnabled: (value: boolean) => void;
   setMessageSearchReasoningEnabled: (value: boolean) => void;
   setBrowserProvider: (value: string) => void;
@@ -1472,6 +1481,7 @@ export const useUIStore = create<UIStore>()(
         showOpenCodeUpdateNotifications: true,
         agentControlToolEnabled: true,
         agentWebToolEnabled: true,
+        agentCanvasToolEnabled: true,
         messageSearchEnabled: false,
         messageSearchReasoningEnabled: false,
         browserProvider: 'builtin',
@@ -1663,6 +1673,23 @@ export const useUIStore = create<UIStore>()(
             targetPath: normalizedFilePath,
             stagedDiff: diffScope === 'staged',
             diffScope,
+          });
+        },
+
+        openCanvasTab: (directory, canvas) => {
+          const normalizedDirectory = normalizeDirectoryPath((directory || '').trim());
+          const canvasId = (canvas?.id || '').trim();
+          if (!normalizedDirectory || !canvasId) {
+            return;
+          }
+          // A canvas update re-reveals the tab it already has: the document
+          // and title live with the canvas, and the view re-reads them on
+          // mount and on the update event.
+          get().openContextPanelTab(normalizedDirectory, {
+            mode: 'canvas',
+            targetPath: `canvas:${canvasId}`,
+            dedupeKey: `canvas:${canvasId}`,
+            label: (canvas.title || '').trim() || null,
           });
         },
 
@@ -2882,6 +2909,9 @@ export const useUIStore = create<UIStore>()(
         setAgentWebToolEnabled: (value) => {
           set({ agentWebToolEnabled: value });
         },
+        setAgentCanvasToolEnabled: (value) => {
+          set({ agentCanvasToolEnabled: value });
+        },
         setMessageSearchEnabled: (value) => {
           set({ messageSearchEnabled: value });
         },
@@ -3379,6 +3409,7 @@ export const useUIStore = create<UIStore>()(
           showOpenCodeUpdateNotifications: state.showOpenCodeUpdateNotifications,
           agentControlToolEnabled: state.agentControlToolEnabled,
           agentWebToolEnabled: state.agentWebToolEnabled,
+          agentCanvasToolEnabled: state.agentCanvasToolEnabled,
           messageSearchEnabled: state.messageSearchEnabled,
           messageSearchReasoningEnabled: state.messageSearchReasoningEnabled,
           browserProvider: state.browserProvider,

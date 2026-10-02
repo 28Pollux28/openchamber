@@ -233,4 +233,29 @@ describe('openchamber events', () => {
     ]);
     unsubscribe();
   });
+
+  test('dispatches a canvas update and drops one without a project', async () => {
+    const { subscribeOpenchamberEvents } = await import('./openchamberEvents');
+    const events: unknown[] = [];
+    const unsubscribe = subscribeOpenchamberEvents((event) => events.push(event));
+    const source = MockEventSource.instances[0];
+
+    source.onmessage?.({
+      data: JSON.stringify({
+        type: 'openchamber:canvas-updated',
+        properties: { projectId: 'path_dGVzdA', canvasId: 'cv-1' },
+      }),
+    });
+    source.onmessage?.({
+      data: JSON.stringify({
+        type: 'openchamber:canvas-updated',
+        properties: { canvasId: 'cv-1' },
+      }),
+    });
+
+    expect(events).toEqual([
+      { type: 'canvas-updated', projectId: 'path_dGVzdA', canvasId: 'cv-1' },
+    ]);
+    unsubscribe();
+  });
 });

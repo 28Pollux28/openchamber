@@ -4,6 +4,7 @@ import { linearPanelI18n } from './linear-panel.i18n';
 import { routingI18n } from './routing.i18n';
 import { pluginPanelI18n } from './plugin-panel.i18n';
 import { surfacePanelI18n } from './surface-panel.i18n';
+import { canvasI18n } from './canvas.i18n';
 import { fileArtifactsI18n } from './file-artifacts.i18n';
 import { usageStatsI18n } from './usage-stats.i18n';
 import { webSearchI18n } from './websearch.i18n';
@@ -61,6 +62,7 @@ export const dict = {
   ...routingI18n.tr,
   ...pluginPanelI18n.tr,
   ...surfacePanelI18n.tr,
+  ...canvasI18n.tr,
   ...fileArtifactsI18n.tr,
   ...usageStatsI18n.tr,
   ...webSearchI18n.tr,
@@ -3252,6 +3254,8 @@ export const dict = {
   'chat.workStatus.subagent.needsPermission': 'izin gerekiyor',
   'chat.workStatus.subagent.askedQuestion': 'soru sordu',
   'chat.workStatus.section.contextBreakdown': 'Bağlam kaynakları',
+  'chat.workStatus.section.canvases': 'Tuval listesi',
+  'chat.workStatus.canvases.open': 'Tuval {title} aç',
   'chat.workStatus.breakdown.skills': 'Skill\'ler',
   'chat.workStatus.breakdown.pinnedNote': 'not',
   'chat.workStatus.breakdown.unpin': 'Bağlamdan sabitlemeyi kaldır',

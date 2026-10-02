@@ -83,6 +83,8 @@ export const OpenChamberToolsSettings: React.FC = () => {
   const setAgentControlToolEnabled = useUIStore((state) => state.setAgentControlToolEnabled);
   const agentWebToolEnabled = useUIStore((state) => state.agentWebToolEnabled);
   const setAgentWebToolEnabled = useUIStore((state) => state.setAgentWebToolEnabled);
+  const agentCanvasToolEnabled = useUIStore((state) => state.agentCanvasToolEnabled);
+  const setAgentCanvasToolEnabled = useUIStore((state) => state.setAgentCanvasToolEnabled);
   const browserProvider = useUIStore((state) => state.browserProvider);
   const setBrowserProvider = useUIStore((state) => state.setBrowserProvider);
   const guests = useGuestsStore((state) => state.guests);
@@ -105,6 +107,11 @@ export const OpenChamberToolsSettings: React.FC = () => {
     setAgentWebToolEnabled(enabled);
     void updateDesktopSettings({ agentWebToolEnabled: enabled });
   }, [setAgentWebToolEnabled]);
+
+  const handleAgentCanvasToolChange = React.useCallback((enabled: boolean) => {
+    setAgentCanvasToolEnabled(enabled);
+    void updateDesktopSettings({ agentCanvasToolEnabled: enabled });
+  }, [setAgentCanvasToolEnabled]);
 
   const handleAgentNotifyToolChange = React.useCallback((enabled: boolean) => {
     setAgentNotifyToolEnabled(enabled);
@@ -227,6 +234,17 @@ export const OpenChamberToolsSettings: React.FC = () => {
           summary={t('settings.openchamber.tools.field.agentNotifyToolSummary')}
           info={t('settings.openchamber.tools.field.agentNotifyToolInfo')}
           ariaLabel={t('settings.openchamber.tools.field.agentNotifyToolAria')}
+        />
+
+        <ToolRow
+          icon="layout-masonry-fill"
+          settingsItem="sessions.agent-canvas-tool"
+          checked={agentCanvasToolEnabled}
+          onChange={handleAgentCanvasToolChange}
+          title={t('settings.openchamber.tools.field.agentCanvasTool')}
+          summary={t('settings.openchamber.tools.field.agentCanvasToolSummary')}
+          info={t('settings.openchamber.tools.field.agentCanvasToolInfo')}
+          ariaLabel={t('settings.openchamber.tools.field.agentCanvasToolAria')}
         />
 
         {agentMemoryAvailable ? (

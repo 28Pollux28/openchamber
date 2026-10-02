@@ -21,6 +21,7 @@ export const WORK_STATUS_SECTION_IDS = [
   'mcp',
   'pinned',
   'contextSources',
+  'canvases',
 ] as const;
 
 export type WorkStatusSectionId = (typeof WORK_STATUS_SECTION_IDS)[number];
@@ -34,6 +35,7 @@ export const WORK_STATUS_SECTION_LABEL_KEYS = {
   mcp: 'chat.workStatus.section.mcp',
   pinned: 'chat.workStatus.section.pinned',
   contextSources: 'chat.workStatus.section.contextBreakdown',
+  canvases: 'chat.workStatus.section.canvases',
 } as const satisfies Record<WorkStatusSectionId, I18nKey>;
 
 /**
