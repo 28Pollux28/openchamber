@@ -45,7 +45,7 @@ function controller(bundle, { horizontal = false, baseline = '' } = {}) {
         scrollTop: 0, scrollLeft: 0, clientHeight: 300, clientWidth: 300,
         scrollBy({ left, top }) { this.scrollLeft += left; this.scrollTop += top; },
     };
-    const ctx = { state: { props: { horizontal }, scroll: 0, adjustingFromInitialMount: false } };
+    const ctx = { state: { props: { horizontal }, scroll: 0, adjustingFromInitialMount: false, refScroller: { current: null } } };
     const ScrollAdjust = runInNewContext(`(${source.slice(start, end).trim()})`, {
         React3: hooks,
         React3__namespace: hooks,

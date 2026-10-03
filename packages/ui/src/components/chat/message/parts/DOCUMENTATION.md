@@ -117,14 +117,13 @@ pre-collapse height on the DOM indefinitely. Failed animations also settle;
 callbacks from cancelled, superseded animations never settle a newer target.
 
 The virtualizer also adds temporary end padding while compensating prepended
-history. The Bun patch for `@legendapp/list@3.3.10` stores that padding's CSSOM
-read-back value: Chromium rounds fractional pixel strings, so comparing the
-original input with `style.paddingBottom` can skip cleanup permanently. This
-leaves a phantom tail even when every Activity region is already zero-height.
-The patch covers both web entry points in ESM and CJS; its installed-controller
-regression tests live in `scripts/legend-list-padding.test.mjs`. Retain this
-fix when updating the dependency unless upstream has equivalent ownership and
-cleanup behavior. Chat padding and scroll policies do not compensate for it.
+history. `@legendapp/list` stores that padding's CSSOM read-back value
+(built in since 3.3.11; it was a Bun patch before): Chromium rounds fractional
+pixel strings, so comparing the original input with `style.paddingBottom`
+could skip cleanup permanently and leave a phantom tail even when every
+Activity region is already zero-height. `scripts/legend-list-padding.test.mjs`
+checks the installed version for it. Chat padding and scroll policies do not
+compensate for it.
 
 The header retains its report when expanded and has no hover background. Its
 left inset matches sorted Activity. Diff deletions use the ASCII hyphen.
