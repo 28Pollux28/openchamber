@@ -1305,6 +1305,7 @@ export interface NotificationPayload {
   sessionId?: string;
   directory?: string;
   requireHidden?: boolean;
+  showWhenFocused?: boolean;
 }
 
 export interface NotificationsAPI {

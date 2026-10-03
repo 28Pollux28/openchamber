@@ -11,6 +11,8 @@ import { createRequire } from 'module';
 import crypto from 'node:crypto';
 import { fingerprintRemoteUrl } from '../source-control/url-redaction.js';
 import { readWorktreeDirectorySetting } from '../opencode/shared.js';
+import { normalizeGitOutputPath } from './output-path.js';
+import { randomUUID } from 'crypto';
 
 const fsp = fs.promises;
 const require = createRequire(import.meta.url);
@@ -375,6 +377,11 @@ const buildGitEnv = async () => {
   // Git runs the user's hooks, so they must not see what the AppImage launcher
   // added to LD_LIBRARY_PATH and friends (#4177).
   const env = stripAppImageLauncherEnv({ ...process.env });
+  if (process.platform === 'win32') {
+    // Node already passes an argument array. MSYS globbing corrupts Git refs
+    // such as HEAD^{commit} and branch@{upstream} before Git sees them.
+    env.MSYS = [env.MSYS, 'noglob'].filter(Boolean).join(' ');
+  }
   if (!env.SSH_AUTH_SOCK || !env.SSH_AUTH_SOCK.trim()) {
     const resolved = await resolveSshAuthSock();
     if (resolved) {
@@ -395,6 +402,16 @@ const buildGitEnv = async () => {
 // credential-helper escapes any more.
 const createGit = async (directory, { stallTimeoutMs = 0 } = {}) => {
   const env = await buildGitEnv();
+  // simple-git scans explicit env values, including inherited ones. Remove its
+  // blocked overrides from this copy so ordinary shell settings cannot reject
+  // every command; keep argument checks and the parent environment intact.
+  for (const key of Object.keys(env)) {
+    const name = key.trim().toUpperCase();
+    if (/^(EDITOR|PAGER|PREFIX|SSH_ASKPASS|GIT_(ASKPASS|EDITOR|EXEC_PATH|EXTERNAL_DIFF|PAGER|PROXY_COMMAND|SEQUENCE_EDITOR|SSH|SSH_COMMAND|TEMPLATE_DIR))$/.test(name)
+      || name === 'GIT_CONFIG' || name.startsWith('GIT_CONFIG_')) {
+      delete env[key];
+    }
+  }
   const spawnOptions = { windowsHide: true };
   // simple-git's block timeout kills the process once it has produced no
   // output for this long. Opt-in per caller: a background read must never hold
@@ -521,7 +538,7 @@ const isInsideOrSameDirectory = (root, target) => {
 
 const resolveGitRepositoryRoot = async (directoryPath, git) => {
   const topLevel = await git.raw(['rev-parse', '--show-toplevel']);
-  const normalizedTopLevel = topLevel.trim();
+  const normalizedTopLevel = normalizeGitOutputPath(topLevel.trim());
   return path.isAbsolute(normalizedTopLevel)
     ? path.resolve(normalizedTopLevel)
     : path.resolve(directoryPath, normalizedTopLevel);
@@ -550,7 +567,7 @@ export async function getRepositoryRoot(directory) {
 
 const resolveGitInternalPath = async (repoRoot, git, gitPath) => {
   const resolved = await git.raw(['rev-parse', '--git-path', gitPath]);
-  return path.resolve(repoRoot, resolved.trim());
+  return path.resolve(repoRoot, normalizeGitOutputPath(resolved.trim()));
 };
 
 const GITLINK_MODE = '160000';
@@ -793,7 +810,7 @@ const parseWorktreePorcelain = (raw) => {
       if (current?.worktree) {
         entries.push(current);
       }
-      current = { worktree: line.substring('worktree '.length).trim() };
+      current = { worktree: normalizeGitOutputPath(line.substring('worktree '.length).trim()) };
       continue;
     }
 
@@ -1151,7 +1168,7 @@ const getWorktreeIndexLockPath = async (directory) => {
   if (!result.success) {
     return null;
   }
-  const value = String(result.stdout || '').trim();
+  const value = normalizeGitOutputPath(String(result.stdout || '').trim());
   return value ? (path.isAbsolute(value) ? value : path.resolve(directory, value)) : null;
 };
 
@@ -1294,7 +1311,7 @@ export const populateWorktreeWithLockRecovery = async (directory) => {
 const inspectPostCheckoutHook = async (directory) => {
   const result = await runGitCommand(directory, ['rev-parse', '--git-path', 'hooks']);
   if (!result.success) return null;
-  const hooksPath = normalizeDirectoryPath(String(result.stdout || '').trim());
+  const hooksPath = normalizeDirectoryPath(normalizeGitOutputPath(String(result.stdout || '').trim()));
   if (!hooksPath) return null;
   const hookPath = path.join(path.isAbsolute(hooksPath) ? hooksPath : path.resolve(directory, hooksPath), 'post-checkout');
   let handle;
@@ -1304,7 +1321,7 @@ const inspectPostCheckoutHook = async (directory) => {
     if (!stat.isFile() || (process.platform !== 'win32' && (stat.mode & 0o111) === 0)) return null;
     const content = await handle.readFile();
     const gitDirResult = await runGitCommand(directory, ['rev-parse', '--absolute-git-dir']);
-    const gitDir = String(gitDirResult.stdout || '').trim();
+    const gitDir = normalizeGitOutputPath(String(gitDirResult.stdout || '').trim());
     if (!gitDirResult.success || !gitDir) return null;
     return {
       kind: 'post-checkout-hook',
@@ -1366,12 +1383,12 @@ export async function resolvePrimaryWorktreeRoot(directory) {
     .split('\n')
     .map((line) => line.trim())
     .filter(Boolean);
-  const absoluteGitDir = normalizePath(lines[0] || '');
+  const absoluteGitDir = normalizePath(normalizeGitOutputPath(lines[0] || ''));
   const rootFromAbsoluteGitDir = derivePrimaryWorktreeRootFromGitDir(absoluteGitDir);
   if (rootFromAbsoluteGitDir) {
     return { root: rootFromAbsoluteGitDir };
   }
-  const rawCommonDir = normalizePath(lines[1] || '');
+  const rawCommonDir = normalizePath(normalizeGitOutputPath(lines[1] || ''));
   if (rawCommonDir) {
     const commonDir = path.isAbsolute(rawCommonDir)
       ? rawCommonDir
@@ -1427,7 +1444,7 @@ export async function resolveWorktreeTopLevel(directory) {
   if (!result.success) {
     return { root: directory };
   }
-  const root = normalizePath(String(result.stdout || '').trim());
+  const root = normalizePath(normalizeGitOutputPath(String(result.stdout || '').trim()));
   return { root: root || directory };
 }
 
@@ -1824,14 +1841,14 @@ const resolveWorktreeProjectContext = async (directory, options = {}) => {
     ['rev-parse', '--show-toplevel'],
     'Failed to resolve git top-level directory'
   );
-  const sandbox = path.resolve(directoryPath, topResult.stdout.trim());
+  const sandbox = path.resolve(directoryPath, normalizeGitOutputPath(topResult.stdout.trim()));
 
   const commonResult = await runGitCommandOrThrow(
     sandbox,
     ['rev-parse', '--git-common-dir'],
     'Failed to resolve git common directory'
   );
-  const commonDir = path.resolve(sandbox, commonResult.stdout.trim());
+  const commonDir = path.resolve(sandbox, normalizeGitOutputPath(commonResult.stdout.trim()));
   const primaryWorktree = path.dirname(commonDir);
   const projectID = await ensureOpenCodeProjectId(primaryWorktree);
   // OpenCode's `worktree.directory` is read from the canonical checkout so a
@@ -5444,6 +5461,167 @@ const removeBusyDirectory = async (targetDirectory) => {
   }
 };
 
+const isSameFilesystemEntry = (current, original) => current?.dev === original.dev && current?.ino === original.ino;
+
+// Git removal requires a gitdir file even when Git accepts a directory symlink
+// for ordinary worktree operations. Only a registered linked worktree calls here.
+const replaceWorktreeGitDirectoryLink = async (primaryWorktree, worktreePath) => {
+  const gitEntry = path.join(worktreePath, '.git');
+  const linkStat = await fsp.lstat(gitEntry).catch((error) => {
+    if (error?.code === 'ENOENT') return null;
+    throw error;
+  });
+  if (!linkStat?.isSymbolicLink() || !(await fsp.stat(gitEntry)).isDirectory()) return null;
+
+  const linkTarget = await fsp.readlink(gitEntry, { encoding: 'buffer' });
+  const metadataDirectory = await fsp.realpath(gitEntry);
+  const commonResult = await runGitCommandOrThrow(primaryWorktree, ['rev-parse', '--git-common-dir']);
+  const commonDirectory = await canonicalPath(path.resolve(primaryWorktree, commonResult.stdout.trim()));
+  const metadataRoot = await canonicalPath(path.join(commonDirectory, 'worktrees'));
+  if (await canonicalPath(path.dirname(metadataDirectory)) !== metadataRoot) {
+    throw new Error('Worktree .git symlink target is outside this repository\'s worktree metadata');
+  }
+
+  const commonDir = (await fsp.readFile(path.join(metadataDirectory, 'commondir'), 'utf8')).trim();
+  if (!commonDir || await canonicalPath(path.resolve(metadataDirectory, commonDir)) !== commonDirectory) {
+    throw new Error('Worktree .git symlink metadata has a different common directory');
+  }
+
+  const backlink = (await fsp.readFile(path.join(metadataDirectory, 'gitdir'), 'utf8')).trim();
+  const backlinkPath = path.resolve(metadataDirectory, backlink);
+  // Compare the .git entry, not its symlink target: another worktree can point
+  // at the same metadata directory without owning it.
+  if (!backlink || path.basename(backlinkPath) !== '.git'
+    || await canonicalPath(path.dirname(backlinkPath)) !== await canonicalPath(worktreePath)) {
+    throw new Error('Worktree .git symlink metadata backlink does not name this worktree');
+  }
+
+  const worktreeStat = await fsp.stat(worktreePath);
+  const metadataStat = await fsp.stat(metadataDirectory);
+  const sameDirectoriesExist = async () => {
+    const [currentWorktree, currentMetadata] = await Promise.all([
+      fsp.stat(worktreePath).catch(() => null),
+      fsp.stat(metadataDirectory).catch(() => null),
+    ]);
+    return currentWorktree?.isDirectory() && isSameFilesystemEntry(currentWorktree, worktreeStat)
+      && currentMetadata?.isDirectory() && isSameFilesystemEntry(currentMetadata, metadataStat);
+  };
+  const restoreClaimedEntry = async (claimedEntry) => {
+    const claimedStat = await fsp.lstat(claimedEntry);
+    if (claimedStat.isSymbolicLink()) {
+      // Hardlink creation can follow symlinks; preserve their target bytes.
+      const claimedTarget = await fsp.readlink(claimedEntry, { encoding: 'buffer' });
+      await fsp.symlink(claimedTarget, gitEntry);
+      const currentLink = await fsp.lstat(claimedEntry).catch(() => null);
+      return currentLink?.isSymbolicLink() && isSameFilesystemEntry(currentLink, claimedStat)
+        && (await fsp.readlink(claimedEntry, { encoding: 'buffer' })).equals(claimedTarget);
+    }
+    if (claimedStat.isFile()) {
+      await fsp.link(claimedEntry, gitEntry);
+      return true;
+    }
+    return false;
+  };
+  const contents = `gitdir: ${process.platform === 'win32' ? toGitPath(metadataDirectory) : metadataDirectory}\n`;
+  const temporaryEntry = `${gitEntry}.openchamber-${randomUUID()}`;
+  const claimedLinkEntry = `${gitEntry}.openchamber-${randomUUID()}`;
+  let temporaryIdentity;
+  let claimedLink = false;
+  let releaseLinkClaim = false;
+  try {
+    await fsp.writeFile(temporaryEntry, contents, { flag: 'wx', mode: 0o600 });
+    temporaryIdentity = await getFileIdentity(temporaryEntry);
+    const currentLink = await fsp.lstat(gitEntry);
+    if (!currentLink.isSymbolicLink() || !isSameFilesystemEntry(currentLink, linkStat)
+      || !(await fsp.readlink(gitEntry, { encoding: 'buffer' })).equals(linkTarget)) {
+      throw new Error('Worktree .git entry changed before removal');
+    }
+    await fsp.rename(gitEntry, claimedLinkEntry);
+    claimedLink = true;
+    const capturedLink = await fsp.lstat(claimedLinkEntry);
+    if (!capturedLink.isSymbolicLink() || !isSameFilesystemEntry(capturedLink, linkStat)
+      || !(await fsp.readlink(claimedLinkEntry, { encoding: 'buffer' })).equals(linkTarget)
+      || !await sameDirectoriesExist()) {
+      throw new Error('Worktree .git entry changed before removal');
+    }
+    // The complete gitdir file appears only if no newer .git entry exists.
+    await fsp.link(temporaryEntry, gitEntry);
+    releaseLinkClaim = true;
+  } catch (error) {
+    if (claimedLink && await sameDirectoriesExist()) {
+      try {
+        releaseLinkClaim = await restoreClaimedEntry(claimedLinkEntry);
+      } catch (restoreError) {
+        if (restoreError?.code !== 'EEXIST') {
+          console.warn('Failed to restore claimed worktree .git entry before removal:', restoreError);
+        }
+      }
+    }
+    throw error;
+  } finally {
+    if (claimedLink) {
+      if (releaseLinkClaim) {
+        await fsp.unlink(claimedLinkEntry).catch((error) => {
+          if (error?.code !== 'ENOENT') {
+            console.warn(`Failed to clean up worktree .git recovery entry: ${claimedLinkEntry}`, error);
+          }
+        });
+      } else {
+        console.warn(`Check worktree .git recovery entry: ${claimedLinkEntry}`);
+      }
+    }
+    await fsp.rm(temporaryEntry, { force: true }).catch((error) => {
+      console.warn('Failed to clean up temporary worktree gitdir file:', error);
+    });
+  }
+
+  return async () => {
+    const isTemporaryFile = async (entry) => {
+      const stat = await fsp.lstat(entry).catch(() => null);
+      return stat?.isFile() && await getFileIdentity(entry) === temporaryIdentity
+        && await fsp.readFile(entry, 'utf8') === contents;
+    };
+    if (!await sameDirectoriesExist() || !await isTemporaryFile(gitEntry)) return;
+
+    const claimedEntry = `${gitEntry}.openchamber-${randomUUID()}`;
+    try {
+      await fsp.rename(gitEntry, claimedEntry);
+    } catch (error) {
+      if (error?.code === 'ENOENT') return;
+      throw error;
+    }
+
+    let releaseClaim = false;
+    try {
+      if (!await sameDirectoriesExist()) return;
+      if (!await isTemporaryFile(claimedEntry)) {
+        releaseClaim = await restoreClaimedEntry(claimedEntry);
+        return;
+      }
+      try {
+        await fsp.symlink(linkTarget, gitEntry, 'dir');
+        releaseClaim = true;
+      } catch (error) {
+        if (error?.code === 'EEXIST') {
+          releaseClaim = await isTemporaryFile(claimedEntry);
+          return;
+        }
+        if (await sameDirectoriesExist()) {
+          await fsp.link(claimedEntry, gitEntry);
+          releaseClaim = true;
+        }
+        throw error;
+      }
+    } finally {
+      if (releaseClaim) {
+        await fsp.unlink(claimedEntry);
+      } else {
+        console.warn(`Check worktree .git recovery entry: ${claimedEntry}`);
+      }
+    }
+  };
+};
+
 // Resolves true when git removed the worktree, false when git dropped the
 // registration but left the folder behind (the caller removes it as an orphan).
 const removeGitWorktreeWhenFree = async (primaryWorktree, worktreePath, targetCanonical) => {
@@ -5535,10 +5713,20 @@ export async function removeWorktree(directory, input = {}, { bootstrapStore } =
   // is the only point where its OpenCode instance can be released by path.
   await disposeWorktreeInstanceBestEffort(input?.disposeInstance, matchedEntry.worktree);
 
-  const removedByGit = await removeGitWorktreeWhenFree(context.primaryWorktree, matchedEntry.worktree, targetCanonical);
-  if (!removedByGit) {
-    // Git deleted its registration but not the still-locked folder.
-    await removeManagedOrphan({ registered: true });
+  const restoreGitDirectoryLink = await replaceWorktreeGitDirectoryLink(context.primaryWorktree, matchedEntry.worktree);
+  try {
+    const removedByGit = await removeGitWorktreeWhenFree(context.primaryWorktree, matchedEntry.worktree, targetCanonical);
+    if (!removedByGit) {
+      // Git deleted its registration but not the still-locked folder.
+      await removeManagedOrphan({ registered: true });
+    }
+  } catch (error) {
+    if (restoreGitDirectoryLink) {
+      await restoreGitDirectoryLink().catch((restoreError) => {
+        console.warn('Failed to restore worktree .git symlink after removal failed:', restoreError);
+      });
+    }
+    throw error;
   }
   await publishWorktreeTopologyChange(context.primaryWorktree);
 

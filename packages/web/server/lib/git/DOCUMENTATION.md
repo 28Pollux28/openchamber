@@ -89,6 +89,56 @@ An identity is one repository's complete answer: signature, provider account (`a
 - `removeWorktree` deletes an unregistered leftover only under the data-dir root, so worktrees created before the setting was set stay removable while a shared configured folder such as `".."` can never make a sibling project eligible for deletion; a config read failure there falls back to the data-dir root instead of blocking the removal. Creation still fails loudly on an unreadable config so a worktree is never created in an unchosen folder.
 - Both the web and VS Code readers merge a secondary user config file (`opencode.jsonc` beside `opencode.json`) as an override layer, as OpenCode does, so `worktree.directory` set there applies in every runtime.
 
+### Worktree removal with .git directory symlinks
+
+Server removal supports the `.git` directory symlinks used by git-annex. Only a
+registered, non-primary worktree qualifies. The resolved target must be a direct
+child of this repository's common Git directory's `worktrees` directory. Its
+`commondir` must resolve to that common directory, and its `gitdir` backlink must
+name this worktree's `.git` entry, not another entry resolving to the same target.
+
+After instance disposal and immediately before native removal, the server saves
+the exact link target and writes a complete temporary `gitdir: <metadata>` file.
+It atomically moves `.git` to a unique recovery name, then verifies the claimed
+entry's identity and target bytes and rechecks the original directories. Only
+then does it install the gitdir file by exclusive hardlink creation. A newer
+`.git` entry cannot be overwritten. This is not one atomic swap: `.git` is briefly
+absent between claiming and installation. The target directory is not written
+into. Git performs removal through the existing busy-retry path. Validation
+failures never trigger recursive deletion, and branch deletion runs only after
+successful removal.
+
+If preparation fails after claiming `.git`, cleanup restores the captured entry
+with an exclusive operation while the original directories survive. An unexpected
+concurrent file or symlink is preserved rather than replaced with the older link.
+Unsupported entry kinds, a newer `.git` entry and failed restoration leave the
+claim at its recovery name, which the server logs. Preparation handles this
+cleanup itself because it has not yet returned the native-removal rollback hook.
+
+If removal fails, rollback checks the worktree and metadata directory identities
+and the temporary file's identity and contents. It then moves `.git` to a unique
+recovery name and inspects the claimed entry again. If `.git` disappeared before
+that move, rollback leaves it missing. The original symlink is created directly
+with an exclusive operation, so a newer `.git` entry cannot be overwritten.
+A concurrently changed regular file is put back by exclusive hardlink creation.
+A claimed symlink is recreated from its saved target. POSIX preserves the exact
+target bytes; Node normalizes Windows separators and absolute-path prefixes.
+The symlink's inode, ownership and timestamps are not preserved. The claim is
+removed only after rechecking its identity and target bytes. Node detects the
+Windows link type from the target, defaulting to a file link if that probe fails.
+Unsupported entry kinds and unsafe or failed restorations keep the claim under
+its recovery name, and the server logs that path. If original-symlink creation
+fails, rollback puts back the gitdir file when safe and keeps the native removal
+error as the reported failure. Ordinary successful rollback leaves no recovery
+entry behind.
+
+Preparation and rollback recheck directory identities after claiming `.git` and
+never create worktree or metadata directories. These safeguards cover changes through
+the `.git` path; they are not a filesystem transaction. Writes through file
+descriptors opened before the claim, changes to private recovery entries after
+the final ownership check, and metadata deletion after the final directory check
+are outside this guarantee.
+
 ### Worktree topology change tracking
 There is no filesystem watcher and no polling. The server notices worktree changes in two ways, and both scale with what users are doing rather than with the number of registered projects:
 - Its own `createWorktree` and `removeWorktree` publish a change right after `git worktree add` / `git worktree remove` succeed (creation notifies before background population and setup scripts run).
@@ -430,7 +480,11 @@ The following functions are internal helpers used by exported functions:
 ### Cross-Platform Considerations
 - Use `normalizeDirectoryPath` for all directory inputs to handle `~` and path separators.
 - Use `canonicalPath` for path comparisons to handle case-insensitive filesystems (Windows).
-- Windows Git commands use MSYS/MinGW paths; avoid direct Windows paths in git commands.
+- MSYS2 Git can return `/c/repos/project` on Windows. Pass Git filesystem-path output through `normalizeGitOutputPath` before resolving it or using it with Node filesystem and process APIs. It converts drive mounts to `C:/repos/project` on Windows and preserves other paths, including POSIX paths on Linux and macOS.
+- Apply this conversion to repository roots, Git metadata paths, and worktree list paths. Repository-relative filenames, diff content, and user-supplied paths keep their existing handling. Custom MSYS mount points are outside this conversion.
+- On Windows, `buildGitEnv` appends `noglob` to the child process's `MSYS` options so MSYS2 passes revision arguments such as `HEAD^{commit}` and `branch@{upstream}` literally. Other options and the parent environment remain unchanged. Both simple-git and direct Git commands use this environment.
+- Before passing an explicit environment to simple-git, `createGit` removes the inherited editor, pager, askpass, SSH-command, executable/template/proxy/diff and Git-config overrides rejected by simple-git's environment scan. Matching is case-insensitive. This prevents common shell and editor environments from rejecting every repository operation without disabling argument security checks. The parent and direct Git command environments remain unchanged.
+- Simple-git operations therefore do not use `GIT_SSH_COMMAND`, `GIT_SSH`, or askpass environment overrides. Configure SSH through the repository identity or standard SSH configuration and agent instead; `SSH_AUTH_SOCK` remains available. Git config environment overrides are also omitted, while normal config files retain their existing behavior.
 
 ### Error Handling
 - All exported functions should throw errors with descriptive messages.
