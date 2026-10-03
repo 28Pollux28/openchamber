@@ -6,6 +6,7 @@
 import type { FilePart, FormRequest, JsonValue, Message, Metadata, ModelRef, Part, Session, SyntheticMessage, TextPart, UserMessage } from "@/lib/opencode/model"
 import { compact, partIds } from "@/lib/opencode/model"
 import { readSubagentRun } from "@/lib/opencode/subagent-run"
+import { readDispatchedSessionResult } from "@/lib/opencode/dispatched-session"
 import { Binary } from "./binary"
 import { useSessionUIStore } from "./session-ui-store"
 import { useInputStore } from "./input-store"
@@ -23,6 +24,7 @@ import { draftFromContextPayload, readContextPart, type ContextCarrierPart } fro
 import { useInlineCommentDraftStore, type InlineCommentDraftTarget } from "@/stores/useInlineCommentDraftStore"
 import { materializeSessionSnapshots } from "./materialization"
 import { sessionEvents } from "@/lib/sessionEvents"
+import { fileTreeChanges } from "@/lib/fileTreeChanges"
 import {
   getOriginalSessionID,
   getSessionMetadata,
@@ -552,6 +554,11 @@ export async function clearStagedRevert(sessionId: string): Promise<void> {
   }
   await opencodeClient.clearRevert(sessionId, directory)
   mirrorSessionIntoLiveStores(await opencodeClient.getSession(sessionId, directory), directory)
+  // Clearing restores the files the staged revert had rolled back.
+  if (directory) {
+    sessionEvents.requestGitRefresh({ directory })
+    fileTreeChanges.unknownChange(directory)
+  }
 }
 
 function getGlobalSessionSnapshot(sessionId: string): Session | null {
@@ -2544,6 +2551,7 @@ export async function revertToMessage(sessionId: string, messageId: string): Pro
     }
     if (directory) {
       sessionEvents.requestGitRefresh({ directory })
+      fileTreeChanges.unknownChange(directory)
     }
   } catch (err) {
     // Rollback: restore removed messages + revert marker
@@ -2628,13 +2636,16 @@ function inheritForkMetadata(sourceSessionId: string, forkedSession: Session, di
 const TURN_BOUNDARY_ROLES = new Set<Message["role"]>(["user", "compaction", "shell"])
 
 const isTurnBoundary = (message: Message): boolean =>
-  TURN_BOUNDARY_ROLES.has(message.role) || readSubagentRun(message) !== undefined
+  TURN_BOUNDARY_ROLES.has(message.role)
+  || readSubagentRun(message) !== undefined
+  || readDispatchedSessionResult(message) !== undefined
 
 /**
  * Fork keeping an assistant turn: the new session holds everything through
  * `messageId`, so the agent there still sees the answer it just gave. The cut
  * is the first record after it that starts something new (a prompt, a
- * compaction, a shell run, a background subagent run); with none, the whole
+ * compaction, a shell run, a background subagent run, a dispatched session's
+ * result); with none, the whole
  * transcript is copied. The composer stays empty since there is no prompt to
  * rewrite.
  */

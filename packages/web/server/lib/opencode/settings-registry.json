@@ -492,6 +492,9 @@
     "collapsedModelProviders": {
       "scope": "profile"
     },
+    "customProviderIcons": {
+      "scope": "profile"
+    },
     "recentModels": {
       "scope": "profile"
     },

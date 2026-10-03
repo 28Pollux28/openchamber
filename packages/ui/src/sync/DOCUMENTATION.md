@@ -159,6 +159,20 @@ are re-read when selected or on the next `server.connected`. The pending
 permissions and forms OpenCode rejected on the way out and the turns it
 interrupted arrive as their own events.
 
+Every managed chat has its own directory, so each chat opened would keep its
+own set of MCP servers for that hour. `chat-location-release.ts` releases a
+chat directory's location (`DELETE /api/debug/location`, the route the
+worktree removal paths already use) 30 s after the selected directory moves
+away from it. It checks again at that moment and keeps the location while the
+chat is selected again, shown in a side panel, has a busy or retrying session,
+a pending permission or form, or a running background command; a busy chat is
+re-checked every 30 s until it settles or is selected. A directory without a
+store is left to OpenCode's own sweep. Project and worktree directories are never released this
+way. Another client still showing the chat gets `location.shutdown` and
+bootstraps it again, which restarts that chat's MCP servers. A failed release
+is ignored: OpenCode's own sweep still applies. VS Code has no managed chats,
+so nothing there qualifies.
+
 ## Committing a revert
 
 A staged revert is a marker (`session.revert.messageID`); the transcript
@@ -215,7 +229,14 @@ agent choices. Both a named effort and explicit `Default` survive reload, with
 the same 150-session persistence bound as the existing selections. Old payloads
 without effort entries remain valid; malformed effort entries grant no authority.
 Session deletion clears these entries. A saved effort choice precedes older
-message history so a reload cannot undo an unsent picker change.
+message history so a reload cannot undo an unsent picker change, unless the
+session record has since switched to another model and effort. The store also
+persists, per session, the session-record agent and model the composer last
+followed; a different record value is a newer switch and replaces the pick
+(Auto excepted), while an unchanged one keeps an unsent pick
+(`packages/ui/src/stores/DOCUMENTATION.md`).
+Agent and model switch events stamp the session's `time.updated`, as OpenCode's
+own record does.
 
 ### Layout-mounted session-list lifecycle
 
@@ -420,7 +441,7 @@ Session display order is independent from streaming-frequency `time.updated` pub
 
 A background subagent keeps its parent's turn open for display. The parent goes idle while the child session works and runs again when OpenCode hands the result back; `global-session-status.ts` therefore holds the parent's timer through that pause (an idle parent with a running descendant does not settle, the last descendant to finish settles it, and snapshots count ancestors of running sessions as active), and `useSessionTurnActive` is what every session row, tab and switcher reads as "running". `statusById` and `activeSessionIds` stay the session's own status: sends, cleanup and retention must not treat an idle parent as busy. The parent lookup comes from the global sessions store through `setSessionParentResolver`, wired by `sync-context.tsx`.
 
-A background shell command keeps its session's turn open the same way. OpenCode settles a `shell` call with `background: true` at once, the session goes idle, and it runs again when the command's result is handed back. `background-shells.ts` indexes the commands OpenCode runs on behalf of a session (the shell tool tags each with `metadata.sessionID`): `shell.started`/`shell.ended` events keep it current for every directory, applied before status events in the same flush; a directory's `/api/shell` list is authoritative for that directory and is read by directory bootstrap and, on `server.connected`, for directories without a store that the index holds commands for. The list is keyed by the directory OpenCode answered for (symlinks resolved), which its shell events carry, and events that arrive while it is read win over it. A failed read changes nothing; a runtime switch resets the index and discards reads started before it. `useSessionTurnActive` reads this index too, the turn timer does not settle while a command runs, and the last command of an idle session ending settles it. The session's own status and the queue gate are unchanged: a dev server left running in the background must not hold queued messages.
+A background shell command keeps its session's turn open the same way. OpenCode settles a `shell` call with `background: true` at once, the session goes idle, and it runs again when the command's result is handed back. `background-shells.ts` indexes the commands OpenCode runs on behalf of a session (the shell tool tags each with `metadata.sessionID`): `shell.started`/`shell.ended` events keep it current for every directory, applied before status events in the same flush; a directory's `/api/shell` list is authoritative for that directory and is read by directory bootstrap and, on `server.connected`, for directories without a store that the index holds commands for. The list is keyed by the directory OpenCode answered for (symlinks resolved), which its shell events carry, and events that arrive while it is read win over it. A failed read changes nothing; a runtime switch resets the index and discards reads started before it. OpenCode runs every shell call as such a command, including one the turn waits for, so each entry carries `background`: set when the call that started it settles while it runs (`message.tool.transition` success with `metadata.status: "running"` and the `shellID`, remembered when it arrives before the start), false until then, and true for a command first seen in a list, which has no event to tell. The turn state below counts every command; the composer's background commands strip shows only background ones. `useSessionTurnActive` reads this index too, the turn timer does not settle while a command runs, and the last command of an idle session ending settles it. The session's own status and the queue gate are unchanged: a dev server left running in the background must not hold queued messages.
 
 Starts are persisted so a reload resumes the same count, but a persisted start is a lookup table and never a claim of activity. **Nothing in the protocol marks where a turn begins.** OpenCode calls `SessionStatus.set` with `busy` at every step of the agent loop and publishes an event each time, so a busy event means "still running", not "just started"; after a refresh one of those repeats normally beats the first status snapshot, so treating it as a turn boundary reset the counter on nearly every reload. Turn *ends* are marked — `session.idle` and `session.error` fire once, live, and retire the persisted record — while a snapshot that omits a session is not evidence of anything, since it may simply not see it yet.
 
