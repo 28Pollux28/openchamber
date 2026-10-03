@@ -48,6 +48,44 @@ const releaseError = (lockPath, error) => lockError(lockPath, false, error);
 
 // Like an index lock: only exclusive creation grants ownership. Age and PID
 // decide only when an existing file may be removed to try again.
+
+/**
+ * Removes the abandoned lock that was inspected, and only that one.
+ *
+ * Two waiters can judge the same dead owner's lock at once. Removing it by
+ * path would let the slower one delete the lock the faster one has just
+ * created, and both would enter. The rename is atomic, so only one waiter
+ * takes a given file; the taker then checks it took the inspected file and,
+ * when it took a newer lock instead, links it back under its name (`link`
+ * refuses to replace anything) before letting go of its own copy.
+ */
+const reclaimTarget = (lockPath) => `${lockPath}.reclaim-${randomUUID()}`;
+const sameFile = (left, right) => left.dev === right.dev && left.ino === right.ino;
+
+async function reclaimAbandoned(fsImpl, lockPath, inspected) {
+  const target = reclaimTarget(lockPath);
+  try { await fsImpl.rename(lockPath, target); } catch { return; }
+  try {
+    if (!sameFile(await fsImpl.lstat(target, { bigint: true }), inspected)) {
+      try { await fsImpl.link(target, lockPath); } catch {}
+    }
+  } finally {
+    try { await fsImpl.unlink(target); } catch {}
+  }
+}
+
+function reclaimAbandonedSync(fsImpl, lockPath, inspected) {
+  const target = reclaimTarget(lockPath);
+  try { fsImpl.renameSync(lockPath, target); } catch { return; }
+  try {
+    if (!sameFile(fsImpl.lstatSync(target, { bigint: true }), inspected)) {
+      try { fsImpl.linkSync(target, lockPath); } catch {}
+    }
+  } finally {
+    try { fsImpl.unlinkSync(target); } catch {}
+  }
+}
+
 export async function withSourceControlFileLock(lockPath, operation, { fsImpl = fs, waitMs = 2_000 } = {}) {
   validateWait(waitMs);
   const deadline = performance.now() + waitMs;
@@ -61,14 +99,14 @@ export async function withSourceControlFileLock(lockPath, operation, { fsImpl = 
       } catch (error) {
         if (error?.code !== 'EEXIST') throw lockError(lockPath, false, error);
         if (!reclaimed) {
-          let abandoned = false;
+          let inspected = null;
           try {
-            const [content, stats] = await Promise.all([fsImpl.readFile(lockPath, 'utf8'), fsImpl.lstat(lockPath)]);
-            abandoned = stats.isFile() && isAbandoned(content, stats.mtimeMs);
-          } catch { abandoned = false; }
-          if (abandoned) {
+            const [content, stats] = await Promise.all([fsImpl.readFile(lockPath, 'utf8'), fsImpl.lstat(lockPath, { bigint: true })]);
+            if (stats.isFile() && isAbandoned(content, Number(stats.mtimeMs))) inspected = stats;
+          } catch { inspected = null; }
+          if (inspected) {
             reclaimed = true;
-            try { await fsImpl.unlink(lockPath); } catch {}
+            await reclaimAbandoned(fsImpl, lockPath, inspected);
             continue;
           }
         }
@@ -123,14 +161,14 @@ export function withSourceControlFileLockSync(lockPath, operation, { fsImpl = fs
       } catch (error) {
         if (error?.code !== 'EEXIST') throw lockError(lockPath, false, error);
         if (!reclaimed) {
-          let abandoned = false;
+          let inspected = null;
           try {
-            const stats = fsImpl.lstatSync(lockPath);
-            abandoned = stats.isFile() && isAbandoned(fsImpl.readFileSync(lockPath, 'utf8'), stats.mtimeMs);
-          } catch { abandoned = false; }
-          if (abandoned) {
+            const stats = fsImpl.lstatSync(lockPath, { bigint: true });
+            if (stats.isFile() && isAbandoned(fsImpl.readFileSync(lockPath, 'utf8'), Number(stats.mtimeMs))) inspected = stats;
+          } catch { inspected = null; }
+          if (inspected) {
             reclaimed = true;
-            try { fsImpl.unlinkSync(lockPath); } catch {}
+            reclaimAbandonedSync(fsImpl, lockPath, inspected);
             continue;
           }
         }

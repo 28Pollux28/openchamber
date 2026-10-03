@@ -96,9 +96,12 @@ remote's transport grant from the identity's transport (`account`, `ssh`,
 runtime that holds no bindings (VS Code), receive the signature alone. The `global` profile is the System
 identity — it removes the provider association and clears the repository-local
 author so the person's own Git configuration answers, and OpenChamber never
-writes that configuration. `needsSystemAcknowledgement` gates the System
-transport behind `SystemIdentityConfirmDialog`, asked before anything is
-written; managed and anonymous choices add no routine confirmation popup.
+writes the machine's own (global or system) configuration. No choice asks for
+confirmation, System included: a repository with no binding already uses this
+machine's Git exactly as before. Account and SSH-key identities do write into
+the repository's own `.git/config` (the credential helper and
+`core.sshCommand`, see the server's git module doc); choosing System or
+unbinding removes those entries.
 
 `identityApplicability` keeps identities specific to an instance and a scheme:
 an account identity whose instance host differs from the remote host, an
@@ -163,18 +166,17 @@ menu re-reads the accounts when it opens, the Git Settings row says why the
 identity cannot be used, and nothing binds a repository to a credential that
 is gone.
 
-Every identity made from now on is complete or it is not offered:
-`isCompleteIdentity` requires an account, a transport that is the account's
-credential (OAuth or token), a managed SSH key, or anonymous HTTPS, and a
-signature. The editor creates nothing else and the server refuses anything else
-from a client.
+An identity is complete when it has a signature and a way to push:
+`isCompleteIdentity` accepts `account` with an account, a managed SSH key,
+anonymous HTTPS, or `system` (this machine's Git). The account is optional
+except for the `account` transport, so identities for hosts OpenChamber has no
+provider for (Bitbucket, Gitea, a private server) work. The editor creates
+nothing else and the server refuses anything else from a client.
 
-Records written before identities carried an account are the exception, and
-`isSignatureOnlyIdentity` names them: in the release that made them, choosing
-one wrote the repository's author and nothing else, so that is exactly what it
-keeps doing — the account and transport a repository already has are left
-untouched, and nothing is confirmed, because nothing is claimed. Git Settings
-says "Signature only, from an earlier release" beside them.
+Records written before identities carried a transport have none; they read as
+`system` identities: choosing one writes the repository's author and leaves
+Git to this machine's configuration. Git Settings marks an identity it cannot
+use (`incomplete`, `accountGone`) and says why.
 
 Checkout repair first runs `checkout-hydration` against a user-selected ready parent fetch remote. The immutable public plan exposes bounded repository-relative submodule/LFS paths and redacted endpoints, never raw URLs, absolute paths, or credential references. Failed hydration stays visible through `GitOperationStatus`. The user selects one discovered endpoint, explicitly chooses System, anonymous HTTPS, managed HTTPS account, or managed SSH key, and saves or removes only that grant through the narrow CAS API. Retry plans a new inspection; it never reclones the retained repository. Missing `git-lfs` has a specific install-and-retry warning. Runtime and directory changes clear all repair drafts, and late mutation results reconcile through the captured binding owner scope.
 

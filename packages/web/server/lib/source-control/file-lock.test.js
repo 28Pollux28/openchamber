@@ -65,6 +65,33 @@ it('reclaims the lock of a process that died holding it', async () => {
   await expect(fs.stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+// Two waiters judged the same dead lock; the faster one already replaced it
+// with its own by the time the slower one acts on what it read.
+it('never reclaims a lock created after the abandoned one it inspected', async () => {
+  const lockPath = await setup();
+  await fs.writeFile(lockPath, '{"pid":999999999,"at":1}', { mode: 0o600 });
+  await fs.utimes(lockPath, new Date(0), new Date(0));
+  const fresh = JSON.stringify({ pid: process.pid, host: os.hostname(), at: Date.now() });
+  let swapped = false;
+  const fsImpl = {
+    ...fs,
+    readFile: async (target, options) => {
+      const content = await fs.readFile(target, options);
+      if (target === lockPath && !swapped) {
+        swapped = true;
+        await fs.rename(lockPath, `${lockPath}.dead`);
+        await fs.writeFile(lockPath, fresh, { mode: 0o600 });
+      }
+      return content;
+    },
+  };
+
+  await expect(withSourceControlFileLock(lockPath, () => { throw new Error('must not run'); }, { fsImpl, waitMs: 25 }))
+    .rejects.toMatchObject({ code: 'SOURCE_CONTROL_LOCK_BUSY' });
+  expect(await fs.readFile(lockPath, 'utf8')).toBe(fresh);
+  expect((await fs.readdir(path.dirname(lockPath))).filter((name) => name.includes('.reclaim-'))).toEqual([]);
+});
+
 it('never releases a replacement identity', async () => {
   const lockPath = await setup();
   await expect(withSourceControlFileLock(lockPath, async () => {
