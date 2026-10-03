@@ -540,6 +540,26 @@ describe('Git network operation planner', () => {
     expect(plans.internalPlan).not.toHaveProperty('sourceSha');
   });
 
+  it('accepts binding revision 0 of a never-configured repository and leaves the stale check to authority', async () => {
+    for (const operation of ['fetch', 'pull', 'push']) {
+      const validateGitTransportContext = vi.fn(async () => authority);
+      await makePlanner({ validateGitTransportContext })
+        .planNetworkOperation(existingInput(operation, { bindingRevision: 0 }));
+      expect(validateGitTransportContext).toHaveBeenCalledWith(expect.objectContaining({ bindingRevision: 0 }));
+    }
+    const deletion = existingInput('push', { operation: 'delete-remote-branch', bindingRevision: 0 });
+    delete deletion.sourceRef;
+    await expect(makePlanner().planNetworkOperation(deletion)).resolves.toBeDefined();
+    const syncValidate = vi.fn(async () => authority);
+    await makePlanner({ validateGitTransportContext: syncValidate })
+      .planNetworkOperation(syncInput({ bindingRevision: 0 }));
+    expect(syncValidate).toHaveBeenCalledWith(expect.objectContaining({ bindingRevision: 0 }));
+    await expect(makePlanner().planNetworkOperation(existingInput('fetch', { bindingRevision: -1 })))
+      .rejects.toThrow('bindingRevision is required');
+    await expect(makePlanner().planNetworkOperation(syncInput({ bindingRevision: 1.5 })))
+      .rejects.toThrow('bindingRevision is required');
+  });
+
   it('rejects stale client endpoint and transport metadata', async () => {
     await expect(makePlanner().planNetworkOperation(existingInput('fetch', {
       remote: {

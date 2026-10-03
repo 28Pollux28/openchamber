@@ -13,25 +13,29 @@ const openMR = {
   head_pipeline: { id: 9, status: 'running' }, detailed_merge_status: 'mergeable', draft: false,
 };
 
+const list = (items, next = null) => vi.fn(async (...args) => (args.at(-1)?.showExpanded
+  ? { data: items, paginationInfo: { next } }
+  : items));
+
 function setup(overrides = {}, options = {}) {
   const client = {
     Projects: { show: vi.fn(async (id) => Number(id) === 2 ? targetProject : sourceProject) },
     MergeRequests: {
-      all: vi.fn(async () => [openMR]),
+      all: list([openMR]),
       show: vi.fn(async () => openMR),
       create: vi.fn(async () => openMR),
       edit: vi.fn(async (_id, _iid, options) => ({ ...openMR, draft: options.draft ?? false, title: options.title ?? openMR.title })),
       merge: vi.fn(async () => ({ ...openMR, state: 'merged' })),
-      allDiffs: vi.fn(async () => [{ old_path: 'a.ts', new_path: 'a.ts', diff: '@@' }]),
+      allDiffs: list([{ old_path: 'a.ts', new_path: 'a.ts', diff: '@@' }]),
     },
-    MergeRequestNotes: { all: vi.fn(async () => [{ id: 4, body: 'Looks good', author: { id: 3, username: 'sam' } }]) },
+    MergeRequestNotes: { all: list([{ id: 4, body: 'Looks good', author: { id: 3, username: 'sam' } }]) },
     Jobs: { all: vi.fn(async () => [{ id: 8, name: 'test', status: 'running' }]) },
     Issues: {
-      all: vi.fn(async () => [{ iid: 3, title: 'Bug', web_url: `${origin}/me/repo/-/issues/3`, state: 'opened' }]),
+      all: list([{ iid: 3, title: 'Bug', web_url: `${origin}/me/repo/-/issues/3`, state: 'opened' }]),
       show: vi.fn(async () => ({ iid: 3, title: 'Bug', web_url: `${origin}/me/repo/-/issues/3`, state: 'opened' })),
     },
-    IssueNotes: { all: vi.fn(async () => [{ id: 6, body: 'Comment' }]) },
-    Branches: { all: vi.fn(async () => [{ name: 'main' }, { name: 'feature' }]) },
+    IssueNotes: { all: list([{ id: 6, body: 'Comment' }]) },
+    Branches: { all: list([{ name: 'main' }, { name: 'feature' }]) },
     ...overrides,
   };
   const resolveProjects = vi.fn(async () => ({
@@ -55,7 +59,7 @@ describe('GitLab resource service', () => {
   });
 
   it('returns authoritative null only after completed lookups', async () => {
-    const { service } = setup({ MergeRequests: { ...setup().client.MergeRequests, all: vi.fn(async () => []) } });
+    const { service } = setup({ MergeRequests: { ...setup().client.MergeRequests, all: list([]) } });
     await expect(service.changeRequestStatus('/repo', 'feature')).resolves.toMatchObject({ changeRequest: null, project: { id: '1' } });
   });
 
@@ -74,7 +78,7 @@ describe('GitLab resource service', () => {
     ['picker list item', 'list', [{ ...openMR, web_url: null }]],
   ])('rejects malformed canonical merge-request %s', async (_label, operation, payload) => {
     const { service } = setup({
-      MergeRequests: { ...setup().client.MergeRequests, all: vi.fn(async () => payload) },
+      MergeRequests: { ...setup().client.MergeRequests, all: list(payload) },
     }, { canonicalReads: true });
     const result = operation === 'status'
       ? service.changeRequestStatus('/repo', 'feature', 'origin')
@@ -118,8 +122,8 @@ describe('GitLab resource service', () => {
     ['diff item', [], [{ diff: '@@' }]],
   ])('rejects malformed canonical merge-request context %s', async (_label, notes, diffs) => {
     const { service } = setup({
-      MergeRequestNotes: { all: vi.fn(async () => notes) },
-      MergeRequests: { ...setup().client.MergeRequests, allDiffs: vi.fn(async () => diffs) },
+      MergeRequestNotes: { all: list(notes) },
+      MergeRequests: { ...setup().client.MergeRequests, allDiffs: list(diffs) },
     }, { canonicalReads: true });
     await expect(service.changeRequestContext('/repo', 5, { includeDiff: true }))
       .rejects.toThrow(/invalid merge request (note|diff)/);
@@ -215,7 +219,7 @@ describe('GitLab resource service', () => {
 
   it('rejects malformed canonical issue and branch payloads', async () => {
     const malformedIssue = setup({
-      Issues: { ...setup().client.Issues, all: vi.fn(async () => [{ iid: 3, state: 'opened' }]) },
+      Issues: { ...setup().client.Issues, all: list([{ iid: 3, state: 'opened' }]) },
     }, { canonicalReads: true });
     await expect(malformedIssue.service.listIssues('/repo', { remote: 'origin' })).rejects.toThrow('invalid issue');
 
@@ -231,7 +235,7 @@ describe('GitLab resource service', () => {
     await expect(malformedIssueDetail.service.issueComments('/repo', 3, undefined, 'origin')).rejects.toThrow('invalid issue');
 
     const malformedBranches = setup({
-      Branches: { all: vi.fn(async () => [{ name: 'main' }, {}]) },
+      Branches: { all: list([{ name: 'main' }, {}]) },
     }, { canonicalReads: true });
     await expect(malformedBranches.service.projectBranches('/repo', { owner: 'me', name: 'repo' }, 'origin')).rejects.toThrow('invalid branch');
   });
@@ -244,7 +248,7 @@ describe('GitLab resource service', () => {
   ])('rejects malformed nested canonical issue %s data', async (_label, nested) => {
     const issue = { iid: 3, title: 'Bug', web_url: `${origin}/me/repo/-/issues/3`, state: 'opened', ...nested };
     const malformed = setup({
-      Issues: { ...setup().client.Issues, all: vi.fn(async () => [issue]), show: vi.fn(async () => issue) },
+      Issues: { ...setup().client.Issues, all: list([issue]), show: vi.fn(async () => issue) },
     }, { canonicalReads: true });
 
     await expect(malformed.service.listIssues('/repo', { remote: 'origin' })).rejects.toThrow('invalid issue');
@@ -257,7 +261,7 @@ describe('GitLab resource service', () => {
     [{ id: 6, body: 'Comment', author: { id: 7 } }],
     [{ id: 6, body: 'Comment', author: { id: -1, username: 'alex' } }],
   ])('rejects malformed canonical issue-note payload %s', async (notes) => {
-    const malformedNotes = setup({ IssueNotes: { all: vi.fn(async () => notes) } }, { canonicalReads: true });
+    const malformedNotes = setup({ IssueNotes: { all: list(notes) } }, { canonicalReads: true });
     await expect(malformedNotes.service.issueComments('/repo', 3, undefined, 'origin')).rejects.toThrow('invalid issue note');
   });
 
@@ -434,7 +438,7 @@ describe('GitLab resource service', () => {
 
   it('reconciles create only from one exact provider match', async () => {
     const exact = { ...openMR, target_branch: 'main' };
-    const mergeRequests = { ...setup().client.MergeRequests, all: vi.fn(async () => [exact]) };
+    const mergeRequests = { ...setup().client.MergeRequests, all: list([exact]) };
     const { service } = setup({ MergeRequests: mergeRequests }, { canonicalReads: true });
     const providerTarget = { sourceProjectId: '1', targetProjectId: '2' };
     const target = { project: { id: '2', owner: 'team', name: 'repo' }, head: 'feature', base: 'main' };
@@ -480,5 +484,57 @@ describe('GitLab resource service', () => {
     await expect(service.issueComments('/repo', 3)).resolves.toMatchObject([{ body: 'Comment' }]);
     await expect(service.projectUpstream('/repo')).resolves.toMatchObject({ isFork: true, upstream: { id: '2' } });
     await expect(service.projectBranches('/repo', { owner: 'team', name: 'repo' })).resolves.toEqual(['main', 'feature']);
+  });
+
+  it('pages by GitLab next-page headers without skipping records', async () => {
+    const page = Array.from({ length: 20 }, (_, index) => ({ ...openMR, iid: index + 1 }));
+    const { service, client } = setup({ MergeRequests: { ...setup().client.MergeRequests, all: list(page, 2) } });
+    const result = await service.listChangeRequests('/repo', { page: 1 });
+    expect(result).toMatchObject({ hasMore: true });
+    expect(result.items).toHaveLength(20);
+    expect(client.MergeRequests.all).toHaveBeenCalledWith(expect.objectContaining({ perPage: 20, page: 1, showExpanded: true }));
+    const issues = setup({ Issues: { ...setup().client.Issues, all: list([], 3) } });
+    await expect(issues.service.listIssues('/repo', { page: 2 })).resolves.toMatchObject({ hasMore: true });
+    expect(issues.client.Issues.all).toHaveBeenCalledWith(expect.objectContaining({ perPage: 20, page: 2 }));
+  });
+
+  it('fails instead of returning a capped collection as complete', async () => {
+    const { service } = setup({
+      MergeRequests: { ...setup().client.MergeRequests, allDiffs: list([{ old_path: 'a.ts', new_path: 'a.ts', diff: '@@' }], 21) },
+    });
+    await expect(service.changeRequestContext('/repo', 5, { includeDiff: true })).rejects.toThrow('more changed files');
+    const branches = setup({ Branches: { all: list([{ name: 'main' }], 21) } });
+    await expect(branches.service.projectBranches('/repo', { owner: 'team', name: 'repo' })).rejects.toThrow('more branches');
+  });
+
+  it('reads fork pipeline jobs from the pipeline project', async () => {
+    const forkMR = { ...openMR, head_pipeline: { id: 9, status: 'running', project_id: 1 } };
+    const { service, client } = setup({ MergeRequests: { ...setup().client.MergeRequests, show: vi.fn(async () => forkMR) } });
+    await service.changeRequestContext('/repo', 5, { includeCIDetails: true });
+    expect(client.Jobs.all).toHaveBeenCalledWith(1, expect.objectContaining({ pipelineId: 9 }));
+  });
+
+  it('names the fork source project as the merge request head project', async () => {
+    const { service } = setup({
+      Projects: { show: vi.fn(async (id) => (Number(id) === 2 || id === 'team/repo' ? targetProject : sourceProject)) },
+    });
+    const result = await service.changeRequestContext('/repo', 5, { project: { owner: 'team', name: 'repo' } });
+    expect(result.changeRequest).toMatchObject({ project: { id: '2' }, headProject: { id: '1', owner: 'me', name: 'repo' } });
+  });
+
+  it('merges only the reviewed head and reports a moved head as a target mismatch', async () => {
+    const merge = vi.fn(async () => ({ ...openMR, state: 'merged', sha: 'abc' }));
+    const payload = {
+      providerTarget: { projectId: '2', number: 5 },
+      targetProject: { id: '2', owner: 'team', name: 'repo' },
+      expectedTarget: { project: { id: '2', owner: 'team', name: 'repo' }, number: 5, headSha: 'abc' },
+      method: 'merge',
+    };
+    const { service } = setup({ MergeRequests: { ...setup().client.MergeRequests, merge } });
+    await service.mergeChangeRequest(payload);
+    expect(merge).toHaveBeenCalledWith('2', 5, expect.objectContaining({ sha: 'abc' }));
+    const moved = Object.assign(new Error('SHA does not match HEAD of source branch'), { cause: { response: { status: 409 } } });
+    const rejected = setup({ MergeRequests: { ...setup().client.MergeRequests, merge: vi.fn(async () => { throw moved; }) } });
+    await expect(rejected.service.mergeChangeRequest(payload)).rejects.toMatchObject({ code: 'SOURCE_CONTROL_MUTATION_TARGET_MISMATCH', status: 409 });
   });
 });

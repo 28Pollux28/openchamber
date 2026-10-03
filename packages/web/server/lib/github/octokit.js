@@ -131,7 +131,9 @@ export async function getOctokitForAccountId(accountId, options = {}) {
       octokit,
     };
   }
-  if (!accountId.startsWith('github.com#cli:') || isGhCliDisabled()) return null;
+  // An exact CLI account id is not consent: the gh token is used only while
+  // the user has switched to the gh account in Settings.
+  if (!accountId.startsWith('github.com#cli:') || !isGhCliActive() || isGhCliDisabled()) return null;
   const token = getGhCliToken();
   if (!token) return null;
   const octokit = createOctokit(token, accountId);

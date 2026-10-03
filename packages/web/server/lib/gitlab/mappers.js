@@ -146,7 +146,8 @@ export function mapGitLabCI(pipeline, jobs, identity) {
   let failure = 0;
   let pending = 0;
   for (const job of list) {
-    if (SUCCESS.has(job.status)) success += 1;
+    // A job allowed to fail does not fail its pipeline, so it does not count against the summary.
+    if (SUCCESS.has(job.status) || (job.allow_failure === true && FAILURE.has(job.status))) success += 1;
     else if (FAILURE.has(job.status)) failure += 1;
     else if (PENDING.has(job.status)) pending += 1;
   }

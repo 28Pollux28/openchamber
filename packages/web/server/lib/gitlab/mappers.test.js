@@ -46,4 +46,12 @@ describe('GitLab provider mappers', () => {
       { id: 1, name: 'test', status: 'success' }, { id: 2, name: 'lint', status: 'running' },
     ], identity)).toMatchObject({ summary: { state: 'pending', total: 2, success: 1, failure: 0, pending: 1 }, runs: [{ name: 'test' }, { name: 'lint' }] });
   });
+
+  it('does not fail a passed pipeline over a job allowed to fail', () => {
+    const ci = mapGitLabCI({ id: 9, status: 'success' }, [
+      { id: 1, name: 'test', status: 'success' }, { id: 2, name: 'optional', status: 'failed', allow_failure: true },
+    ], { provider: 'gitlab', instance: 'https://gitlab.com' });
+    expect(ci.summary).toMatchObject({ state: 'success', failure: 0, success: 2 });
+    expect(ci.runs[1].conclusion).toBe('failure');
+  });
 });

@@ -9,6 +9,11 @@ const asDraftTitle = (title) => (DRAFT_TITLE_PREFIX.test(title) ? title : `Draft
 const asReadyTitle = (title) => title.replace(DRAFT_TITLE_PREFIX, '');
 
 const PER_PAGE = 20;
+// Collections a view shows in full (notes, diffs, branches) are read to the
+// end within this bound; past it the read fails instead of passing a capped
+// list off as complete.
+const COLLECTION_PER_PAGE = 100;
+const COLLECTION_MAX_PAGES = 20;
 
 function requireMapped(value, message) {
   if (!value) throw new Error(message);
@@ -17,6 +22,23 @@ function requireMapped(value, message) {
 
 function asArray(value) {
   return Array.isArray(value) ? value : [];
+}
+
+function requestStatus(error) {
+  return error?.cause?.response?.status ?? error?.response?.status ?? error?.status;
+}
+
+// Reads one page with GitBeaker's expanded response so `hasMore` comes from
+// GitLab's own next-page header rather than from over-fetching.
+function readPage(payload) {
+  if (!isPlainObject(payload) || !Array.isArray(payload.data)) return { items: null, hasMore: false };
+  return { items: payload.data, hasMore: Boolean(payload.paginationInfo?.next) };
+}
+
+async function readCollection(load, message) {
+  const page = readPage(await load({ maxPages: COLLECTION_MAX_PAGES, perPage: COLLECTION_PER_PAGE, showExpanded: true }));
+  if (page.hasMore) throw new Error(message);
+  return page.items;
 }
 
 function projectPath(owner, name) {
@@ -88,6 +110,7 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
     state: options.state,
     sourceBranch: options.sourceBranch,
     search: options.search,
+    showExpanded: options.showExpanded,
     orderBy: 'updated_at',
     sort: 'desc',
   });
@@ -158,7 +181,10 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
       || !isString(pipeline.status) || !pipeline.status.trim()) return null;
     try {
       const jobs = details
-        ? await client.Jobs.all(targetProjectId, { pipelineId: pipeline.id, maxPages: 1, perPage: 100 })
+        // A fork merge request runs its pipeline in the source project.
+        ? await client.Jobs.all(Number.isInteger(pipeline.project_id) ? pipeline.project_id : targetProjectId, {
+          pipelineId: pipeline.id, maxPages: 1, perPage: 100,
+        })
         : [];
       if (details && (!Array.isArray(jobs) || jobs.some((job) => !isPlainObject(job)
         || !Number.isInteger(job.id) || !isString(job.name) || !job.name.trim()
@@ -437,7 +463,23 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
         throw error;
       }
       const { target, projectId, number } = await resolveMutationActionTarget(payload);
-      const raw = await client.MergeRequests.merge(projectId, number, { squash: payload.method === 'squash' });
+      const expectedSha = payload.expectedTarget?.headSha;
+      const mergeOptions = { squash: payload.method === 'squash' };
+      // GitLab refuses the merge with 409 when the source branch moved past
+      // the reviewed head, so a late push is never merged unreviewed.
+      if (expectedSha) mergeOptions.sha = expectedSha;
+      let raw;
+      try {
+        raw = await client.MergeRequests.merge(projectId, number, mergeOptions);
+      } catch (error) {
+        if (expectedSha && requestStatus(error) === 409) {
+          throw Object.assign(new Error('GitLab merge request headSha changed'), {
+            code: 'SOURCE_CONTROL_MUTATION_TARGET_MISMATCH',
+            status: 409,
+          });
+        }
+        throw error;
+      }
       const request = payload.providerTarget
         ? requireMutationResponse(raw, target.project, payload.providerTarget, payload.expectedTarget)
         : requireMapped(mapGitLabMergeRequest(raw, identity, target.project), 'GitLab returned an invalid merge request');
@@ -459,13 +501,14 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
       const resolved = await resolveDirectoryProjects(directory, options.remote);
       const targets = await expandTargets([resolved.projects[0]], { requireComplete: canonicalReads });
       const target = targets.at(-1);
-      const rawItems = readMergeRequestList(await listProjectMRs(target.project.id, {
-        state: 'opened', page: options.page ?? 1, perPage: PER_PAGE + 1, search: options.query,
-      }), target.project);
-      const items = rawItems.slice(0, PER_PAGE).map((raw) => canonicalReads
+      const page = readPage(await listProjectMRs(target.project.id, {
+        state: 'opened', page: options.page ?? 1, perPage: PER_PAGE, search: options.query, showExpanded: true,
+      }));
+      const rawItems = readMergeRequestList(page.items, target.project);
+      const items = rawItems.map((raw) => canonicalReads
         ? requireMergeRequest(raw, target.project)
         : requireMapped(mapGitLabMergeRequest(raw, identity, target.project), 'GitLab returned an invalid merge request'));
-      return { items, page: options.page ?? 1, hasMore: rawItems.length > PER_PAGE };
+      return { items, page: options.page ?? 1, hasMore: page.hasMore };
     },
 
     async changeRequestContext(directory, number, options = {}) {
@@ -473,10 +516,16 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
         constrainToPrimary: options.constrainToPrimary,
         remote: options.remote,
       });
-      const [notes, diffs, ci] = await Promise.all([
-        client.MergeRequestNotes.all(target.project.id, number, { maxPages: 2, perPage: 100 }),
-        options.includeDiff ? client.MergeRequests.allDiffs(target.project.id, number, { maxPages: 2, perPage: 100 }) : Promise.resolve([]),
+      const [notes, diffs, ci, headProject] = await Promise.all([
+        readCollection((page) => client.MergeRequestNotes.all(target.project.id, number, page), 'GitLab merge request has more notes than OpenChamber reads'),
+        options.includeDiff
+          ? readCollection((page) => client.MergeRequests.allDiffs(target.project.id, number, page), 'GitLab merge request has more changed files than OpenChamber reads')
+          : Promise.resolve([]),
         loadCI(target.project.id, raw, options.includeCIDetails),
+        // A fork merge request's branch lives in the source project.
+        Number.isInteger(raw?.source_project_id) && raw.source_project_id !== target.raw?.id
+          ? showProject(raw.source_project_id).then((item) => item.project)
+          : Promise.resolve(null),
       ]);
       if (canonicalReads && !Array.isArray(notes)) throw new Error('GitLab returned an invalid merge request note list');
       if (canonicalReads && !Array.isArray(diffs)) throw new Error('GitLab returned an invalid merge request diff list');
@@ -503,12 +552,14 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
         if (canonicalReads) throw new Error('GitLab returned an invalid merge request diff');
         return [];
       });
+      const changeRequest = canonicalReads
+        ? requireMergeRequest(raw, target.project)
+        : requireMapped(mapGitLabMergeRequest(raw, identity, target.project), 'GitLab returned an invalid merge request');
+      if (headProject) changeRequest.headProject = headProject;
       return {
         identity,
         project: target.project,
-        changeRequest: canonicalReads
-          ? requireMergeRequest(raw, target.project)
-          : requireMapped(mapGitLabMergeRequest(raw, identity, target.project), 'GitLab returned an invalid merge request'),
+        changeRequest,
         issueComments: mappedNotes.filter((note) => !note.path),
         reviewComments: mappedNotes.filter((note) => note.path),
         files,
@@ -520,19 +571,19 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
     async listIssues(directory, options = {}) {
       const resolved = await resolveDirectoryProjects(directory, options.remote);
       const target = resolved.projects[0];
-      const payload = await client.Issues.all({
+      const page = readPage(await client.Issues.all({
         projectId: target.project.id, scope: 'all', state: 'opened', page: options.page ?? 1,
-        perPage: PER_PAGE + 1, maxPages: 1, search: options.query,
-      });
-      if (canonicalReads && !Array.isArray(payload)) throw new Error('GitLab returned an invalid issue list');
-      const rawItems = asArray(payload);
-      const items = rawItems.slice(0, PER_PAGE).flatMap((raw) => {
+        perPage: PER_PAGE, maxPages: 1, search: options.query, showExpanded: true,
+      }));
+      if (canonicalReads && !Array.isArray(page.items)) throw new Error('GitLab returned an invalid issue list');
+      const rawItems = asArray(page.items);
+      const items = rawItems.flatMap((raw) => {
         if (raw?.issue_type === 'incident' || raw?.issue_type === 'test_case') return [];
         if (canonicalReads) return [requireIssue(raw, target.project)];
         const issue = mapGitLabIssue(raw, identity, target.project);
         return issue ? [issue] : [];
       });
-      return { items, page: options.page ?? 1, hasMore: rawItems.length > PER_PAGE };
+      return { items, page: options.page ?? 1, hasMore: page.hasMore };
     },
 
     async getIssue(directory, number, selector, remote) {
@@ -549,7 +600,7 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
       const mappedIssue = canonicalReads
         ? requireIssue(issue, target.project)
         : requireMapped(mapGitLabIssue(issue, identity, target.project), 'GitLab returned an invalid issue');
-      const notes = await client.IssueNotes.all(target.project.id, number, { maxPages: 2, perPage: 100 });
+      const notes = await readCollection((page) => client.IssueNotes.all(target.project.id, number, page), 'GitLab issue has more comments than OpenChamber reads');
       if (canonicalReads && !Array.isArray(notes)) throw new Error('GitLab returned an invalid issue note list');
       return asArray(notes).flatMap((note) => {
         if (note?.system === true) return [];
@@ -569,7 +620,7 @@ export function createGitLabResourceService({ origin, client, resolveProjects = 
 
     async projectBranches(directory, selector, remote) {
       const target = await constrainedProject(directory, selector, remote, { requireComplete: true });
-      const payload = await client.Branches.all(target.project.id, { maxPages: 2, perPage: 100 });
+      const payload = await readCollection((page) => client.Branches.all(target.project.id, page), 'GitLab project has more branches than OpenChamber reads');
       if (canonicalReads && !Array.isArray(payload)) throw new Error('GitLab returned an invalid branch list');
       return asArray(payload).flatMap((branch) => {
         if (isString(branch?.name) && branch.name.trim()) return [branch.name];

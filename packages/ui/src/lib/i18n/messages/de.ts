@@ -42,6 +42,7 @@ export const dict = {
   'sessions.aiRename.noSmallModel': 'Benötigt ein Small Model. Melde dich bei einem Modellanbieter an oder wähle eines unter Einstellungen → Sitzungen.',
   'commitComparison.mode': 'Commit',
   'pullRequestComparison.select': 'Pull Request auswählen',
+  'pullRequestComparison.partial': 'Einige Pull Requests konnten nicht geladen werden',
   'commitComparison.select': 'Commit auswählen',
   'commitComparison.search': 'Commits suchen...',
   'commitComparison.loadError': 'Commits konnten nicht geladen werden',

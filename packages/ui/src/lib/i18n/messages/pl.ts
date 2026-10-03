@@ -43,6 +43,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.aiRename.noSmallModel': 'Wymaga Small Model. Zaloguj się do dostawcy modeli lub wybierz go w Ustawienia → Sesje.',
   'commitComparison.mode': 'Commit',
   'pullRequestComparison.select': 'Wybierz pull request',
+  'pullRequestComparison.partial': 'Nie udało się wczytać niektórych pull requestów',
   'commitComparison.select': 'Wybierz commit',
   'commitComparison.search': 'Szukaj commitów...',
   'commitComparison.loadError': 'Nie udało się wczytać commitów',

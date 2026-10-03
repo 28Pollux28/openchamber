@@ -56,6 +56,17 @@ type SourceControlAuthStore = {
 
 const inFlight = new Map<string, Promise<SourceControlAuthStatus | null>>();
 const inFlightTokens = new Map<string, symbol>();
+const inFlightForced = new Set<string>();
+// Bumped by every write that is newer than any read already on the wire: a
+// forced refresh (it follows an account mutation) or a direct status write.
+// A response whose read started under an older version describes the
+// instance before that write and is discarded.
+const versions = new Map<string, number>();
+const bumpVersion = (key: string): number => {
+  const next = (versions.get(key) ?? 0) + 1;
+  versions.set(key, next);
+  return next;
+};
 let instancesInFlight: Promise<SourceControlIdentity[]> | null = null;
 let generation = 0;
 
@@ -112,10 +123,14 @@ export const useSourceControlAuthStore = create<SourceControlAuthStore>((set, ge
   },
   setStatus: (identity, status) => {
     const key = getSourceControlAuthKey(identity);
+    bumpVersion(key);
+    inFlight.delete(key);
+    inFlightTokens.delete(key);
+    inFlightForced.delete(key);
     set((state) => ({
       entries: {
         ...state.entries,
-        [key]: { ...(state.entries[key] ?? createEntry()), status, hasChecked: true },
+        [key]: { ...(state.entries[key] ?? createEntry()), status, isLoading: false, hasChecked: true },
       },
     }));
   },
@@ -123,21 +138,23 @@ export const useSourceControlAuthStore = create<SourceControlAuthStore>((set, ge
     const key = getSourceControlAuthKey(identity);
     const current = get().entries[key];
     const pending = inFlight.get(key);
-    if (pending) return pending;
-    if (current?.hasChecked && current.status?.status !== 'unreachable' && !options?.force) return current.status;
+    // A forced refresh follows a mutation, so an ordinary read that started
+    // before it cannot answer for it; forced reads issued together share one.
+    if (pending && (!options?.force || inFlightForced.has(key))) return pending;
+    if (!pending && current?.hasChecked && current.status?.status !== 'unreachable' && !options?.force) return current.status;
 
     const requestGeneration = generation;
+    const requestVersion = bumpVersion(key);
     const requestToken = Symbol(key);
-    set((state) => ({
-      entries: {
-        ...state.entries,
-        [key]: { ...(state.entries[key] ?? createEntry()), isLoading: true },
-      },
-    }));
+    const isCurrent = () => requestGeneration === generation
+      && versions.get(key) === requestVersion
+      && key === getSourceControlAuthKey(identity);
+    // A superseded read hands its caller whatever replaced it.
+    const superseded = () => inFlight.get(key) ?? (requestGeneration === generation ? get().entries[key]?.status ?? null : null);
     const request = (async () => {
       try {
         const status = await sourceControl.authStatus(identity);
-        if (requestGeneration !== generation || key !== getSourceControlAuthKey(identity)) return null;
+        if (!isCurrent()) return superseded();
         set((state) => ({
           entries: {
             ...state.entries,
@@ -146,7 +163,7 @@ export const useSourceControlAuthStore = create<SourceControlAuthStore>((set, ge
         }));
         return status;
       } catch (error) {
-        if (requestGeneration !== generation || key !== getSourceControlAuthKey(identity)) return null;
+        if (!isCurrent()) return superseded();
         const message = error instanceof Error ? error.message : String(error);
         const status: SourceControlAuthStatus = {
           ...identity,
@@ -168,17 +185,31 @@ export const useSourceControlAuthStore = create<SourceControlAuthStore>((set, ge
         if (inFlightTokens.get(key) === requestToken) {
           inFlightTokens.delete(key);
           inFlight.delete(key);
+          inFlightForced.delete(key);
         }
       }
     })();
+    // Registered before subscribers hear about the load: one that asks for
+    // this instance again from inside the notification joins this read
+    // instead of starting another.
     inFlightTokens.set(key, requestToken);
     inFlight.set(key, request);
+    if (options?.force) inFlightForced.add(key);
+    else inFlightForced.delete(key);
+    set((state) => ({
+      entries: {
+        ...state.entries,
+        [key]: { ...(state.entries[key] ?? createEntry()), isLoading: true },
+      },
+    }));
     return request;
   },
   resetForRuntimeSwitch: () => {
     generation += 1;
     inFlight.clear();
     inFlightTokens.clear();
+    versions.clear();
+    inFlightForced.clear();
     instancesInFlight = null;
     set({ identities: [], identitiesLoaded: false, identitiesError: null, entries: {} });
   },

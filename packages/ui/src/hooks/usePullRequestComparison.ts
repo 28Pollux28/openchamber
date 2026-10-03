@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { PullRequestSource } from '@/lib/diff/pullRequestDiff';
 import type { ChangeRequest, SourceControlReadContext } from '@/lib/source-control/types';
 import { getRuntimeKey } from '@/lib/runtime-switch';
-import { sourceControlReadContextParts } from '@/lib/source-control/identity';
+import { mergeIncompleteSourceControlPage, sourceControlReadContextParts } from '@/lib/source-control/identity';
+import type { PageResult } from '@/lib/source-control/types';
 import { useI18n } from '@/lib/i18n';
 import { useGitStore } from '@/stores/useGitStore';
 import { usePullRequestSelectionStore } from '@/stores/usePullRequestSelectionStore';
@@ -17,13 +18,40 @@ import { useDebouncedValue } from './useDebouncedValue';
 
 type PullRequestList =
   | { key: string; status: 'loading' }
-  | { key: string; status: 'ready'; prs: ChangeRequest[]; page: number; hasMore: boolean; error: string | null }
+  | {
+    key: string;
+    status: 'ready';
+    prs: ChangeRequest[];
+    page: number;
+    hasMore: boolean;
+    error: string | null;
+    /** Projects (an upstream beside a fork) whose pull requests could not be read this time. */
+    incompleteProjectIds: string[];
+  }
   | { key: string; status: 'error'; message: string };
 const NO_PULL_REQUESTS: ChangeRequest[] = [];
+const NO_PROJECT_IDS: string[] = [];
 
 const sourceOf = (pr: ChangeRequest): PullRequestSource => ({
   kind: 'pr', number: pr.number, sourceRepo: { owner: pr.project.owner, repo: pr.project.name },
 });
+
+const pullRequestKey = (pr: ChangeRequest) => `${pr.project.owner}/${pr.project.name}#${pr.number}`;
+
+/**
+ * Folds one page of pull requests into what the picker already shows. A
+ * project the server could not read keeps the records it showed before rather
+ * than reading as having none; the page still says which ones failed.
+ */
+export const mergePullRequestPage = (
+  shown: ChangeRequest[],
+  result: PageResult<ChangeRequest>,
+  appending: boolean,
+) => {
+  const items = mergeIncompleteSourceControlPage(shown, result);
+  const merged = new Map([...(appending ? shown : []), ...items].map((pr) => [pullRequestKey(pr), pr]));
+  return { prs: [...merged.values()], incompleteProjectIds: result.incompleteProjectIds ?? [] };
+};
 
 /**
  * Lists and remembers the pull request a comparison reviews. Every read goes
@@ -112,6 +140,9 @@ export function usePullRequestComparison(
     if (!directory || !enabled || owner.current.key !== key || !owner.current.enabled) return;
     const id = ++requestId.current;
     const runtime = getRuntimeKey();
+    const shownList = listRef.current;
+    const shown = previous?.prs
+      ?? (shownList?.key === key && shownList.status === 'ready' ? shownList.prs : NO_PULL_REQUESTS);
     if (previous) setLoadingMore(true);
     else {
       setLoadingMore(false);
@@ -124,8 +155,8 @@ export function usePullRequestComparison(
       const page = previous ? previous.page + 1 : 1;
       const result = await sourceControl.changeRequestsList(context, { page, query: search || undefined });
       if (requestId.current !== id || getRuntimeKey() !== runtime || owner.current.key !== key || !owner.current.enabled) return;
-      const merged = new Map([...(previous?.prs ?? []), ...result.items].map((pr) => [`${pr.project.owner}/${pr.project.name}#${pr.number}`, pr]));
-      setList({ key, status: 'ready', prs: [...merged.values()], page, hasMore: result.hasMore, error: null });
+      const merged = mergePullRequestPage(shown, result, Boolean(previous));
+      setList({ key, status: 'ready', ...merged, page, hasMore: result.hasMore, error: null });
     } catch (error) {
       if (requestId.current === id && getRuntimeKey() === runtime && owner.current.key === key && owner.current.enabled) {
         const message = error instanceof Error ? error.message : t('session.githubPrPicker.toast.loadMoreFailed');
@@ -150,6 +181,8 @@ export function usePullRequestComparison(
     loading: enabled && (!current || current.status === 'loading' || search !== query.trim()),
     loadingMore,
     hasMore: current?.status === 'ready' && current.hasMore,
+    /** Projects whose pull requests failed to load; non-empty means the list is partial. */
+    incompleteProjectIds: current?.status === 'ready' ? current.incompleteProjectIds : NO_PROJECT_IDS,
     error: current?.status === 'error' ? current.message : current?.status === 'ready' ? current.error : null,
     refresh: () => refresh(),
     loadMore: () => current?.status === 'ready' && current.hasMore && !loadingMore ? refresh(current) : Promise.resolve(),

@@ -165,13 +165,21 @@ export function registerGitLabRoutes(app, options = {}) {
       await store.setCliActive(origin, false);
       return buildStatus(origin);
     }
-    const cliCurrent = Boolean(cli && (instance.cliActive || !activeRecord));
+    // Like the gh rule: a glab login carries every scope glab was granted, so it
+    // is used only after the user switched to it, never as a silent fallback.
+    const cliCurrent = Boolean(cli && instance.cliActive);
     const accounts = instance.accounts.map((account) => accountView(
       origin, account, Boolean(active && account.id === active.id && !cliCurrent), instance.accounts,
     ));
     if (cli) accounts.push(cliAccountView(origin, cli.user, cliCurrent));
 
     if (!active) {
+      if (cli && !cliCurrent) {
+        return {
+          provider: 'gitlab', instance: origin, status: 'disconnected', connected: false, accounts,
+          cli: { available: true, disabled: instance.cliDisabled, active: false, user: { ...cli.user, provider: 'gitlab', instance: origin } },
+        };
+      }
       if (!cli) {
         if (instance.cliDisabled) {
           return {
@@ -246,7 +254,7 @@ export function registerGitLabRoutes(app, options = {}) {
       providerUserId = active?.providerUserId ?? '';
     } else {
       active = instance.cliActive ? null : instance.accounts.find((account) => account.id === instance.activeAccountId && account.status !== 'invalid') ?? null;
-      token = active?.token || (!instance.cliDisabled ? await glabToken(origin) : null);
+      token = active?.token || (instance.cliActive && !instance.cliDisabled ? await glabToken(origin) : null);
       accountId = active?.id ?? '';
       persisted = Boolean(active);
       credentialRevision = active?.credentialRevision ?? null;

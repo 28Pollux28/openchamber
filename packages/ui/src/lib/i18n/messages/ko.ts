@@ -43,6 +43,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.aiRename.noSmallModel': 'Small Model이 필요합니다. 모델 제공자에 로그인하거나 설정 → 세션에서 선택하세요.',
   'commitComparison.mode': '커밋',
   'pullRequestComparison.select': '풀 리퀘스트 선택',
+  'pullRequestComparison.partial': '일부 풀 리퀘스트를 불러오지 못했습니다',
   'commitComparison.select': '커밋 선택',
   'commitComparison.search': '커밋 검색...',
   'commitComparison.loadError': '커밋을 불러오지 못했습니다',

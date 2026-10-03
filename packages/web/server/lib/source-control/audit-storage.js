@@ -6,6 +6,7 @@ import { withSourceControlFileLock } from './file-lock.js';
 const VERSION = 1;
 const DEFAULT_MAX_RECORDS = 1_000;
 const DEFAULT_TERMINAL_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+const UNSTARTED_GIT_PLAN_TTL_MS = 60 * 60 * 1000;
 const EXECUTORS = new Set(['openchamber-server-git', 'provider-api']);
 const STATES = new Set(['planned', 'running', 'succeeded', 'partial', 'conflicted', 'failed', 'cancelled', 'outcome-unknown']);
 const TERMINAL_STATES = new Set(['succeeded', 'partial', 'conflicted', 'failed', 'cancelled']);
@@ -222,9 +223,16 @@ export function createSourceControlAuditStore({
       throw error;
     }
   };
+  // A Git operation plan that never started is a record of nothing: the
+  // registry cancels unstarted plans after 15 minutes and a restart cancels
+  // them at once, and neither ever starts again. Such a record would otherwise
+  // stay `planned` forever and hold a capacity slot; an hour is well past
+  // any plan that could still start. Running records keep their uncertainty.
   const prune = (state, timestamp) => {
     for (const [id, record] of Object.entries(state.records)) {
       if (TERMINAL_STATES.has(record.state) && record.expiresAt <= timestamp) delete state.records[id];
+      else if (record.executorKind === 'openchamber-server-git' && record.state === 'planned'
+        && record.plannedAt + UNSTARTED_GIT_PLAN_TTL_MS <= timestamp) delete state.records[id];
     }
   };
   const makeCapacity = (state) => {

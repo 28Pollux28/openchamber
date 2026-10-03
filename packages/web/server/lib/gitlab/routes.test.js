@@ -808,7 +808,7 @@ describe('GitLab routes', () => {
     const fetch = vi.fn(async () => userResponse());
     const createClient = vi.fn(() => ({
       Projects: { show: vi.fn(async () => ({ id: 1, path_with_namespace: 'team/repo', web_url: `${origin}/team/repo` })) },
-      Issues: { all: vi.fn(async () => [{ iid: 3, title: 'Bug', web_url: `${origin}/team/repo/-/issues/3`, state: 'opened' }]) },
+      Issues: { all: vi.fn(async () => ({ data: [{ iid: 3, title: 'Bug', web_url: `${origin}/team/repo/-/issues/3`, state: 'opened' }], paginationInfo: { next: null } })) },
     }));
     const onAccountConnected = vi.fn();
     const app = appWith({
@@ -889,7 +889,7 @@ describe('GitLab routes', () => {
     store.readAccount.mockImplementation(async (_instance, accountId) => accountId === requested.id ? requested : null);
     const createClient = vi.fn(() => ({
       Projects: { show: vi.fn(async () => ({ id: 1, path_with_namespace: 'team/repo', web_url: `${origin}/team/repo` })) },
-      Issues: { all: vi.fn(async () => []) },
+      Issues: { all: vi.fn(async () => ({ data: [], paginationInfo: { next: null } })) },
     }));
     const app = appWith({
       store,
@@ -1067,6 +1067,21 @@ describe('GitLab routes', () => {
 
     await request(app).post('/api/source-control/gitlab/auth/cli').query({ instance: origin }).send({ disabled: false }).expect(200);
     const enabled = await request(app).get('/api/source-control/gitlab/auth/status').query({ instance: origin }).expect(200);
-    expect(enabled.body).toMatchObject({ connected: true, cli: { available: true, disabled: false } });
+    expect(enabled.body).toMatchObject({ connected: false, cli: { available: true, disabled: false, active: false } });
+  });
+
+  it('uses a glab login only after the user switches to it', async () => {
+    const store = makeStore();
+    const fetch = vi.fn(async () => userResponse());
+    const execFile = vi.fn(async () => ({ stdout: 'cli-token\n' }));
+    const app = appWith({ store, execFile, fetch });
+
+    const available = await request(app).get('/api/source-control/gitlab/auth/status').query({ instance: origin }).expect(200);
+    expect(available.body).toMatchObject({ connected: false, cli: { available: true, active: false } });
+
+    await request(app).post('/api/source-control/gitlab/auth/activate').query({ instance: origin })
+      .send({ accountId: `${origin}#cli:${available.body.cli.user.id}` }).expect(200);
+    const active = await request(app).get('/api/source-control/gitlab/auth/status').query({ instance: origin }).expect(200);
+    expect(active.body).toMatchObject({ connected: true, cli: { available: true, active: true } });
   });
 });

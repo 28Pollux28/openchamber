@@ -364,7 +364,7 @@ export function createNetworkOperationPlanner({
     }
     const repositoryId = requiredString(input.repositoryId, 'repositoryId');
     const configRevision = requiredString(input.configRevision, 'configRevision');
-    if (!Number.isInteger(input.bindingRevision) || input.bindingRevision < 1) {
+    if (!Number.isSafeInteger(input.bindingRevision) || input.bindingRevision < 0) {
       throw planError('bindingRevision is required');
     }
     if (!isPlainObject(input.fetch)
@@ -543,7 +543,7 @@ export function createNetworkOperationPlanner({
       && (operation !== 'push' || !sourceRef.startsWith('refs/heads/') || !destinationRef.startsWith('refs/heads/'))) {
       throw planError('configureUpstream requires branch refs');
     }
-    if (!Number.isInteger(input.bindingRevision) || input.bindingRevision < 1) {
+    if (!Number.isSafeInteger(input.bindingRevision) || input.bindingRevision < 0) {
       throw planError('bindingRevision is required');
     }
     let forceWithLease;
@@ -767,7 +767,7 @@ export function createNetworkOperationPlanner({
     const directory = requiredString(input.directory, 'directory');
     const repositoryId = requiredString(input.repositoryId, 'repositoryId');
     const configRevision = requiredString(input.configRevision, 'configRevision');
-    if (!Number.isSafeInteger(input.bindingRevision) || input.bindingRevision < 1) {
+    if (!Number.isSafeInteger(input.bindingRevision) || input.bindingRevision < 0) {
       throw planError('bindingRevision is required');
     }
     const remote = parseRemote(input.remote);
@@ -862,7 +862,7 @@ export function createNetworkOperationPlanner({
       throw contributorError('CONTRIBUTOR_MANAGED_TRANSPORT_REQUIRED', 'Contributor transfers require managed credentials');
     }
     const remote = parseRemote(input.remote);
-    if (!Number.isInteger(input.bindingRevision) || input.bindingRevision < 1
+    if (!Number.isSafeInteger(input.bindingRevision) || input.bindingRevision < 0
       || !Number.isInteger(input.provenanceRevision) || input.provenanceRevision < 1) {
       throw planError('Contributor destination selection revisions are invalid');
     }

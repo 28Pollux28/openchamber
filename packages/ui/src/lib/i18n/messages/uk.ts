@@ -43,6 +43,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.aiRename.noSmallModel': 'Потрібна Small Model. Увійдіть до провайдера моделей або оберіть її в Налаштування → Сесії.',
   'commitComparison.mode': 'Коміт',
   'pullRequestComparison.select': 'Виберіть пул-реквест',
+  'pullRequestComparison.partial': 'Не вдалося завантажити частину пул-реквестів',
   'commitComparison.select': 'Вибрати коміт',
   'commitComparison.search': 'Пошук комітів...',
   'commitComparison.loadError': 'Не вдалося завантажити коміти',

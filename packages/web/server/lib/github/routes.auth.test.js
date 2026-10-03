@@ -1143,3 +1143,90 @@ describe('GitHub account routes', () => {
     expect(await auth.getGitHubAuthAccounts()).toEqual([]);
   });
 });
+
+describe('gh CLI account consent', () => {
+  let previousPath;
+
+  beforeEach(async () => {
+    // A fake `gh` on PATH stands in for a real gh login.
+    const bin = path.join(directory, 'bin');
+    await fs.mkdir(bin);
+    await fs.writeFile(path.join(bin, 'gh'), '#!/bin/sh\necho cli-token\n', { mode: 0o755 });
+    previousPath = process.env.PATH;
+    process.env.PATH = `${bin}${path.delimiter}${previousPath}`;
+  });
+
+  afterEach(() => {
+    process.env.PATH = previousPath;
+  });
+
+  const stubGitHubUsers = () => {
+    const fetch = vi.fn(async (url, init) => {
+      const authorization = new Headers(init?.headers).get('authorization');
+      if (String(url) === 'https://api.github.com/user' && authorization === 'token cli-token') {
+        return Response.json({ id: 9, login: 'cli-user', email: 'cli@example.com' });
+      }
+      if (String(url) === 'https://api.github.com/user' && authorization === 'token token-a') {
+        return Response.json({ id: 7, login: 'saved-user', email: 'saved@example.com' });
+      }
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    vi.stubGlobal('fetch', fetch);
+    return fetch;
+  };
+  const usedCliToken = (fetch) => fetch.mock.calls.some(([, init]) => new Headers(init?.headers).get('authorization') === 'token cli-token');
+
+  it('does not build an exact CLI account client until the user switches to it', async () => {
+    const fetch = stubGitHubUsers();
+    const { getOctokitForAccountId } = await import('./octokit.js');
+
+    await expect(getOctokitForAccountId('github.com#cli:9')).resolves.toBeNull();
+    expect(usedCliToken(fetch)).toBe(false);
+
+    auth.setGhCliActive(true);
+    await expect(getOctokitForAccountId('github.com#cli:9')).resolves.toMatchObject({ accountId: 'github.com#cli:9', source: 'cli' });
+  });
+
+  it('stops using the gh token after switching back to a saved account', async () => {
+    const fetch = stubGitHubUsers();
+    const saved = await auth.setGitHubAuth({ accessToken: 'token-a', user: { id: 7, login: 'saved-user' } });
+    auth.setGhCliActive(true);
+
+    const response = await request(makeApp()).post('/api/source-control/github/auth/activate')
+      .send({ accountId: saved.accountId }).expect(200);
+
+    expect(auth.isGhCliActive()).toBe(false);
+    expect(response.body).toMatchObject({ connected: true, user: { login: 'saved-user' }, ghCli: { active: false } });
+    fetch.mockClear();
+    const { getOctokitOrNull } = await import('./octokit.js');
+    await (await getOctokitOrNull()).rest.users.getAuthenticated();
+    expect(usedCliToken(fetch)).toBe(false);
+  });
+
+  it('keeps the switch to the gh account through a network failure and drops it once gh is rejected', async () => {
+    let answer = 'network';
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      if (answer === 'network') throw new TypeError('fetch failed');
+      return Response.json({ message: 'Bad credentials' }, { status: 401 });
+    }));
+    auth.setGhCliActive(true);
+
+    await request(makeApp()).get('/api/source-control/github/auth/status').expect(200);
+    expect(auth.isGhCliActive()).toBe(true);
+
+    answer = 'rejected';
+    await request(makeApp()).get('/api/source-control/github/auth/status').expect(200);
+    expect(auth.isGhCliActive()).toBe(false);
+  });
+
+  it('reports an active CLI account as connected when the saved current account is invalid', async () => {
+    stubGitHubUsers();
+    const saved = await auth.setGitHubAuth({ accessToken: 'token-a', user: { id: 7, login: 'saved-user' } });
+    await auth.markGitHubAuthAccountInvalid(saved.accountId);
+    auth.setGhCliActive(true);
+
+    const response = await request(makeApp()).get('/api/source-control/github/auth/status').expect(200);
+
+    expect(response.body).toMatchObject({ connected: true, user: { login: 'cli-user' }, ghCli: { active: true } });
+  });
+});

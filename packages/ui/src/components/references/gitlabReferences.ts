@@ -54,6 +54,7 @@ const toIssueReference = (issue: Issue): GitHubIssueReference => ({
     labels: (issue.labels ?? []).map((label) => ({ name: label.name, color: label.color })),
     commentCount: 0,
     sourceRepo: sourceRepo(issue.project),
+    projectId: issue.project.id,
     // GitLab does not say why an issue was closed; closed reads as done.
     state: issue.state === 'open' ? 'open' : 'completed',
 });
@@ -71,6 +72,7 @@ const toPullReference = (changeRequest: ChangeRequest): GitHubPullReference => (
     labels: [],
     commentCount: 0,
     sourceRepo: sourceRepo(changeRequest.project),
+    projectId: changeRequest.project.id,
     state: changeRequest.state,
     draft: changeRequest.draft,
     head: changeRequest.head,

@@ -19,7 +19,11 @@ import { getSessionMetadata, type SessionMetadataRecord } from './sessionReviewM
  */
 
 export type LinkedRepositoryIssue = {
-  /** `owner/repo#number`, unique per session and stable across renames. */
+  /**
+   * `owner/repo#number` on github.com, `host:owner/repo#number` on any other
+   * instance, unique per session and stable across renames. Entries stored
+   * before the host was added carry the bare shape whatever their instance.
+   */
   id: string;
   number: number;
   title: string;
@@ -180,22 +184,27 @@ export const buildLinkedIssue = (input: {
   author?: { login?: string; avatarUrl?: string } | null;
   linkedAt: number;
 }): LinkedRepositoryIssue => {
-  let project: { owner: string; name: string } | null = null;
+  let project: { host: string; owner: string; name: string } | null = null;
   try {
-    const segments = new URL(input.url).pathname.split('/').filter(Boolean);
+    const parsed = new URL(input.url);
+    const segments = parsed.pathname.split('/').filter(Boolean);
     const threadIndex = segments.findIndex((segment) => (
       segment === 'issues' || segment === 'pull'
     ));
     const projectNameIndex = segments[threadIndex - 1] === '-' ? threadIndex - 2 : threadIndex - 1;
     const owner = segments.slice(0, projectNameIndex).join('/');
     const name = segments[projectNameIndex];
-    if (threadIndex > 1 && owner && name) project = { owner, name };
+    if (threadIndex > 1 && owner && name) project = { host: parsed.hostname.toLowerCase(), owner, name };
   } catch {
     // The URL itself remains a stable fallback id for malformed provider data.
   }
-  const id = project
-    ? buildLinkedIssueId(project.owner, project.name, input.number)
-    : `${input.url}#${input.number}`;
+  // github.com keeps the bare shape every stored GitHub link already has; any
+  // other instance names its host, so team/repo#12 there is not the GitHub one.
+  const id = !project
+    ? `${input.url}#${input.number}`
+    : project.host === 'github.com' || project.host === 'www.github.com'
+      ? buildLinkedIssueId(project.owner, project.name, input.number)
+      : `${project.host}:${buildLinkedIssueId(project.owner, project.name, input.number)}`;
 
   return {
     id,
@@ -412,6 +421,20 @@ export const getLinkedSidebarIssues = (session: Session | null | undefined): Lin
   });
 };
 
+const normalizedThreadUrl = (url: string): string => url.trim().replace(/\/+$/, '').toLowerCase();
+
+/**
+ * Whether two entries name the same thread. A repository entry stored before
+ * ids carried the host matches its new id by its address instead.
+ */
+const isSameLinkedEntry = (entry: LinkedIssue, issue: LinkedIssue): boolean => {
+  if (entry.id === issue.id) return true;
+  return (entry.kind === 'issue' || entry.kind === 'pull')
+    && entry.kind === issue.kind
+    && entry.number === issue.number
+    && normalizedThreadUrl(entry.url) === normalizedThreadUrl(issue.url);
+};
+
 export const withLinkedIssue = (
   metadata: SessionMetadataRecord,
   issue: LinkedIssue,
@@ -421,7 +444,7 @@ export const withLinkedIssue = (
   const current = Array.isArray(openchamber.linked_issues)
     ? openchamber.linked_issues.filter(isLinkedIssue)
     : [];
-  const withoutIssue = current.filter((entry) => entry.id !== issue.id);
+  const withoutIssue = current.filter((entry) => !isSameLinkedEntry(entry, issue));
   // Re-linking an existing entry replaces it, so a stale title can be refreshed
   // by linking again.
   const next = linked ? [...withoutIssue, issue] : withoutIssue;

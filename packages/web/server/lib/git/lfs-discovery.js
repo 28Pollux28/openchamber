@@ -350,14 +350,21 @@ export function discoverLfs({
     httpsCandidate(record.url, gitRemoteUrl);
   }
 
-  const configuredUrl = lfsConfig.get('lfs.url');
-  const scopedUrl = lfsConfig.get(`remote.${gitRemoteName.toLowerCase()}.lfsurl`) || remoteUrls.get(gitRemoteName);
+  // Git LFS reads `.lfsconfig` only below Git's own configuration, and
+  // `lfs.url` wins over `remote.<name>.lfsurl` within either source.
+  const remoteUrlKey = `remote.${gitRemoteName.toLowerCase()}.lfsurl`;
+  const configured = [
+    ['lfs.url', effectiveConfig.get('lfs.url'), 'git-config'],
+    ['lfs.url', lfsConfig.get('lfs.url'), 'lfsconfig'],
+    [remoteUrlKey, remoteUrls.get(gitRemoteName) || effectiveConfig.get(remoteUrlKey), 'remote'],
+    [remoteUrlKey, lfsConfig.get(remoteUrlKey), 'remote'],
+  ].find(([, url]) => url);
   let endpoint;
-  if (configuredUrl || scopedUrl) {
+  if (configured) {
     endpoint = Object.freeze({
       status: 'resolved',
-      source: configuredUrl ? 'lfsconfig' : 'remote',
-      candidate: httpsCandidate(configuredUrl || scopedUrl, gitRemoteUrl),
+      source: configured[2],
+      candidate: httpsCandidate(configured[1], gitRemoteUrl),
     });
   } else if (gitRemote.kind === 'https') {
     endpoint = Object.freeze({

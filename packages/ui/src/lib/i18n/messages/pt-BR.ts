@@ -43,6 +43,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.aiRename.noSmallModel': 'Precisa de um Small Model. Entre em um provedor de modelos ou escolha um em Configurações → Sessões.',
   'commitComparison.mode': 'Commit',
   'pullRequestComparison.select': 'Selecionar pull request',
+  'pullRequestComparison.partial': 'Não foi possível carregar alguns pull requests',
   'commitComparison.select': 'Selecionar commit',
   'commitComparison.search': 'Buscar commits...',
   'commitComparison.loadError': 'Não foi possível carregar os commits',

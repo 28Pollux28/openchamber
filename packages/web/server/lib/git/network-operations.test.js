@@ -1,3 +1,4 @@
+import fsSync from 'node:fs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -905,6 +906,8 @@ describe('Git network operations', () => {
     ]));
     expect(fetchCall.options.env.GIT_ASKPASS).toBeUndefined();
     expect(fetchCall.options.env.SSH_AUTH_SOCK).toBeUndefined();
+    // An ambient ~/.netrc must not answer for the selected HTTPS account.
+    expect(fetchCall.options.env.HOME).toBe('/dev/null');
     expect(fetchCall.options.env.GIT_CONFIG_GLOBAL).toBe('/dev/null');
     expect(fetchCall.options.env.GIT_TERMINAL_PROMPT).toBe('0');
   });
@@ -1385,6 +1388,7 @@ process.exit(safe ? 0 : 1);
     expect(call.options).toMatchObject({ shell: false, windowsHide: true, detached: true });
     expect(call.options.env).toEqual({
       PATH: '/bin', GIT_TERMINAL_PROMPT: '0', GIT_CONFIG_NOSYSTEM: '1', GIT_CONFIG_GLOBAL: '/dev/null',
+      HOME: '/dev/null', USERPROFILE: '/dev/null', XDG_CONFIG_HOME: '/dev/null',
     });
     expect(JSON.stringify(result)).not.toContain('top-secret');
     expect(result.transport.actor).toEqual({
@@ -1861,6 +1865,132 @@ process.exit(safe ? 0 : 1);
     expect(JSON.stringify(result)).not.toContain('private cleanup failure');
   });
 
+  it('clones into an empty uninitialized gitlink directory instead of reading the parent HEAD', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'openchamber-submodule-empty-'));
+    temporaryDirectories.push(root);
+    const childDirectory = path.join(root, 'vendor', 'alpha');
+    await fs.mkdir(childDirectory, { recursive: true });
+    const manifest = 'submodule.alpha.path\nvendor/alpha\0submodule.alpha.url\n../alpha.git\0';
+    const setupValue = setup({
+      validateGitAuxiliaryContext: vi.fn(async ({ rawEndpoint }) => ({
+        endpoint: rawEndpoint, endpointFingerprint: fingerprintRemoteUrl(rawEndpoint),
+        transportMode: 'managed', credentialId: 'child-credential', transportRevision: 'transport_one',
+      })),
+      spawnResponder: ({ args, options }) => {
+        const command = args.join(' ');
+        if (command.includes('config --blob HEAD:.gitmodules')) return options.cwd === root ? { code: 0, stdout: manifest } : { code: 1 };
+        if (command.includes('ls-tree -rz')) return options.cwd === root
+          ? { code: 0, stdout: `160000 commit ${'b'.repeat(40)}\tvendor/alpha\0` }
+          : { code: 0 };
+        if (command.includes('clone --no-checkout')) {
+          fsSync.mkdirSync(path.join(childDirectory, '.git'));
+          return { code: 0 };
+        }
+        // Like Git, a directory without its own repository resolves the parent's HEAD.
+        if (command.includes('rev-parse --verify HEAD')) {
+          return { code: 0, stdout: fsSync.existsSync(path.join(options.cwd, '.git')) ? 'b'.repeat(40) : SHA };
+        }
+        if (command.includes('ls-files -z')) return { code: 0 };
+        if (command.includes('HEAD:.lfsconfig') || command.includes('config --includes')) return { code: 1 };
+        if (command.includes('lfs version')) return { code: 1 };
+        return { code: 0 };
+      },
+    });
+
+    const result = await setupValue.service.hydrateBoundCheckout({
+      directory: root, parentRemoteName: 'publish',
+      repositoryAuthority: { repositoryId: 'repo_one', bindingRevision: 2, configRevision: 'config_one' },
+    });
+
+    expect(result).toMatchObject({ status: 'succeeded', submodules: [{ path: 'vendor/alpha', status: 'succeeded' }] });
+    expect(setupValue.calls.filter((call) => call.args.includes('clone'))).toHaveLength(1);
+  });
+
+  it('validates a nested submodule grant against the owning parent repository directory', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'openchamber-submodule-nested-authority-'));
+    temporaryDirectories.push(root);
+    const alpha = path.join(root, 'vendor', 'alpha');
+    await fs.mkdir(path.join(alpha, '.git'), { recursive: true });
+    const rootManifest = 'submodule.alpha.path\nvendor/alpha\0submodule.alpha.url\n../alpha.git\0';
+    const childManifest = 'submodule.nested.path\nnested\0submodule.nested.url\n../nested.git\0';
+    const validateGitAuxiliaryContext = vi.fn(async ({ rawEndpoint }) => ({
+      endpoint: rawEndpoint, endpointFingerprint: fingerprintRemoteUrl(rawEndpoint),
+      transportMode: 'managed', credentialId: 'child-credential', transportRevision: 'transport_one',
+    }));
+    const setupValue = setup({
+      validateGitAuxiliaryContext,
+      spawnResponder: ({ args, options }) => {
+        const command = args.join(' ');
+        if (command.includes('config --blob HEAD:.gitmodules')) {
+          if (options.cwd === root) return { code: 0, stdout: rootManifest };
+          return options.cwd === alpha ? { code: 0, stdout: childManifest } : { code: 1 };
+        }
+        if (command.includes('ls-tree -rz')) {
+          if (options.cwd === root) return { code: 0, stdout: `160000 commit ${'b'.repeat(40)}\tvendor/alpha\0` };
+          return options.cwd === alpha ? { code: 0, stdout: `160000 commit ${'c'.repeat(40)}\tnested\0` } : { code: 0 };
+        }
+        if (command.includes('clone --no-checkout')) {
+          fsSync.mkdirSync(path.join(alpha, 'nested', '.git'));
+          return { code: 0 };
+        }
+        if (command.includes('rev-parse --verify HEAD')) {
+          return { code: 0, stdout: options.cwd === alpha ? 'b'.repeat(40) : 'c'.repeat(40) };
+        }
+        if (command.includes('ls-files -z')) return { code: 0 };
+        if (command.includes('HEAD:.lfsconfig') || command.includes('config --includes')) return { code: 1 };
+        if (command.includes('lfs version')) return { code: 1 };
+        return { code: 0 };
+      },
+    });
+
+    const result = await setupValue.service.hydrateBoundCheckout({
+      directory: root, parentRemoteName: 'publish',
+      repositoryAuthority: { repositoryId: 'repo_one', bindingRevision: 2, configRevision: 'config_one' },
+    });
+
+    expect(result).toMatchObject({ status: 'succeeded' });
+    expect(result.submodules.map((entry) => entry.path)).toEqual(['vendor/alpha', 'vendor/alpha/nested']);
+    expect(validateGitAuxiliaryContext).toHaveBeenCalled();
+    for (const [call] of validateGitAuxiliaryContext.mock.calls) {
+      expect(call).toMatchObject({ directory: root, repositoryId: 'repo_one' });
+    }
+    expect(setupValue.calls.find((call) => call.args.includes('clone'))?.options.cwd).toBe(alpha);
+  });
+
+  it('does not report a freshly cloned submodule as hydrated when discovery inside it fails', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'openchamber-submodule-recursive-'));
+    temporaryDirectories.push(root);
+    const manifest = 'submodule.alpha.path\nvendor/alpha\0submodule.alpha.url\n../alpha.git\0';
+    const setupValue = setup({
+      validateGitAuxiliaryContext: vi.fn(async ({ rawEndpoint }) => ({
+        endpoint: rawEndpoint, endpointFingerprint: fingerprintRemoteUrl(rawEndpoint),
+        transportMode: 'managed', credentialId: 'child-credential', transportRevision: 'transport_one',
+      })),
+      spawnResponder: ({ args, options }) => {
+        const command = args.join(' ');
+        if (command.includes('config --blob HEAD:.gitmodules')) return options.cwd === root ? { code: 0, stdout: manifest } : { code: 1 };
+        if (command.includes('ls-tree -rz')) return options.cwd === root
+          ? { code: 0, stdout: `160000 commit ${'b'.repeat(40)}\tvendor/alpha\0` }
+          : { code: 128, stderr: 'fatal: not a tree object' };
+        if (command.includes('rev-parse --verify HEAD')) return { code: 0, stdout: 'b'.repeat(40) };
+        if (command.includes('ls-files -z')) return { code: 0 };
+        if (command.includes('HEAD:.lfsconfig') || command.includes('config --includes')) return { code: 1 };
+        if (command.includes('lfs version')) return { code: 1 };
+        return { code: 0 };
+      },
+    });
+
+    const result = await setupValue.service.hydrateBoundCheckout({
+      directory: root, parentRemoteName: 'publish',
+      repositoryAuthority: { repositoryId: 'repo_one', bindingRevision: 2, configRevision: 'config_one' },
+    });
+
+    expect(result.status).not.toBe('succeeded');
+    expect(result.submodules).toHaveLength(1);
+    expect(result.submodules[0]).toMatchObject({ path: 'vendor/alpha', endpoint: { fingerprint: expect.any(String) } });
+    expect(result.submodules[0].status).not.toBe('succeeded');
+  });
+
   it('reuses an existing exact submodule checkout during repair without another transfer', async () => {
     const childDirectory = '/repository/vendor/alpha';
     const manifest = 'submodule.alpha.path\nvendor/alpha\0submodule.alpha.url\n../alpha.git\0';
@@ -1870,7 +2000,7 @@ process.exit(safe ? 0 : 1);
     });
     const setupValue = setup({
       validateGitAuxiliaryContext,
-      fsImpl: { ...fs, lstat: vi.fn(async (target) => ['/repository/vendor', childDirectory].includes(target)
+      fsImpl: { ...fs, lstat: vi.fn(async (target) => ['/repository/vendor', childDirectory, `${childDirectory}/.git`].includes(target)
         ? directoryStats
         : fs.lstat(target)) },
       spawnResponder: ({ args, options }) => {
@@ -1909,7 +2039,7 @@ process.exit(safe ? 0 : 1);
     const childManifest = 'submodule.nested.path\nnested\0submodule.nested.url\n../nested.git\0';
     const directoryStats = { isDirectory: () => true, isSymbolicLink: () => false };
     const setupValue = setup({
-      fsImpl: { ...fs, lstat: vi.fn(async (target) => ['/repository/vendor', childDirectory].includes(target)
+      fsImpl: { ...fs, lstat: vi.fn(async (target) => ['/repository/vendor', childDirectory, `${childDirectory}/.git`].includes(target)
         ? directoryStats
         : fs.lstat(target)) },
       spawnResponder: ({ args, options }) => {
@@ -2483,6 +2613,7 @@ process.exit(safe ? 0 : 1);
       const setupValue = setup({
         spawnResults: [
           { code: 0, onSpawn: () => new Promise((resolve) => setTimeout(resolve, 20)) },
+          { code: 0 },
           { manual: true },
           { code: 0 },
         ],
@@ -2535,6 +2666,10 @@ process.exit(safe ? 0 : 1);
       'fetch', '--no-tags', '--no-recurse-submodules', '--', ENDPOINT, 'refs/heads/feature:refs/openchamber/network/git_operation_one',
     ]);
     expect(setupValue.calls.find((call) => call.args.includes('merge')).args.slice(-4)).toEqual(['merge', '--no-edit', '--no-verify', SHA]);
+    // The managed credential is revoked before integration; the tracking ref
+    // must still move with the credential-free context.
+    expect(setupValue.calls.map((call) => call.args.slice(-3)))
+      .toContainEqual(['update-ref', 'refs/remotes/publish/feature', SHA]);
     expect(setupValue.calls.at(-1).args.slice(-3)).toEqual(['update-ref', '-d', 'refs/openchamber/network/git_operation_one']);
   });
 
@@ -2734,7 +2869,7 @@ process.exit(safe ? 0 : 1);
 
   it('reports interrupted pull integration as conflicted when MERGE_HEAD exists', async () => {
     const setupValue = setup({
-      spawnResults: [{ code: 0 }, { manual: true }, { code: 0 }],
+      spawnResults: [{ code: 0 }, { code: 0 }, { manual: true }, { code: 0 }],
       inspectMergeState: vi.fn(async () => true),
     });
     const plan = await setupValue.service.plan(request('pull'));
@@ -2747,7 +2882,7 @@ process.exit(safe ? 0 : 1);
 
   it('reports an interrupted pull integration without merge state as outcome unknown', async () => {
     const setupValue = setup({
-      spawnResults: [{ code: 0 }, { manual: true }, { code: 0 }],
+      spawnResults: [{ code: 0 }, { code: 0 }, { manual: true }, { code: 0 }],
       inspectMergeState: vi.fn(async () => false),
     });
     const plan = await setupValue.service.plan(request('pull'));

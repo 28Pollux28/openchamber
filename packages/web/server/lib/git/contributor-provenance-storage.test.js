@@ -44,6 +44,28 @@ describe('contributor provenance storage', () => {
       .rejects.toMatchObject({ code: 'CONTRIBUTOR_PROVENANCE_CONFLICT', status: 409 });
   });
 
+  it('frees the slot of a removed worktree when the store is full', async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), 'openchamber-contributor-'));
+    roots.push(root);
+    const directories = new Map();
+    for (const name of ['first', 'second']) {
+      directories.set(`/${name}`, path.join(root, name));
+      await fs.mkdir(path.join(root, name));
+    }
+    const store = createContributorProvenanceStore({
+      filePath: path.join(root, 'provenance.json'),
+      maxRecords: 1,
+      resolveRepositoryIdentity: async () => ({ supported: true, repositoryId: 'repo_one' }),
+      resolveGitPaths: async (directory) => ({ supported: true, bare: false, gitDirectory: directories.get(directory) }),
+    });
+    await store.compareAndSwap('/first', 0, provenance);
+    await expect(store.compareAndSwap('/second', 0, provenance))
+      .rejects.toMatchObject({ code: 'CONTRIBUTOR_PROVENANCE_STORE_CAPACITY' });
+
+    await fs.rm(path.join(root, 'first'), { recursive: true });
+    await expect(store.compareAndSwap('/second', 0, provenance)).resolves.toMatchObject({ revision: 1, provenance });
+  });
+
   it('serializes independent process CAS and preserves sibling worktrees', async () => {
     const { root, filePath } = await setup();
     const worktrees = ['same', 'sibling-one', 'sibling-two'].map((name) => path.join(root, name));

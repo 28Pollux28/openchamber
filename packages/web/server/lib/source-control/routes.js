@@ -194,15 +194,28 @@ export function registerSourceControlRoutes(app, dependencies = {}) {
   });
   // A remote grant decides how the repository's own `.git/config` pushes
   // and pulls, so every change to one is followed there.
+  // The binding is already committed when `.git/config` is written, so a
+  // failure there is reported as a partial result: shell git still uses the
+  // previous credentials and the client must not show the change as applied.
   const afterTransportChange = async (directory, read) => {
-    if (!(dependencies.onRepositoryTransportChanged instanceof Function)) return;
-    try { await dependencies.onRepositoryTransportChanged(directory, read); }
-    catch (error) { console.warn('Repository transport configuration was not updated:', redactSensitiveText(error?.message)); }
+    if (!(dependencies.onRepositoryTransportChanged instanceof Function)) return true;
+    try {
+      await dependencies.onRepositoryTransportChanged(directory, read);
+      return true;
+    } catch (error) {
+      console.warn('Repository transport configuration was not updated:', redactSensitiveText(error?.message));
+      return false;
+    }
   };
+  const sendTransportConfigPartial = (res) => res.status(500).json({
+    error: 'The repository binding was saved, but its Git configuration could not be updated. Git in a terminal still uses the previous credentials; retry to apply it.',
+    code: 'SOURCE_CONTROL_TRANSPORT_CONFIG_PARTIAL',
+    committed: true,
+  });
   app.post('/api/source-control/binding/transport', async (req, res) => {
     try {
       const result = await bindingService.configureTransportBinding(req.body ?? {});
-      await afterTransportChange(req.body?.directory, result);
+      if (!await afterTransportChange(req.body?.directory, result)) return sendTransportConfigPartial(res);
       return res.json(bindingService.present ? await bindingService.present(result) : result);
     } catch (error) {
       return sendBindingError(res, error);
@@ -211,7 +224,7 @@ export function registerSourceControlRoutes(app, dependencies = {}) {
   app.post('/api/source-control/binding/transport/remove', async (req, res) => {
     try {
       const result = await bindingService.removeTransportBinding(req.body ?? {});
-      await afterTransportChange(req.body?.directory, result);
+      if (!await afterTransportChange(req.body?.directory, result)) return sendTransportConfigPartial(res);
       return res.json(bindingService.present ? await bindingService.present(result) : result);
     } catch (error) {
       return sendBindingError(res, error);
@@ -220,7 +233,7 @@ export function registerSourceControlRoutes(app, dependencies = {}) {
   app.post('/api/source-control/binding/reset', async (req, res) => {
     try {
       const result = await bindingService.resetRepositoryBinding(req.body ?? {});
-      await afterTransportChange(req.body?.directory, result);
+      if (!await afterTransportChange(req.body?.directory, result)) return sendTransportConfigPartial(res);
       return res.json(result);
     } catch (error) {
       return sendBindingError(res, error);

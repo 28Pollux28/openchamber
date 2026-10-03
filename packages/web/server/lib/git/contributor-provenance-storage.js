@@ -23,10 +23,19 @@ const conflict = (current) => Object.assign(new Error('Contributor provenance ch
   code: 'CONTRIBUTOR_PROVENANCE_CONFLICT', status: 409, current,
 });
 
+const worktreeIdFor = (repositoryId, gitDirectory, stats) => `worktree_${crypto.createHash('sha256')
+  .update(repositoryId).update('\0').update(gitDirectory).update('\0')
+  .update(String(stats.dev)).update('\0').update(String(stats.ino)).digest('base64url')}`;
+
 const parseRecord = (record) => {
-  if (!isPlainObject(record) || !exactKeys(record, [
-    'worktreeId', 'repositoryId', 'revision', 'provenance',
-  ]) || !isIdentifier(record.worktreeId) || !isIdentifier(record.repositoryId)
+  // `gitDirectory` lets a full store find records of worktrees that were
+  // removed since; records written before it existed stay valid without it.
+  const keys = Object.hasOwn(record ?? {}, 'gitDirectory')
+    ? ['worktreeId', 'repositoryId', 'revision', 'provenance', 'gitDirectory']
+    : ['worktreeId', 'repositoryId', 'revision', 'provenance'];
+  if (!isPlainObject(record) || !exactKeys(record, keys)
+    || (record.gitDirectory !== undefined && (!isString(record.gitDirectory) || !path.isAbsolute(record.gitDirectory)))
+    || !isIdentifier(record.worktreeId) || !isIdentifier(record.repositoryId)
     || !Number.isSafeInteger(record.revision) || record.revision < 1) throw invalidStore();
   if (record.provenance === null) return Object.freeze({ ...record, provenance: null });
   const provenance = record.provenance;
@@ -125,10 +134,18 @@ export function createContributorProvenanceStore({
     const gitDirectory = await fsImpl.realpath(gitPaths.gitDirectory);
     const stats = await fsImpl.stat(gitDirectory);
     if (!stats.isDirectory()) throw invalidStore();
-    const worktreeId = `worktree_${crypto.createHash('sha256')
-      .update(repository.repositoryId).update('\0').update(gitDirectory).update('\0')
-      .update(String(stats.dev)).update('\0').update(String(stats.ino)).digest('base64url')}`;
-    return { worktreeId, repositoryId: repository.repositoryId };
+    return { worktreeId: worktreeIdFor(repository.repositoryId, gitDirectory, stats), repositoryId: repository.repositoryId, gitDirectory };
+  };
+  // A record whose Git directory is gone, or is now a different directory,
+  // belongs to a removed worktree and can never be read again.
+  const isOrphaned = async (record) => {
+    if (!record.gitDirectory) return false;
+    try {
+      const stats = await fsImpl.stat(record.gitDirectory);
+      return !stats.isDirectory() || worktreeIdFor(record.repositoryId, record.gitDirectory, stats) !== record.worktreeId;
+    } catch (error) {
+      return error?.code === 'ENOENT' || error?.code === 'ENOTDIR';
+    }
   };
   const recordForIdentity = (record, identity) => {
     if (!record) return { ...identity, revision: 0, provenance: null };
@@ -160,7 +177,11 @@ export function createContributorProvenanceStore({
         ?? { ...identity, revision: 0, provenance: null };
       if (current.repositoryId !== identity.repositoryId || current.revision !== expectedRevision) throw conflict(current);
       const record = parseRecord({ ...identity, revision: current.revision + 1, provenance });
-      const records = state.records.filter((candidate) => candidate.worktreeId !== identity.worktreeId);
+      let records = state.records.filter((candidate) => candidate.worktreeId !== identity.worktreeId);
+      if (records.length >= maxRecords) {
+        const orphaned = await Promise.all(records.map(isOrphaned));
+        records = records.filter((_record, index) => !orphaned[index]);
+      }
       if (records.length >= maxRecords) {
         const tombstoneIndex = records.findIndex((candidate) => candidate.provenance === null);
         if (tombstoneIndex < 0) {

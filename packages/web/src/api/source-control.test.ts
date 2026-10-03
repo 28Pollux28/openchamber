@@ -625,6 +625,23 @@ describe('createWebSourceControlAPI', () => {
     });
   });
 
+  it('keeps gh CLI metadata when GitHub is disconnected', async () => {
+    runtimeFetchMock.mockResolvedValueOnce(Response.json({
+      connected: false,
+      accounts: [],
+      ghCli: { available: true, disabled: true, active: false },
+    }));
+
+    await expect(createWebSourceControlAPI({ fetch: runtimeFetchMock }).authStatus(identity)).resolves.toEqual({
+      provider: 'github',
+      instance: 'github.com',
+      status: 'disconnected',
+      connected: false,
+      accounts: [],
+      cli: { available: true, disabled: true, active: false },
+    });
+  });
+
   it('rejects auth inventory that does not preserve exact credential identity', async () => {
     runtimeFetchMock.mockResolvedValueOnce(Response.json({
       connected: true,

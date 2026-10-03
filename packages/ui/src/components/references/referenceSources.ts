@@ -88,6 +88,22 @@ export function useLinearSourceStatus(): ReferenceSourceStatus {
     return checked && !connected ? 'disconnected' : 'ready';
 }
 
+/**
+ * Everything about a read context that changes what it answers: provider,
+ * host, account, the bound repository and remote, and the binding revision.
+ * Rebinding the directory moves to a new key, so an answer still in flight for
+ * the old binding fills only the old key and never the new list.
+ */
+const readContextCacheKey = (context: SourceControlReadContext): unknown[] => [
+    context.provider,
+    context.instance,
+    context.accountId,
+    context.directory,
+    context.repositoryId,
+    context.primaryRemote,
+    context.bindingRevision,
+];
+
 export function useGitHubReferenceList(options: {
     enabled: boolean;
     directory: string | null;
@@ -99,9 +115,9 @@ export function useGitHubReferenceList(options: {
     const { enabled, directory, kind, filter, query } = options;
     const context = useGitHubReadContext(enabled ? directory : null);
     const text = query.trim();
-    const account = context && context !== 'missing' ? context.accountId : '';
+    const scope = context && context !== 'missing' ? readContextCacheKey(context) : 'missing';
     const key = enabled && directory && context
-        ? JSON.stringify([getRuntimeKey(), account, directory, kind, filter, text])
+        ? JSON.stringify([getRuntimeKey(), scope, directory, kind, filter, text])
         : null;
     const fetchPage = React.useCallback(async (cursor: string | null): Promise<ListPage<GitHubReference>> => {
         if (!context || context === 'missing') return { kind: 'unavailable', reason: 'no-repo' };
@@ -140,8 +156,10 @@ export function useGitHubReferenceDetail(directory: string | null, reference: Gi
     const owner = reference?.sourceRepo.owner ?? '';
     const repo = reference?.sourceRepo.repo ?? '';
     const number = reference?.number ?? 0;
+    // GitLab numbers issues and merge requests separately: #1 and !1 differ.
+    const kind = reference?.kind ?? 'issue';
     const key = directory && reference && context && context !== 'missing'
-        ? JSON.stringify([getRuntimeKey(), context.accountId, directory, owner, repo, number])
+        ? JSON.stringify([getRuntimeKey(), readContextCacheKey(context), directory, kind, owner, repo, number])
         : null;
     const fetch = React.useCallback(async (): Promise<GitHubReferenceDetail> => {
         if (!context || context === 'missing' || !reference) throw new Error('GitHub is not available here');

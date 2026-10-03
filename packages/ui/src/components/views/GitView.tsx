@@ -226,6 +226,25 @@ const isUnstagedStatusFile = (file: GitStatus['files'][number]): boolean => {
   return Boolean(workingStatus || indexStatus === '?');
 };
 
+// Where a dirty branch switch publishes the commit it just made. A tracked
+// branch goes to its tracking ref (local `my-topic` tracking `origin/topic`
+// pushes to `origin/topic`, so the upstream it re-asserts is the same one); an
+// untracked branch publishes under its own name on the fallback remote.
+const dirtySwitchPushTarget = (
+  branch: string,
+  tracking: string | null | undefined,
+  knownRemoteNames: string[],
+  fallbackRemoteName: string | null,
+): { remoteName: string; destinationRef: string } | null => {
+  if (tracking) {
+    const remoteName = knownRemoteNames
+      .filter((name) => tracking.startsWith(`${name}/`) && tracking.length > name.length + 1)
+      .sort((a, b) => b.length - a.length)[0];
+    if (remoteName) return { remoteName, destinationRef: `refs/heads/${tracking.slice(remoteName.length + 1)}` };
+  }
+  return fallbackRemoteName ? { remoteName: fallbackRemoteName, destinationRef: `refs/heads/${branch}` } : null;
+};
+
 type GitViewProps = {
   isActive: boolean;
 };
@@ -2757,26 +2776,23 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
           bumpIndexRevision(gitDirectory);
           let pushedRemoteName: string | null = null;
           if (pushAfter) {
-            const trackingRemoteName = status?.tracking?.split('/')[0] ?? null;
             const knownRemoteNames = binding.read?.repository.remotes.map((entry) => entry.name)
               ?? remotes.map((entry) => entry.name);
-            const remoteName = (trackingRemoteName && knownRemoteNames.includes(trackingRemoteName))
-              ? trackingRemoteName
-              : binding.contexts[0]?.primaryRemote ?? knownRemoteNames[0] ?? null;
-            const remote = remoteName ? { name: remoteName } : null;
+            const target = sourceBranch
+              ? dirtySwitchPushTarget(sourceBranch, status?.tracking, knownRemoteNames, binding.contexts[0]?.primaryRemote ?? knownRemoteNames[0] ?? null)
+              : null;
             try {
-              if (!remote) throw new Error(t('mobile.changes.noRemote'));
-              if (!sourceBranch) throw new Error(t('mobile.changes.noRemote'));
+              if (!target || !sourceBranch) throw new Error(t('mobile.changes.noRemote'));
               await runContributorAwarePush({
                 directory: gitDirectory,
                 branch: sourceBranch,
-                remoteName: remote.name,
+                remoteName: target.remoteName,
                 sourceControl,
                 git,
                 choose: contributorDestination.choose,
-                destinationRef: `refs/heads/${sourceBranch}`,
+                destinationRef: target.destinationRef,
               });
-              pushedRemoteName = remote.name;
+              pushedRemoteName = target.remoteName;
             } catch (error) {
               // The commit stands, so nothing is lost — but the switch is
               // cancelled: the user must see the failed push on the branch it

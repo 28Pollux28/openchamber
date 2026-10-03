@@ -114,6 +114,28 @@ describe('remote Fetch operation contract', () => {
     }
   });
 
+  test('accepts revision 0 for a repository that was never bound (implicit System path)', () => {
+    const remote = request.remote;
+    const ref = 'refs/heads/main';
+    const targets = [
+      { ...plan.target, bindingRevision: 0 },
+      { operation: 'push', repositoryId: 'r', bindingRevision: 0, configRevision: 'c', remote, sourceRef: ref, destinationRef: ref },
+      { operation: 'pull', repositoryId: 'r', bindingRevision: 0, configRevision: 'c', remote, sourceRef: ref, destinationRef: ref },
+      { operation: 'delete-remote-branch', repositoryId: 'r', bindingRevision: 0, configRevision: 'c', remote, destinationRef: ref },
+      {
+        operation: 'sync', repositoryId: 'r', bindingRevision: 0, configRevision: 'c',
+        fetch: { ...remote, sourceRef: ref, destinationRef: 'refs/remotes/upstream/main' },
+        pull: { destinationRef: ref },
+        push: { ...remote, sourceRef: ref, destinationRef: ref },
+      },
+    ];
+    for (const target of targets) {
+      const transport = target.operation === 'sync' ? { fetch: plan.transport, push: plan.transport } : plan.transport;
+      expect(gitNetworkOperationSchema.safeParse({ ...plan, transport, target }).success).toBe(true);
+    }
+    expect(gitNetworkOperationSchema.safeParse({ ...plan, target: { ...plan.target, bindingRevision: -1 } }).success).toBe(false);
+  });
+
   test('parses anonymous metadata without an actor, credential, or System verification', () => {
     const anonymous = { ...plan, transport: { mode: 'anonymous', verification: { status: 'anonymous' } } };
     expect(gitNetworkOperationSchema.parse(anonymous)).toEqual(anonymous);

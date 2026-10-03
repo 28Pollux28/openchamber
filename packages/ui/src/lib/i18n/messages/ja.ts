@@ -43,6 +43,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.aiRename.noSmallModel': 'Small Model が必要です。モデルプロバイダーにサインインするか、設定 → セッションで選択してください。',
   'commitComparison.mode': 'コミット',
   'pullRequestComparison.select': 'プルリクエストを選択',
+  'pullRequestComparison.partial': '一部のプルリクエストを読み込めませんでした',
   'commitComparison.select': 'コミットを選択',
   'commitComparison.search': 'コミットを検索...',
   'commitComparison.loadError': 'コミットを読み込めませんでした',

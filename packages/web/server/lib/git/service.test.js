@@ -41,6 +41,7 @@ import {
   resolveBaseRefForLog,
   revertCommit,
   setLocalIdentity,
+  clearLocalIdentity,
   configureRepositoryTransport,
   getGlobalIdentity,
   stageFiles,
@@ -276,6 +277,28 @@ describe.runIf(canRunGit())('configureRepositoryTransport', () => {
     expect(helpers(repo)).toEqual(['osxkeychain']);
   });
 
+  it('keeps the person\'s own empty reset and turns on path matching only while it owns it', async () => {
+    const repo = createTempDir();
+    runGit(repo, ['init', '-b', 'main']);
+    const local = (key) => {
+      try { return execFileSync('git', ['config', '--local', '--get', key], { cwd: repo, encoding: 'utf8' }).trim(); }
+      catch { return null; }
+    };
+    runGit(repo, ['config', '--local', '--add', 'credential.helper', '']);
+    runGit(repo, ['config', '--local', '--add', 'credential.helper', 'store']);
+    await configureRepositoryTransport(repo, { credentialHelper: helper });
+    expect(helpers(repo)).toEqual(['', 'store', '', helper]);
+    expect(local('credential.useHttpPath')).toBe('true');
+    await configureRepositoryTransport(repo, { credentialHelper: null });
+    expect(helpers(repo)).toEqual(['', 'store']);
+    expect(local('credential.useHttpPath')).toBeNull();
+    // A value the person set is left alone either way.
+    runGit(repo, ['config', '--local', 'credential.useHttpPath', 'false']);
+    await configureRepositoryTransport(repo, { credentialHelper: helper });
+    await configureRepositoryTransport(repo, { credentialHelper: null });
+    expect(local('credential.useHttpPath')).toBe('false');
+  });
+
   it('writes and removes the managed SSH command without touching one the person wrote', async () => {
     const repo = createTempDir();
     runGit(repo, ['init', '-b', 'main']);
@@ -313,6 +336,19 @@ describe.runIf(canRunGit())('setLocalIdentity', () => {
     runGit(tmpDir, ['config', '--local', '--unset-all', 'user.email']);
     // An unset local key is a null value, not an error: the global author answers.
     expect(await getCurrentIdentity(tmpDir)).toEqual({ userName: 'Global Author', userEmail: 'global@example.com', sshCommand: null });
+  });
+
+  it('clears the author, tolerates keys that are not set, and reports a config it could not write', async () => {
+    const { tmpDir } = await createTempRepo();
+    await expect(clearLocalIdentity(tmpDir)).resolves.toBe(true);
+    expect(await getCurrentIdentity(tmpDir)).toMatchObject({ userName: null, userEmail: null });
+    // Already clear: every key exits 5, which is success.
+    await expect(clearLocalIdentity(tmpDir)).resolves.toBe(true);
+    runGit(tmpDir, ['config', '--local', 'user.name', 'Stays']);
+    fs.writeFileSync(path.join(tmpDir, '.git', 'config.lock'), '');
+    await expect(clearLocalIdentity(tmpDir)).rejects.toThrow();
+    fs.rmSync(path.join(tmpDir, '.git', 'config.lock'));
+    expect((await getCurrentIdentity(tmpDir)).userName).toBe('Stays');
   });
 
   it.each([

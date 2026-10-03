@@ -43,6 +43,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.aiRename.noSmallModel': '需要 Small Model。請登入模型供應商，或在 設定 → 工作階段 中選擇一個。',
   'commitComparison.mode': '提交',
   'pullRequestComparison.select': '選擇拉取請求',
+  'pullRequestComparison.partial': '部分拉取請求無法載入',
   'commitComparison.select': '選擇提交',
   'commitComparison.search': '搜尋提交...',
   'commitComparison.loadError': '無法載入提交',

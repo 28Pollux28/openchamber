@@ -310,10 +310,18 @@ export const getGitHubAuthByAccountId = (credentialId, revision) => authStore.re
 
 export async function setGitHubAuth({ accessToken, scope, tokenType, user, accountId, source = 'oauth' }) {
   if (accountId !== undefined) throw new Error('GitHub credential IDs are server assigned');
-  return authStore.setAccount({ accessToken, scope, tokenType, user, source });
+  const credential = await authStore.setAccount({ accessToken, scope, tokenType, user, source });
+  // A newly connected account becomes current, so the gh CLI stops being it.
+  if (readSettingsFile().ghCliActive) setGhCliActive(false);
+  return credential;
 }
 
-export const activateGitHubAuth = (credentialId) => authStore.activate(credentialId);
+export async function activateGitHubAuth(credentialId) {
+  const activated = await authStore.activate(credentialId);
+  // Switching to a saved account is switching away from the gh CLI login.
+  if (activated && readSettingsFile().ghCliActive) setGhCliActive(false);
+  return activated;
+}
 export const markGitHubAuthAccountInvalid = (credentialId, reason = 'unauthorized') => authStore.markInvalid(credentialId, reason);
 export const removeGitHubAuthAccount = (credentialId) => authStore.removeAccount(credentialId);
 

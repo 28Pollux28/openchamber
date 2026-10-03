@@ -26,7 +26,7 @@ const descendants = (node: React.ReactNode): React.ReactElement<{ children?: Rea
   return [node, ...descendants(node.props.children)];
 };
 
-const mount = async () => {
+const mount = async (initialSelection = '') => {
   class TestWindow extends EventTarget {
     HTMLIFrameElement = class {};
     __OPENCHAMBER_API_BASE_URL__ = 'https://runtime-a.example.com';
@@ -63,7 +63,7 @@ const mount = async () => {
   let selected = '';
   // Run the real component hooks, retaining its element tree without mounting platform UI controls.
   const Probe = () => {
-    const [value, onChange] = React.useState('');
+    const [value, onChange] = React.useState(initialSelection);
     selected = value;
     view = ManagedSshCredentials({ selection: { value, onChange } });
     return null;
@@ -141,6 +141,14 @@ describe('managed SSH inventory UI lifecycle', () => {
     await fixture.resolve({ status: 'imported', credentials: [...inventory.credentials, importedCredential],
       selectedCredential: importedCredential });
     expect(fixture.selected).toBe(importedCredential.credentialId);
+  });
+
+  test('mount keeps an identity\'s saved key until the runtime switches', async () => {
+    const fixture = await mount('ocgit:v1:ssh:a2V5X29uZQ');
+    expect(fixture.selected).toBe('ocgit:v1:ssh:a2V5X29uZQ');
+    expect(fixture.calls).toEqual([]);
+    fixture.switchRuntime();
+    expect(fixture.selected).toBe('');
   });
 
   test('runtime switching clears selection and rejects a late response without automatic reload', async () => {

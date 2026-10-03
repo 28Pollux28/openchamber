@@ -43,6 +43,7 @@ export const dict: Record<I18nKey, string> = {
   'sessions.aiRename.noSmallModel': '需要 Small Model。请登录模型提供商，或在 设置 → 会话 中选择一个。',
   'commitComparison.mode': '提交',
   'pullRequestComparison.select': '选择拉取请求',
+  'pullRequestComparison.partial': '部分拉取请求无法加载',
   'commitComparison.select': '选择提交',
   'commitComparison.search': '搜索提交...',
   'commitComparison.loadError': '无法加载提交',

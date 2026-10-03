@@ -26,8 +26,8 @@
 - `getGitHubAuth()`: current auth entry.
 - `getGitHubAuthAccounts()`: all configured accounts.
 - `getGitHubAuthByAccountId(credentialId, revision?)`: exact valid persisted credential lookup with optional revision pinning and no current-account or CLI fallback. The returned record keeps `credentialId` separate from `providerUserId`.
-- `setGitHubAuth({ accessToken, scope, tokenType, user, accountId })`: save or update account.
-- `activateGitHubAuth(accountId)`: switch active account.
+- `setGitHubAuth({ accessToken, scope, tokenType, user, accountId })`: save or update account; the new account becomes current and gh CLI activation is cleared.
+- `activateGitHubAuth(accountId)`: switch active account; switching to a saved account clears gh CLI activation.
 - `clearGitHubAuth()`: clear current account.
 - `markGitHubAuthAccountInvalid(accountId)`: retain exact account metadata but make its credential unavailable.
 - `removeGitHubAuthAccount(accountId)`: remove exactly one persisted account.
@@ -43,7 +43,7 @@
 ### Octokit
 
 - `getOctokitOrNull()`: current Octokit or `null`.
-- `getOctokitForAccountId(accountId)`: exact persisted or verified CLI Octokit context with credential revision and provider-user identity. It never falls back to another account.
+- `getOctokitForAccountId(accountId)`: exact persisted or verified CLI Octokit context with credential revision and provider-user identity. It never falls back to another account. A `github.com#cli:` id resolves only while the user has switched to the gh account (`isGhCliActive()`); the gh token is otherwise read only to list the gh account in Settings.
 
 ### Repo
 

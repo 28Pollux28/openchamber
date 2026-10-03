@@ -640,7 +640,7 @@ export const DirectoryExplorerDialog: React.FC<DirectoryExplorerDialogProps> = (
         }, { git, sourceControl });
         // The project is added either way; what could not be written is said
         // here rather than swallowed, and the Git panel can finish it.
-        if (outcome.status === 'failed') toast.warning(t('directoryExplorerDialog.existing.bindFailed'));
+        if (outcome.status === 'failed' && outcome.reason !== 'runtime') toast.warning(t('directoryExplorerDialog.existing.bindFailed'));
       }
       openProjectDraft(project.id, project.path);
       if (setupRequired) {

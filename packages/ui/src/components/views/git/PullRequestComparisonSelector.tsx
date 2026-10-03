@@ -59,6 +59,10 @@ export function PullRequestComparisonSelector({ comparison, mobile = false }: {
         })}
       </CommandGroup>
       {comparison.error && <p className="px-3 py-2 typography-meta text-muted-foreground">{comparison.error}</p>}
+      {!comparison.error && comparison.incompleteProjectIds.length > 0 && <div className="flex items-center justify-between gap-2 px-3 py-2 typography-meta text-muted-foreground">
+        <span>{t('pullRequestComparison.partial')}</span>
+        <Button variant="outline" size="sm" onClick={() => void comparison.refresh()}>{t('diffView.actions.retry')}</Button>
+      </div>}
       {comparison.hasMore && <Button variant="ghost" size="sm" disabled={comparison.loadingMore} onClick={() => void comparison.loadMore()}>
         {comparison.error ? t('diffView.actions.retry') : t('session.githubPrPicker.actions.loadMore')}
       </Button>}

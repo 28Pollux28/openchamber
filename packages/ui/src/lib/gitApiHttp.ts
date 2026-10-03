@@ -159,7 +159,7 @@ const contributorDestinationCandidatesSchema = z.discriminatedUnion('kind', [z.o
 }).strict(), z.object({
   kind: z.literal('contributor'),
   repositoryId: identityStringSchema,
-  bindingRevision: z.number().int().safe().positive(),
+  bindingRevision: z.number().int().safe().nonnegative(),
   configRevision: identityStringSchema,
   provenanceRevision: z.number().int().safe().positive(),
   candidates: z.array(contributorDestinationCandidateSchema).max(128),
@@ -291,7 +291,7 @@ const targetSchema = z.discriminatedUnion('operation', [
   z.object({
     operation: z.literal('delete-remote-branch'),
     repositoryId: identityStringSchema,
-    bindingRevision: z.number().int().safe().positive(),
+    bindingRevision: z.number().int().safe().nonnegative(),
     configRevision: identityStringSchema,
     remote: remoteTargetSchema,
     destinationRef: refSchema,
@@ -299,7 +299,7 @@ const targetSchema = z.discriminatedUnion('operation', [
   z.object({
     operation: z.literal('checkout-hydration'),
     repositoryId: identityStringSchema,
-    bindingRevision: z.number().int().safe().positive(),
+    bindingRevision: z.number().int().safe().nonnegative(),
     configRevision: identityStringSchema,
     remote: remoteTargetSchema,
     requirements: z.array(z.object({
@@ -311,7 +311,7 @@ const targetSchema = z.discriminatedUnion('operation', [
   z.object({
     operation: z.literal('sync'),
     repositoryId: identityStringSchema,
-    bindingRevision: z.number().int().safe().positive(),
+    bindingRevision: z.number().int().safe().nonnegative(),
     configRevision: identityStringSchema,
     fetch: z.object({
       name: identityStringSchema,

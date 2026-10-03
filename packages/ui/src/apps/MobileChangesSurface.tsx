@@ -184,7 +184,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     setIsApplyingIdentity(true);
     try {
       const outcome = await applyIdentityToRepository(
-        { directory: currentDirectory, identity: profile, remoteName: effectiveRemotes[0]?.name ?? null },
+        { directory: currentDirectory, identity: profile, remoteName: bindingRemoteName || null },
         { git, sourceControl },
       );
       if (outcome.status === 'failed') toast.error(t('gitView.toast.applyIdentityFailed'));
@@ -279,6 +279,12 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
   const commitComparison = useCommitComparison(currentDirectory || null, currentBranch, visible && mode === 'commit' && isGitRepo === true);
   const selectedCommitHash = commitComparison.selectedCommit?.hash ?? null;
   const binding = useRepositoryBinding(currentDirectory || null, sourceControl);
+  // The remote an identity is judged against and applied to: the bound
+  // primary remote, resolved the way the desktop Git view resolves it.
+  const bindingRemoteName = binding.read?.binding?.remotes[0]?.name
+    ?? binding.read?.repository.remotes.find((remote) => remote.name === 'origin')?.name
+    ?? binding.read?.repository.remotes[0]?.name
+    ?? '';
   const boundAccountId = binding.read
     ? binding.read.binding?.providers.find((provider) => provider.readiness === 'ready')?.accountId ?? null
     : undefined;
@@ -1112,8 +1118,8 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
             isApplying={isApplyingIdentity}
             onConfigure={() => setRepositoryConfigurationOpen(true)}
             applicability={(identity) => {
-              const url = effectiveRemotes[0]?.fetchUrl ?? '';
-              return url ? identityApplicability(identity, remoteTraits(url)) : { applicable: true };
+              const remote = binding.read?.repository.remotes.find((entry) => entry.name === bindingRemoteName);
+              return remote ? identityApplicability(identity, remoteTraits(remote.fetch.displayUrl)) : { applicable: true };
             }}
           />
           <SyncActions

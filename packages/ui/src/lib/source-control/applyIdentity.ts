@@ -7,6 +7,7 @@ import type {
   SourceControlBindingRead,
 } from '@/lib/api/types';
 import { identityTransport } from '@/lib/api/git-identity';
+import { getRuntimeKey } from '@/lib/runtime-switch';
 import { instanceHost, remoteTraits, type RemoteTraits } from './identity';
 import { repositoryBindingOwner } from './repository-binding';
 
@@ -42,7 +43,7 @@ export const identityApplicability = (
 
 type ApplyIdentityOutcome =
   | { status: 'applied' }
-  | { status: 'failed'; reason: 'binding' | 'author' };
+  | { status: 'failed'; reason: 'binding' | 'author' | 'runtime' };
 
 type ApplyIdentityInput = {
   directory: string;
@@ -54,6 +55,28 @@ type ApplyIdentityInput = {
 type ApplyIdentityAPIs = {
   git: Pick<GitAPI, 'configureTransportBinding' | 'removeTransportBinding' | 'setGitIdentity'>;
   sourceControl: Pick<SourceControlAPI, 'repositoryBinding' | 'repositoryProviderBindingMutate'>;
+  /** The active runtime; defaults to the app's. */
+  runtimeKey?: () => string;
+};
+
+/**
+ * Thrown when the person switched runtimes while an identity was being
+ * applied. The APIs resolve the current endpoint on every call, so anything
+ * written after the switch would land on the other machine's repository at the
+ * same path.
+ */
+class StaleRuntimeError extends Error {
+  constructor() {
+    super('stale-runtime');
+    this.name = 'StaleRuntimeError';
+  }
+}
+
+const runtimeGuard = (runtimeKey: () => string = getRuntimeKey): () => void => {
+  const captured = runtimeKey();
+  return () => {
+    if (runtimeKey() !== captured) throw new StaleRuntimeError();
+  };
 };
 
 /**
@@ -115,21 +138,33 @@ export const describeIdentityApplicability = (
  */
 export const applyIdentityToRepository = async (
   { directory, identity, remoteName }: ApplyIdentityInput,
-  { git, sourceControl }: ApplyIdentityAPIs,
+  { git, sourceControl, runtimeKey }: ApplyIdentityAPIs,
 ): Promise<ApplyIdentityOutcome> => {
+  const requireRuntime = runtimeGuard(runtimeKey);
   // The transfer half needs a remote to answer for and a runtime that holds
   // bindings — VS Code holds none.
   let outcome: ApplyIdentityOutcome = remoteName && git.configureTransportBinding
     ? await applyBinding(
       { directory, identity, remoteName },
-      { configureTransportBinding: git.configureTransportBinding, removeTransportBinding: git.removeTransportBinding, sourceControl },
+      {
+        configureTransportBinding: git.configureTransportBinding,
+        removeTransportBinding: git.removeTransportBinding,
+        sourceControl,
+        requireRuntime,
+      },
     )
     : { status: 'applied' };
+  if (outcome.status === 'failed' && outcome.reason === 'runtime') return outcome;
 
   // The signature is written to the repository itself, so it is applied even
   // when the transfer side could not be. The system identity is applied the
   // same way: its id removes the repository's own author instead of naming one,
   // which is what "no override applies here" means.
+  try {
+    requireRuntime();
+  } catch {
+    return { status: 'failed', reason: 'runtime' };
+  }
   try {
     if (identity.id) await git.setGitIdentity(directory, identity.id);
   } catch {
@@ -184,9 +219,18 @@ export const grantIdentityToRemote = async (
   { directory, identity, remoteName }: {
     directory: string; identity: GitIdentityProfile; remoteName: string;
   },
-  { git, sourceControl }: ApplyIdentityAPIs,
+  { git, sourceControl, runtimeKey }: ApplyIdentityAPIs,
 ): Promise<ApplyIdentityOutcome> => {
   if (!git.configureTransportBinding) return { status: 'failed', reason: 'binding' };
+  const requireRuntime = runtimeGuard(runtimeKey);
+  const isRuntime = () => {
+    try {
+      requireRuntime();
+      return true;
+    } catch {
+      return false;
+    }
+  };
   const scope = repositoryBindingOwner.scope(directory);
   let read: SourceControlBindingRead;
   try {
@@ -196,16 +240,23 @@ export const grantIdentityToRemote = async (
   }
   const intent = transportIntent(identity, read, remoteName, directory);
   if (!intent) return { status: 'failed', reason: 'binding' };
+  try {
+    requireRuntime();
+  } catch {
+    return { status: 'failed', reason: 'runtime' };
+  }
   const mutation = repositoryBindingOwner.captureMutation(scope, read);
   let outcome: ApplyIdentityOutcome = { status: 'applied' };
   try {
     const result = await git.configureTransportBinding(intent);
+    requireRuntime();
     if (result.status === 'configured') {
       repositoryBindingOwner.setMutationResult(mutation, result.binding);
     } else {
       await repositoryBindingOwner.reconcile(mutation, sourceControl);
     }
-  } catch {
+  } catch (error) {
+    if (error instanceof StaleRuntimeError || !isRuntime()) return { status: 'failed', reason: 'runtime' };
     outcome = { status: 'failed', reason: 'binding' };
     await repositoryBindingOwner.reconcile(mutation, sourceControl);
   } finally {
@@ -219,10 +270,11 @@ const applyBinding = async (
   { directory, identity, remoteName }: {
     directory: string; identity: GitIdentityProfile; remoteName: string;
   },
-  { configureTransportBinding, removeTransportBinding, sourceControl }: {
+  { configureTransportBinding, removeTransportBinding, sourceControl, requireRuntime }: {
     configureTransportBinding: NonNullable<GitAPI['configureTransportBinding']>;
     removeTransportBinding: GitAPI['removeTransportBinding'];
     sourceControl: ApplyIdentityAPIs['sourceControl'];
+    requireRuntime: () => void;
   },
 ): Promise<ApplyIdentityOutcome> => {
   const scope = repositoryBindingOwner.scope(directory);
@@ -231,6 +283,11 @@ const applyBinding = async (
     read = await sourceControl.repositoryBinding(directory);
   } catch {
     return { status: 'failed', reason: 'binding' };
+  }
+  try {
+    requireRuntime();
+  } catch {
+    return { status: 'failed', reason: 'runtime' };
   }
   const mutation = repositoryBindingOwner.captureMutation(scope, read);
   let outcome: ApplyIdentityOutcome = { status: 'applied' };
@@ -250,6 +307,7 @@ const applyBinding = async (
       expectedRepositoryId: read.repository.repositoryId,
       expectedRevision: read.revision,
     };
+    requireRuntime();
     if (identity.account) {
       const provider = { ...identity.account, primaryRemote: remoteName };
       read = await sourceControl.repositoryProviderBindingMutate(target
@@ -260,6 +318,7 @@ const applyBinding = async (
     }
     const intent = transportIntent(identity, read, remoteName, directory);
     if (intent) {
+      requireRuntime();
       const result = await configureTransportBinding(intent);
       if (result.status === 'configured') read = result.binding;
     }
@@ -278,6 +337,7 @@ const applyBinding = async (
       if (granted && granted.readiness !== 'ready') continue;
       const fits = identityApplicability(identity, remoteTraits(current.fetch.displayUrl)).applicable;
       const next = fits ? transportIntent(identity, read, name, directory) : null;
+      requireRuntime();
       try {
         if (next) {
           const result = await configureTransportBinding(next);
@@ -300,8 +360,17 @@ const applyBinding = async (
         outcome = { status: 'failed', reason: 'binding' };
       }
     }
+    requireRuntime();
     repositoryBindingOwner.setMutationResult(mutation, read);
-  } catch {
+  } catch (error) {
+    // Another runtime's binding is not this repository's: nothing read from
+    // it may reconcile the owner, and nothing more is written.
+    if (error instanceof StaleRuntimeError) return { status: 'failed', reason: 'runtime' };
+    try {
+      requireRuntime();
+    } catch {
+      return { status: 'failed', reason: 'runtime' };
+    }
     outcome = { status: 'failed', reason: 'binding' };
     await repositoryBindingOwner.reconcile(mutation, sourceControl);
   } finally {

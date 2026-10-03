@@ -232,7 +232,7 @@ Clone publication creates every directory, file, and symlink exclusively and rec
 
 `anonymous` is a distinct credential-free HTTPS read mode for fetch, pull, and clone. Push, remote-branch deletion, and a sync with an anonymous push target fail before plan registration or transfer. A sync may use an anonymous fetch target only with a separately authorized non-anonymous push target. Anonymous requests reject credential references and credential accounts. SSH is unsupported, including public-key or agent fallback.
 
-Anonymous execution uses managed HTTPS environment and exact-key local HTTP sanitation, but never calls the credential resolver or starts a broker. It disables credential helpers, AskPass, cookies, delegation, automatic client certificates, redirects, recursive fetches, and non-HTTPS protocols. An isolated home and removal of `NETRC` prevent Curl from finding host credentials outside Git config. TLS verification stays enabled in production. Repository URL rewrites return `RUNTIME_UNSUPPORTED` rather than redirecting the approved endpoint. On Git/Curl builds that reject an empty client-certificate reset, an existing local client-certificate setting can still make the read fail; there is no retry with ambient authentication.
+Anonymous execution uses managed HTTPS environment and exact-key local HTTP sanitation, but never calls the credential resolver or starts a broker. It disables credential helpers, AskPass, cookies, delegation, automatic client certificates, redirects, recursive fetches, and non-HTTPS protocols. An isolated home and removal of `NETRC` prevent Curl from finding host credentials outside Git config. Managed HTTPS uses the same isolated home, so an ambient `~/.netrc` entry cannot authenticate as an account other than the selected one; managed SSH keeps the host home. TLS verification stays enabled in production. Repository URL rewrites return `RUNTIME_UNSUPPORTED` rather than redirecting the approved endpoint. On Git/Curl builds that reject an empty client-certificate reset, an existing local client-certificate setting can still make the read fail; there is no retry with ambient authentication.
 
 Public transport is `{ mode: 'anonymous', verification: { status: 'anonymous' } }`, with no actor. Audit transport is `{ kind: 'anonymous' }` and has no provider account. Auxiliary endpoints still need independent exact grants, even on the same host. An exact anonymous auxiliary grant may fetch only an HTTPS submodule or LFS endpoint under the same credential-free environment isolation; it never starts the credential resolver or broker. Missing grants remain authorization-required. Explicit managed auxiliary grants cannot replace the parent's anonymous metadata.
 
@@ -246,7 +246,7 @@ The operation executor reads `.gitmodules` from the selected commit with `git co
 
 Each submodule endpoint needs an exact auxiliary grant, including same-host paths. Cross-host children never receive the parent credential. The executor resolves every credential by the child endpoint's own opaque ID, checks the discovered endpoint against the grant before credential resolution and again before spawn, and redacts raw endpoints, paths, credentials, and process errors. One child failure does not erase completed siblings. Cancellation between children prevents later children from starting. Every existing component of a submodule checkout path must be a real directory; symbolic links fail before auxiliary authorization or transfer. After authorization, the executor checks the path components again and creates missing parent directories one level at a time before it creates the child checkout. Repair accepts an already-present child only when its HEAD exactly equals the committed gitlink, then inspects it recursively without another clone. A child directory created by the current failed transfer is quarantined and removed only when its filesystem identity still matches the operation's record.
 
-LFS discovery combines effective attributes, bounded object batches, committed `.lfsconfig`, effective remote LFS URLs, and executable filter and transfer configuration. It queries attributes and object metadata in batches of at most 128 paths, then reads only pointer-sized blobs through `cat-file --batch`. A complete ordinary repository is not rejected merely for exceeding 256 or 1,024 files. Listing, query-output, pointer-byte, and public-result limits remain enforced. Incomplete or malformed discovery fails closed, never as `not-needed`. Custom transfer agents and non-canonical executable LFS filters fail before LFS execution. The effective HTTPS LFS endpoint gets its own exact auxiliary grant, including for an SSH Git checkout. Hydration runs explicit `git lfs fetch <selected-parent-remote> HEAD` and `git lfs checkout` under registry process ownership. A required missing client returns `GIT_LFS_CLIENT_MISSING` with `client-missing` instead of a generic clone failure.
+LFS discovery combines effective attributes, bounded object batches, committed `.lfsconfig`, effective `lfs.url` and remote LFS URLs (Git configuration wins over `.lfsconfig`, and `lfs.url` over `remote.<name>.lfsurl`, as in Git LFS), and executable filter and transfer configuration. It queries attributes and object metadata in batches of at most 128 paths, then reads only pointer-sized blobs through `cat-file --batch`. A complete ordinary repository is not rejected merely for exceeding 256 or 1,024 files. Listing, query-output, pointer-byte, and public-result limits remain enforced. Incomplete or malformed discovery fails closed, never as `not-needed`. Custom transfer agents and non-canonical executable LFS filters fail before LFS execution. The effective HTTPS LFS endpoint gets its own exact auxiliary grant, including for an SSH Git checkout. Hydration runs explicit `git lfs fetch <selected-parent-remote> HEAD` and `git lfs checkout` under registry process ownership. A required missing client returns `GIT_LFS_CLIENT_MISSING` with `client-missing` instead of a generic clone failure.
 
 Local worktree hydration first inspects local content. Git-route and OpenChamber-session creation both use the server's one durable bootstrap store and always invoke this inspection, including for repositories without a source-control binding. A checkout needing neither submodule nor LFS transfer requires no parent remote; required hydration without an exact source persists path-specific authorization data rather than choosing `origin` or reporting setup ready. Its operation-private durable marker carries no fabricated repository or remote authority and cannot complete a retained-checkout repair blocker. Managed pull and sync integration use a credential-free local execution context with network protocols, lazy fetching, hooks, content filters, fsmonitor, autostash, and recursive submodule operations disabled. Required post-integration hydration uses explicit grants; failure preserves the completed local update and skips sync publication.
 
@@ -267,6 +267,8 @@ Operation states are `planned`, `running`, `succeeded`, `partial`, `conflicted`,
 Planning and execution each use one absolute five-minute deadline by default; the deadline does not reset between authority, credential, filesystem, fetch, and integration phases or between child processes. The legacy `cloneRepository` adapter starts one deadline before identity validation and carries it through planning and execution. Duplicate execute requests join the first process-local promise and its deadline.
 
 Cancellation before execution becomes terminal without spawning. Cancellation and timeout terminate the attached process tree, with forced escalation after one second by default. Fetch and clone interruption return `cancelled` with `CANCELLED` or `TIMEOUT`. Once push transfer starts, interruption returns `outcome-unknown` because the remote may have accepted the update. Pull interruption during merge returns `conflicted` when `MERGE_HEAD` remains, otherwise `outcome-unknown` because the local result cannot be proved. Terminal cancellation returns the existing snapshot.
+
+A broker lease's nonce reaches the helper only through the `OPENCHAMBER_GIT_CREDENTIAL_NONCE` environment variable the lease returns in `env` (the operation merges it into the Git process environment); the helper command line carries the loopback URL only, because argv is readable by other local users.
 
 The service revokes broker leases and managed credential snapshots on terminal paths. A successful operation becomes `failed` if required credential or temporary-ref cleanup fails. Pull temporary-ref deletion gets a fresh bounded five-second cleanup deadline, even when the operation deadline expired or cancellation was requested; no other Git command bypasses cancellation.
 
@@ -329,8 +331,11 @@ its own `.git/config`, so that push acts as the same account from anywhere.
   `credential.helper` (Git's way of saying the entries before it do not apply
   to this repository) followed by the launcher for an account grant, and
   `core.sshCommand` naming `ssh-wrapper.js` with the key for a managed-key
-  grant. It removes only its own entries; a helper the person configured
-  stays. `source-control/routes.js` calls it after every transport grant
+  grant. With the helper it also turns on `credential.useHttpPath` (unless
+  the person set that key; the `openchamber.credentialUseHttpPath` marker
+  records ownership) so Git sends the repository path. It removes only its
+  own entries: the helper and the empty reset directly before it; a helper or
+  empty reset the person configured stays. `source-control/routes.js` calls it after every transport grant
   change, so choosing the System identity removes both.
 - `repository-credential-runtime.js` answers Git. On every server start it
   writes `bin/git-credential-openchamber` (a launcher pinning this executable,
@@ -339,9 +344,14 @@ its own `.git/config`, so that push acts as the same account from anywhere.
   `OPENCHAMBER_DATA_DIR`, so a repository configured against an earlier start
   keeps working. `POST /api/git/repository-credential` takes the helper's
   working directory and Git's query and answers only for that repository's own
-  binding: a managed HTTPS grant resolves to a credential for this one request,
-  a System grant or an unbound repository is handed back to the machine, and a
-  grant whose credential is gone answers nothing.
+  binding, selecting the grant by host and repository path (a git-lfs sub-path
+  counts as its repository): a managed HTTPS grant resolves to a credential
+  for this one request, a System grant or an endpoint no grant names is handed
+  back to the machine, and a managed grant that is not ready (account
+  disconnected, remote changed) or whose credential is gone answers nothing,
+  so a shell push never silently falls to another account. A query without a
+  path (a repository configured before path matching) is answered only when
+  every grant on the host agrees.
 - `repository-credential-helper.js` is what Git runs. When the server says
   System, or when the server is not running at all, it asks the person's own
   credential chain by running `git credential fill` from outside the

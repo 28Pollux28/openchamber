@@ -43,6 +43,10 @@ export async function probeGitLabAuth({ origin, clientId, fetch: fetchImpl = fet
   } catch (error) {
     throw new GitLabRequestError('unreachable', error?.message || 'GitLab instance is unreachable');
   }
+  // Rate limiting and server errors say nothing about whether this is GitLab.
+  if (versionResponse.status === 429 || versionResponse.status >= 500) {
+    throw new GitLabRequestError('temporarily-unavailable', 'GitLab instance is temporarily unavailable', versionResponse.status);
+  }
   const versionPayload = await readJson(versionResponse);
   const requiresAuthentication = versionResponse.status === 401 || versionResponse.status === 403;
   const hasGitLabMarker = isString(versionResponse.headers.get('x-gitlab-meta'));

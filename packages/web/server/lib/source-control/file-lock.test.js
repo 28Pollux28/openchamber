@@ -66,7 +66,7 @@ it('reclaims the lock of a process that died holding it', async () => {
 });
 
 // Two waiters judged the same dead lock; the faster one already replaced it
-// with its own by the time the slower one acts on what it read.
+// with its own by the time the slower one gets to remove what it judged.
 it('never reclaims a lock created after the abandoned one it inspected', async () => {
   const lockPath = await setup();
   await fs.writeFile(lockPath, '{"pid":999999999,"at":1}', { mode: 0o600 });
@@ -75,21 +75,39 @@ it('never reclaims a lock created after the abandoned one it inspected', async (
   let swapped = false;
   const fsImpl = {
     ...fs,
-    readFile: async (target, options) => {
-      const content = await fs.readFile(target, options);
-      if (target === lockPath && !swapped) {
+    open: async (target, flags, mode) => {
+      if (target === lockPath && flags === 'r' && !swapped) {
         swapped = true;
         await fs.rename(lockPath, `${lockPath}.dead`);
         await fs.writeFile(lockPath, fresh, { mode: 0o600 });
       }
-      return content;
+      return fs.open(target, flags, mode);
     },
   };
 
   await expect(withSourceControlFileLock(lockPath, () => { throw new Error('must not run'); }, { fsImpl, waitMs: 25 }))
     .rejects.toMatchObject({ code: 'SOURCE_CONTROL_LOCK_BUSY' });
   expect(await fs.readFile(lockPath, 'utf8')).toBe(fresh);
-  expect((await fs.readdir(path.dirname(lockPath))).filter((name) => name.includes('.reclaim-'))).toEqual([]);
+  await expect(fs.stat(`${lockPath}.guard`)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+// The window the guard closes: a waiter that removes a dead lock must not be
+// able to remove the live lock another waiter took in the meantime.
+it('does not reclaim while another waiter holds the reclaim guard, and clears a guard left by a dead waiter', async () => {
+  const lockPath = await setup();
+  const guard = `${lockPath}.guard`;
+  await fs.writeFile(lockPath, '{"pid":999999999,"at":1}', { mode: 0o600 });
+  await fs.utimes(lockPath, new Date(0), new Date(0));
+  await fs.writeFile(guard, '', { mode: 0o600 });
+
+  await expect(withSourceControlFileLock(lockPath, () => { throw new Error('must not run'); }, { waitMs: 25 }))
+    .rejects.toMatchObject({ code: 'SOURCE_CONTROL_LOCK_BUSY' });
+  expect(await fs.readFile(lockPath, 'utf8')).toBe('{"pid":999999999,"at":1}');
+
+  await fs.utimes(guard, new Date(0), new Date(0));
+  await expect(withSourceControlFileLock(lockPath, () => 1, { waitMs: 25 })).resolves.toBe(1);
+  await expect(fs.stat(lockPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(fs.stat(guard)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
 it('never releases a replacement identity', async () => {

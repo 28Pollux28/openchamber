@@ -80,6 +80,22 @@ describe('source-control audit storage', () => {
       await expect(store.plan({ ...input, id: 'invalid', transportReference: { kind: 'anonymous', ...extra } })).rejects.toMatchObject({ code: 'INVALID_SOURCE_CONTROL_AUDIT' });
     }
   });
+  it('drops a Git plan that never started once no plan could still start, and keeps running ones', async () => {
+    let timestamp = 1_000;
+    const { store } = await setup({ now: () => timestamp, maxRecords: 2 });
+    const git = (id) => plan(id, { executorKind: 'openchamber-server-git', providerAccountId: null,
+      transportReference: { kind: 'anonymous' }, target: { kind: 'git-network', operation: 'fetch', fetchScope: 'remote', force: false,
+        remotes: [{ role: 'operation', name: 'origin', endpointFingerprint: 'a'.repeat(43) }] } });
+    await store.plan(git('git:unstarted'));
+    await store.plan(git('git:running'));
+    await store.start('git:running');
+    await expect(store.plan(git('git:next'))).rejects.toMatchObject({ code: 'SOURCE_CONTROL_AUDIT_CAPACITY' });
+
+    timestamp += 60 * 60 * 1000;
+    await expect(store.plan(git('git:next'))).resolves.toMatchObject({ status: 'planned' });
+    await expect(store.read('git:unstarted')).resolves.toBeNull();
+    await expect(store.read('git:running')).resolves.toMatchObject({ state: 'running' });
+  });
   it('round trips remote Fetch scope without refs, endpoints, or provider credentials', async () => {
     const { filePath, store } = await setup();
     const target = {

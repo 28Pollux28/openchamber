@@ -27,6 +27,10 @@ import { useI18n } from '@/lib/i18n';
 /** Select value for an identity that answers to no connected account. */
 const NO_ACCOUNT = '__none__';
 
+/** Same key `buildManagedAccountOptions` gives the account's option. */
+const accountOptionKey = (account: NonNullable<GitIdentityProfile['account']>): string =>
+  JSON.stringify([account.provider, account.instance, account.accountId]);
+
 /**
  * How an identity pushes and pulls. Only "Account" needs a connected account;
  * the others may still name one so it answers for issues and change requests.
@@ -112,6 +116,13 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
     return buildManagedAccountOptions(identity, entry.status.accounts, (account) => t(getManagedCredentialSourceLabelKey(account.source)));
   }), [authEntries, identities, t]);
   const selectedAccount = accountOptions.find((option) => option.key === accountKey) ?? null;
+  // A stored account the account list cannot show right now (status read
+  // failed, provider offline) stays the identity's account: only choosing
+  // another entry or "None" changes it, never a failed read.
+  const storedAccount = selectedProfile?.account && accountKey === accountOptionKey(selectedProfile.account)
+    ? selectedProfile.account
+    : null;
+  const accountReference = selectedAccount?.reference ?? storedAccount;
   const transport = method;
 
   React.useEffect(() => {
@@ -135,9 +146,7 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
       setSigningKey(selectedProfile.signingKey || '');
       setColor(selectedProfile.color || 'keyword');
       setIcon(selectedProfile.icon || 'branch');
-      setAccountKey(selectedProfile.account
-        ? JSON.stringify([selectedProfile.account.provider, selectedProfile.account.instance, selectedProfile.account.accountId])
-        : NO_ACCOUNT);
+      setAccountKey(selectedProfile.account ? accountOptionKey(selectedProfile.account) : NO_ACCOUNT);
       setMethod(selectedProfile.transport ?? 'system');
       setSshCredentialId(selectedProfile.sshCredentialId ?? '');
     } else if (isGlobalProfile) {
@@ -163,7 +172,7 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
       toast.error(t('settings.gitIdentities.editor.toast.signingKeyRequired'));
       return;
     }
-    if (transport === 'account' && !selectedAccount) {
+    if (transport === 'account' && !accountReference) {
       toast.error(t('settings.gitIdentities.editor.toast.accountRequired'));
       return;
     }
@@ -179,7 +188,7 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
         name: name.trim() || userName.trim(),
         userName: userName.trim(),
         userEmail: userEmail.trim(),
-        account: selectedAccount?.reference ?? null,
+        account: accountReference,
         transport,
         signCommits,
         signingKey: signingKey.trim() || null,
@@ -385,7 +394,7 @@ export const GitIdentityEditorDialog: React.FC<GitIdentityEditorDialogProps> = (
                       onValueChange={setAccountKey}
                     >
                       <SelectTrigger className="w-full" aria-label={t('settings.gitIdentities.editor.field.account')}>
-                        <SelectValue>{selectedAccount?.label ?? t('settings.gitIdentities.editor.field.accountNone')}</SelectValue>
+                        <SelectValue>{selectedAccount?.label ?? storedAccount?.instance ?? t('settings.gitIdentities.editor.field.accountNone')}</SelectValue>
                       </SelectTrigger>
                       <SelectContent>
                         {accountOptions.map((option) => (

@@ -26,11 +26,11 @@ const helperInvocation = (lease) => {
 
 const runHelper = async (lease, query) => {
   const invocation = helperInvocation(lease);
-  return runProcess(invocation.executable, invocation.args.concat('get'), query);
+  return runProcess(invocation.executable, invocation.args.concat('get'), query, lease.env);
 };
 
-const runProcess = (executable, args, input) => new Promise((resolve, reject) => {
-  const child = spawn(executable, args, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'] });
+const runProcess = (executable, args, input, env = {}) => new Promise((resolve, reject) => {
+  const child = spawn(executable, args, { shell: false, windowsHide: true, stdio: ['pipe', 'pipe', 'pipe'], env: { ...process.env, ...env } });
   const stdout = [];
   const stderr = [];
   child.stdout.on('data', (chunk) => stdout.push(chunk));
@@ -52,6 +52,11 @@ describe('Git credential broker', () => {
     const lease = broker.issue({ operationId: 'fetch-one', credential: credential('one/repo.git') });
 
     expect(lease.gitConfigArgs.join(' ')).not.toContain('operation-secret');
+    // The nonce redeems the lease, so it never appears on a command line.
+    const nonce = lease.env.OPENCHAMBER_GIT_CREDENTIAL_NONCE;
+    expect(nonce).toMatch(/^[A-Za-z0-9_-]{43}$/);
+    expect(lease.gitConfigArgs.join(' ')).not.toContain(nonce);
+    expect(lease.redactionSecrets).toContain(nonce);
     expect(JSON.stringify(broker.snapshot())).not.toContain('operation-secret');
     const { stdout, stderr } = await runHelper(lease, [
       'capability[]=authtype',

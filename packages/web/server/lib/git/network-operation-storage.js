@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import os from 'node:os';
 import { constants as fsConstants } from 'node:fs';
 import { withSourceControlFileLock } from '../source-control/file-lock.js';
 
@@ -325,12 +326,21 @@ const isSnapshot = (value, operationId, state, completedSteps) => isPlainObject(
     && !['succeeded', 'not-needed'].includes(value.hydration.status))
   && validatePublicValue(value);
 
+// The process that claimed a record. Several OpenChamber servers may share one
+// data directory (the desktop app and a CLI server, say), so recovery must not
+// treat another live server's running operation as one a restart interrupted.
+const isOwner = (value) => isPlainObject(value)
+  && exactKeys(value, ['pid', 'host', 'instance'])
+  && Number.isSafeInteger(value.pid) && value.pid > 0
+  && isIdentifier(value.host, 256) && isIdentifier(value.instance, 128);
+
 const parseRecord = (value, id) => {
   if (!isPlainObject(value) || !exactKeys(value, [
     'operationId', 'runtimeIdentity', 'repositoryId', 'targetFingerprints', 'snapshot', 'state',
     'completedSteps', 'createdAt', 'startedAt', 'finishedAt', 'expiresAt',
     'remotePublicationStarted', 'localIntegrationStarted',
-  ]) || value.operationId !== id || !isOperationId(id)
+  ], ['owner']) || value.operationId !== id
+    || (value.owner !== undefined && !isOwner(value.owner)) || !isOperationId(id)
     || !TERMINAL_STATES.has(value.state) && !['planned', 'running'].includes(value.state)
     || !Array.isArray(value.completedSteps) || value.completedSteps.length > STEPS.size
     || value.completedSteps.some((step) => !STEPS.has(step))
@@ -432,6 +442,14 @@ export function createGitNetworkOperationStore({
     || !Number.isSafeInteger(maxBytes) || maxBytes < 1024) {
     throw new TypeError('Git network operation store options are invalid');
   }
+  const owner = Object.freeze({ pid: process.pid, host: os.hostname(), instance: randomUUID() });
+  const ownerAlive = (recordOwner) => {
+    if (!recordOwner) return false;
+    if (recordOwner.instance === owner.instance) return true;
+    if (recordOwner.host !== owner.host || recordOwner.pid === owner.pid) return false;
+    try { process.kill(recordOwner.pid, 0); return true; }
+    catch (error) { return error?.code === 'EPERM'; }
+  };
   let writes = Promise.resolve();
   const enqueue = (operation) => {
     const next = writes.then(() => withSourceControlFileLock(`${filePath}.lock`, operation, { fsImpl, waitMs: lockWaitMs }));
@@ -493,7 +511,7 @@ export function createGitNetworkOperationStore({
     if (Object.keys(state.records).length >= maxRecords) throw capacityError();
   };
   const buildRecord = ({ snapshot, createdAt, startedAt = null, finishedAt = null,
-    remotePublicationStarted = false, localIntegrationStarted = false }) => {
+    remotePublicationStarted = false, localIntegrationStarted = false, recordOwner }) => {
     const publicSnapshot = scrubPublicSnapshot(snapshot);
     const state = publicSnapshot.state;
     const completedSteps = publicSnapshot.completedSteps;
@@ -513,11 +531,12 @@ export function createGitNetworkOperationStore({
       remotePublicationStarted,
       localIntegrationStarted,
     };
+    if (recordOwner) record.owner = recordOwner;
     return parseRecord(record, record.operationId);
   };
   const claim = (snapshot) => enqueue(async () => {
     const timestamp = now();
-    const record = buildRecord({ snapshot, createdAt: timestamp });
+    const record = buildRecord({ snapshot, createdAt: timestamp, recordOwner: owner });
     if (record.state !== 'planned') throw invalidStore();
     const state = await readState();
     prune(state, timestamp);
@@ -551,6 +570,7 @@ export function createGitNetworkOperationStore({
       finishedAt,
       remotePublicationStarted: current.remotePublicationStarted || input.remotePublicationStarted === true,
       localIntegrationStarted: current.localIntegrationStarted || input.localIntegrationStarted === true,
+      recordOwner: current.owner,
     });
     if (JSON.stringify(current.runtimeIdentity) !== JSON.stringify(next.runtimeIdentity)
       || current.repositoryId !== next.repositoryId
@@ -568,7 +588,7 @@ export function createGitNetworkOperationStore({
     const timestamp = now();
     let changed = false;
     for (const [id, record] of Object.entries(state.records)) {
-      if (record.state === 'planned' || record.state === 'running') {
+      if ((record.state === 'planned' || record.state === 'running') && !ownerAlive(record.owner)) {
         state.records[id] = parseRecord(recoveredSnapshot(record, timestamp, terminalRetentionMs), id);
         changed = true;
       }

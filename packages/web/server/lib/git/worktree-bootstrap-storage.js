@@ -216,8 +216,11 @@ export function createWorktreeBootstrapStore({
     const record = parseBootstrapState(scrubBootstrapState(bootstrapState));
     const state = await readState();
     if (!Object.hasOwn(state.records, fingerprint) && Object.keys(state.records).length >= maxRecords) {
+      // Only a finished, healthy record may make room. A failed record is what
+      // keeps an incomplete worktree from reading as ready, and removing a
+      // worktree clears its own record, so failed ones are never evicted.
       const candidate = Object.entries(state.records)
-        .filter(([, value]) => value.status !== 'pending')
+        .filter(([, value]) => value.status === 'ready')
         .sort((left, right) => left[1].updatedAt - right[1].updatedAt || left[0].localeCompare(right[0]))[0];
       if (!candidate) throw capacityError();
       delete state.records[candidate[0]];

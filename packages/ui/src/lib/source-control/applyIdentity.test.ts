@@ -130,6 +130,28 @@ describe('applyIdentityToRepository', () => {
     expect(authorCalls).toEqual(['/repo:work']);
   });
 
+  test('writes nothing more once the runtime switched mid-apply', async () => {
+    const { apis, transportCalls, authorCalls } = harness();
+    let runtime = 'host-a';
+    const outcome = await applyIdentityToRepository(
+      { directory: '/repo', remoteName: 'origin', identity: identity({ account, transport: 'account' }) },
+      {
+        ...apis,
+        runtimeKey: () => runtime,
+        sourceControl: {
+          ...apis.sourceControl,
+          repositoryProviderBindingMutate: async () => {
+            runtime = 'host-b';
+            throw new Error('binding failed');
+          },
+        },
+      },
+    );
+    expect(outcome).toEqual({ status: 'failed', reason: 'runtime' });
+    expect(transportCalls).toEqual([]);
+    expect(authorCalls).toEqual([]);
+  });
+
   test('replaces the account a repository already answers to', async () => {
     const bound = {
       ...account, accountId: 'occred:v1:github:old:r1', primaryRemote: 'origin',

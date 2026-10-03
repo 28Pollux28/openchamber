@@ -598,12 +598,16 @@ export function createNetworkOperations({
       throw operationError('AUTHENTICATION_REQUIRED', 'Managed Git credential is unavailable', 409);
     }
     const env = managedEnvironment(inheritedEnv, platform);
-    if (anonymous) {
-      // Git's Curl transport also consults netrc outside Git configuration.
+    if (anonymous || credential.transport === 'https') {
+      // Git's Curl transport also consults netrc outside Git configuration;
+      // an ambient ~/.netrc entry must not authenticate as another account
+      // than the selected one. SSH keeps HOME for known_hosts.
       for (const name of Object.keys(env)) {
         if (['HOME', 'USERPROFILE', 'XDG_CONFIG_HOME', 'HOMEDRIVE', 'HOMEPATH'].includes(name.toUpperCase())) delete env[name];
       }
       env.HOME = env.USERPROFILE = env.XDG_CONFIG_HOME = platform === 'win32' ? 'NUL' : '/dev/null';
+    }
+    if (anonymous) {
       env.GIT_ALLOW_PROTOCOL = 'https';
       env.GIT_NO_LAZY_FETCH = '1';
       env.GIT_LFS_SKIP_SMUDGE = '1';
@@ -660,6 +664,7 @@ export function createNetworkOperations({
       });
       if (credential.actor) controls.updateTransportMetadata(credential.actor, plan.transportRole);
       configArgs.push(...lease.gitConfigArgs);
+      Object.assign(env, lease.env);
       return {
         env,
         configArgs,
@@ -824,7 +829,9 @@ export function createNetworkOperations({
     }
     return await awaitPhase(() => validateGitAuxiliaryContext({
       ...hydrationPlan.repositoryAuthority,
-      directory: hydrationPlan.directory,
+      // Nested checkouts run in a child directory, but the grant belongs to
+      // the repository whose binding, id, and config revision were pinned.
+      directory: hydrationPlan.authorityDirectory ?? hydrationPlan.directory,
       kind,
       rawEndpoint,
       ...(hydrationPlan.parentRemoteName ? { parentRemote: hydrationPlan.parentRemoteName } : {}),
@@ -933,7 +940,16 @@ export function createNetworkOperations({
         throw Object.assign(new Error('Submodule checkout path is not a real directory'), { code: 'INVALID_SUBMODULE_GITLINK' });
       }
     }
-    return { path: current, exists: true };
+    // Git leaves an empty directory for an uninitialized gitlink, and Git run
+    // there resolves the parent's HEAD. Only a directory holding its own
+    // `.git` entry is an existing checkout.
+    try {
+      await fsImpl.lstat(pathImpl.join(current, '.git'));
+    } catch (error) {
+      if (error?.code === 'ENOENT') return { path: current, exists: true, ownsRepository: false };
+      throw error;
+    }
+    return { path: current, exists: true, ownsRepository: true };
   };
   const ensureSubmoduleParentDirectories = async (directory, relativePath, controls, deadline) => {
     const parts = relativePath.split('/');
@@ -1056,7 +1072,7 @@ export function createNetworkOperations({
           if (error?.code === 'INVALID_SUBMODULE_GITLINK') continue;
           throw error;
         }
-        if (!location.exists) {
+        if (!location.ownsRepository) {
           if (child.endpoint) {
             requirementCount += 1;
             if (requirementCount > SUBMODULE_DISCOVERY_LIMITS.maxPublicRecords) {
@@ -1095,6 +1111,7 @@ export function createNetworkOperations({
     const submodules = [];
     const lfs = [];
     let moduleCount = 0;
+    const childPlan = (directory) => ({ ...hydrationPlan, directory, authorityDirectory: hydrationPlan.directory });
     const visit = async (directory, parentEndpoint, parentRemoteName, prefix, depth) => {
       if (depth > SUBMODULE_DISCOVERY_LIMITS.maxRecursionDepth) {
         throw Object.assign(new Error('Submodule recursion exceeds its depth limit'), { code: 'SUBMODULE_DISCOVERY_LIMIT_EXCEEDED' });
@@ -1127,7 +1144,7 @@ export function createNetworkOperations({
           const childDirectory = location.path;
           let childHead = '';
           const childExists = location.exists;
-          if (childExists) {
+          if (location.ownsRepository) {
             childHead = (await localGit(
               childDirectory, ['rev-parse', '--verify', 'HEAD'], controls, deadline,
             )).trim().toLowerCase();
@@ -1136,7 +1153,7 @@ export function createNetworkOperations({
             throw Object.assign(new Error('Existing submodule checkout does not match its gitlink'), { code: 'INVALID_SUBMODULE_GITLINK' });
           }
           if (!childHead) {
-            const transfer = await auxiliaryTransport({ ...hydrationPlan, directory }, 'submodule', endpoint.endpoint, controls, deadline);
+            const transfer = await auxiliaryTransport(childPlan(directory), 'submodule', endpoint.endpoint, controls, deadline);
             if (transfer.authority.transportMode === 'managed') await controls.markStepCompleted('authenticated');
             let keepChild = childExists;
             let childIdentity;
@@ -1179,7 +1196,13 @@ export function createNetworkOperations({
           await visit(childDirectory, endpoint.endpoint, 'origin', resultPath, depth + 1);
         } catch (error) {
           const failure = hydrationError(error);
-          if (!submodules.some((entry) => entry.path === resultPath)) {
+          const existing = submodules.findIndex((entry) => entry.path === resultPath);
+          if (existing !== -1 && submodules[existing].status === 'succeeded' && failure.status !== 'cancelled') {
+            // The checkout itself landed, but discovery inside it failed; the
+            // module is not fully hydrated and must not read as succeeded.
+            // Cancellation already makes the whole result cancelled.
+            submodules[existing] = { path: resultPath, ...failure, endpoint: submodules[existing].endpoint };
+          } else if (existing === -1) {
             const failedModule = { path: resultPath, ...failure };
             if (endpoint) failedModule.endpoint = {
               displayUrl: redactRemoteUrl(endpoint.endpoint),
@@ -1234,7 +1257,7 @@ export function createNetworkOperations({
         const rawEndpoint = discovery.endpoint.candidate.endpoint;
         const endpoint = { displayUrl: redactRemoteUrl(rawEndpoint), fingerprint: fingerprintRemoteUrl(rawEndpoint) };
         try {
-          const transfer = await auxiliaryTransport({ ...hydrationPlan, directory }, 'lfs', rawEndpoint, controls, deadline);
+          const transfer = await auxiliaryTransport(childPlan(directory), 'lfs', rawEndpoint, controls, deadline);
           if (transfer.authority.transportMode === 'managed') await controls.markStepCompleted('authenticated');
           try {
             const context = { ...transfer.context, env: { ...transfer.context.env, GIT_LFS_SKIP_SMUDGE: '1' } };
@@ -1508,7 +1531,9 @@ export function createNetworkOperations({
               () => resolveRefImpl(plan.directory, temporaryRef, { controls, deadline }), controls, deadline,
             )).trim();
             if (!SHA_PATTERN.test(fetchedSha)) throw operationError('STALE_CONFIG', 'Fetched ref is invalid', 409);
-            await recordRemoteTrackingRef(plan, controls, context, deadline, fetchedSha, plan.target.sourceRef);
+            // The managed credential context is already revoked here; the
+            // tracking ref is local bookkeeping and uses the credential-free one.
+            await recordRemoteTrackingRef(plan, controls, integrationContext, deadline, fetchedSha, plan.target.sourceRef);
             mergeStarted = true;
             await controls.markIntegrationStarted();
             await commandResult(plan, controls, ['merge', '--no-edit', '--no-verify', fetchedSha], integrationContext, deadline);

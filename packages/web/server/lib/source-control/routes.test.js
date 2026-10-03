@@ -172,6 +172,34 @@ describe('source-control provider registry', () => {
     expect(json).toHaveBeenCalledTimes(2);
   });
 
+  it.each([
+    '/api/source-control/binding/transport',
+    '/api/source-control/binding/transport/remove',
+    '/api/source-control/binding/reset',
+  ])('reports %s as partial when the committed binding cannot reach .git/config', async (route) => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const handlers = new Map();
+    const committed = vi.fn(async () => ({ revision: 3, binding: { remotes: [] } }));
+    const app = { get: vi.fn(), put: vi.fn(), delete: vi.fn(), post: vi.fn((path, handler) => handlers.set(path, handler)) };
+    registerSourceControlRoutes(app, {
+      bindingService: { configureTransportBinding: committed, removeTransportBinding: committed, resetRepositoryBinding: committed },
+      onRepositoryTransportChanged: async () => { throw new Error('config locked'); },
+      gitlab: { store: {
+        listInstances: async () => [], readInstance: async () => ({ activeAccountId: null, accounts: [], cliDisabled: false, cliActive: false }),
+      } },
+    });
+    const json = vi.fn();
+    const status = vi.fn(() => ({ json }));
+
+    await handlers.get(route)({ body: { directory: '/repo' } }, { json, status });
+
+    expect(committed).toHaveBeenCalledOnce();
+    expect(status).toHaveBeenCalledWith(500);
+    expect(json).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      code: 'SOURCE_CONTROL_TRANSPORT_CONFIG_PARTIAL', committed: true,
+    }));
+  });
+
   it('lists defaults and configured self-managed GitLab instances without duplicates', async () => {
     const handlers = new Map();
     const app = {

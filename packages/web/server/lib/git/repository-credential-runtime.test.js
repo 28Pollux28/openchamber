@@ -89,6 +89,38 @@ describe('createGitRepositoryCredentialRuntime', () => {
     expect((await ask(gone.runtime, { secret: (await readEndpoint(gone.dataDir)).secret, body })).answer).toEqual({ mode: 'none' });
   });
 
+  it('fails closed for a managed grant whose account is unavailable instead of handing it to the machine', async () => {
+    const body = { cwd: '/repo', query: 'protocol=https\nhost=github.com\npath=owner/repo.git\n' };
+    for (const unavailable of [grant({ readiness: 'confirmation-required' }), grant({ readiness: 'config-changed' })]) {
+      const { runtime, dataDir, resolved } = await setup({ binding: read([unavailable]) });
+      await runtime.publish();
+      expect((await ask(runtime, { secret: (await readEndpoint(dataDir)).secret, body })).answer).toEqual({ mode: 'none' });
+      expect(resolved).toHaveLength(0);
+    }
+  });
+
+  it('selects the grant by repository path, so an origin and a fork on one host keep their own accounts', async () => {
+    const FORK = 'https://github.com/me/repo';
+    const reference = (credentialId) => createHttpsCredentialReference({ provider: 'github', instance: 'github.com', credentialId, credentialRevision: 1, providerUserId: `github.com#${credentialId}` });
+    const binding = {
+      ...read([grant({ credentialId: reference('company') }), grant({ name: 'fork', credentialId: reference('personal'), fetch: endpoint(FORK), push: endpoint(FORK) })]),
+    };
+    binding.repository = { ...binding.repository, remotes: [...binding.repository.remotes, { name: 'fork', fetch: endpoint(FORK), push: endpoint(FORK) }] };
+    const { runtime, dataDir, resolved } = await setup({ binding });
+    await runtime.publish();
+    const { secret } = await readEndpoint(dataDir);
+    const askFor = async (path) => (await ask(runtime, { secret, body: { cwd: '/repo', query: `protocol=https\nhost=github.com\n${path === null ? '' : `path=${path}\n`}` } })).answer;
+    expect(await askFor('me/repo.git')).toMatchObject({ mode: 'managed' });
+    expect(resolved.at(-1)).toMatchObject({ credentialId: reference('personal'), endpoint: { path: '/me/repo' } });
+    expect(await askFor('owner/repo.git/info/lfs')).toMatchObject({ mode: 'managed' });
+    expect(resolved.at(-1)).toMatchObject({ credentialId: reference('company') });
+    // Without a path (a repository configured before path matching) two accounts are ambiguous.
+    const before = resolved.length;
+    expect(await askFor(null)).toEqual({ mode: 'none' });
+    expect(resolved).toHaveLength(before);
+    expect(await askFor('someone/else.git')).toEqual({ mode: 'system' });
+  });
+
   it('refuses a wrong secret, a request before publishing, and another machine', async () => {
     const { runtime, dataDir } = await setup();
     const body = { cwd: '/repo', query: 'protocol=https\nhost=github.com\n' };

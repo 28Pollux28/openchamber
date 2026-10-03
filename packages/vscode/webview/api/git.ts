@@ -4,10 +4,10 @@
  */
 
 import { z } from 'zod';
-import { sendBridgeMessage } from './bridge';
+import { sendBridgeMessage, sendBridgeMessageWithOptions } from './bridge';
 import { GitNetworkOperationRequestError } from '@openchamber/ui/lib/api/types';
 import { gitIdentityProfilesSchema } from '@openchamber/ui/lib/api/git-identity';
-import { readRepositoryRemotes } from './git-remotes';
+import { readRepositoryContext, readRepositoryRemotes } from './git-remotes';
 import { GitPathUnavailableError, gitSubmoduleStateSchema } from '@openchamber/ui/lib/api/git-path-diff';
 import type {
   GitAPI,
@@ -204,9 +204,13 @@ const snapshotBase = (snapshot: GitNetworkOperation) => ({
   target: snapshot.target,
 });
 
+// A transfer has no bridge timeout: once Git is running on the extension host,
+// giving up in the webview would report a failure Git may still turn into a
+// success, and would let another operation start beside it. The operation
+// stays `running` until the host answers.
 const runBridgeStep = async (type: string, payload: CompatibilityBridgePayload): Promise<StepOutcome> => {
   try {
-    const result = await sendBridgeMessage<{ success?: boolean } | undefined>(type, payload);
+    const result = await sendBridgeMessageWithOptions<{ success?: boolean } | undefined>(type, payload, { timeoutMs: 0 });
     return result?.success === false ? { ok: false, message: 'Git command reported failure' } : { ok: true };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : String(error) };
@@ -235,10 +239,58 @@ const pushPayload = (
   };
 };
 
+const plannedEndpoints = (request: CompatibilityNetworkRequest): Array<{ name: string; side: 'fetch' | 'push'; fingerprint: string }> => {
+  switch (request.operation) {
+    case 'sync':
+      return [
+        { name: request.fetch.remote.name, side: 'fetch', fingerprint: request.fetch.remote.endpoint.fingerprint },
+        { name: request.push.remote.name, side: 'push', fingerprint: request.push.remote.endpoint.fingerprint },
+      ];
+    case 'fetch':
+    case 'pull':
+      return [{ name: request.remote.name, side: 'fetch', fingerprint: request.remote.endpoint.fingerprint }];
+    case 'push':
+    case 'delete-remote-branch':
+      return [{ name: request.remote.name, side: 'push', fingerprint: request.remote.endpoint.fingerprint }];
+  }
+};
+
+// The bridge messages address remotes by name, so Git uses whatever URL the
+// remote has at execution time. Before anything runs, the remotes are read
+// again and must still match the plan; a changed remote ends the operation as
+// conflicted instead of transferring against an endpoint nobody approved.
+const revalidatePlannedRemotes = async (request: CompatibilityNetworkRequest): Promise<GitNetworkOperationError<'STALE_REPOSITORY' | 'STALE_CONFIG' | 'REMOTE_CHANGED'> | null> => {
+  const current = await readRepositoryContext(request.directory);
+  if (current.repositoryId !== request.repositoryId) {
+    return { code: 'STALE_REPOSITORY', message: 'The repository changed since this operation was planned' };
+  }
+  for (const planned of plannedEndpoints(request)) {
+    const remote = current.remotes.find((candidate) => candidate.name === planned.name);
+    if (!remote || remote[planned.side].fingerprint !== planned.fingerprint) {
+      return { code: 'REMOTE_CHANGED', message: `Remote ${planned.name} changed since this operation was planned` };
+    }
+  }
+  if (current.configRevision !== request.configRevision) {
+    return { code: 'STALE_CONFIG', message: 'Remote configuration changed since this operation was planned' };
+  }
+  return null;
+};
+
 const runCompatibilityOperation = async (entry: CompatibilityOperation): Promise<GitNetworkOperation> => {
   const { request } = entry;
   const base = snapshotBase(entry.snapshot);
   const directory = request.directory;
+
+  let stale: Awaited<ReturnType<typeof revalidatePlannedRemotes>>;
+  try {
+    stale = await revalidatePlannedRemotes(request);
+  } catch (error) {
+    return {
+      ...base, state: 'failed', completedSteps: [],
+      error: { code: 'UNKNOWN', message: error instanceof Error ? error.message : String(error) },
+    };
+  }
+  if (stale) return { ...base, state: 'conflicted', completedSteps: [], error: stale };
 
   if (request.operation === 'sync') {
     const stepResults: GitNetworkSyncStepResult[] = [];

@@ -231,11 +231,25 @@ describe('canonical GitHub mutations', () => {
       actor: { provider: 'github', instance: 'github.com', providerAccountId: acting.providerUserId },
       target: {
         repositoryId: 'repo-one', bindingRevision: 3, primaryRemote: 'origin',
-        project: { id: 'acme/app', owner: 'acme', name: 'app' }, head: 'feature', base: 'main',
+        project: { id: 'acme/app', owner: 'acme', name: 'app' }, head: 'feature', base: 'main', number: 7,
       },
       replayed: false,
       result: {},
     });
+  });
+
+  it('records the created pull request number and names it in replayed receipts', async () => {
+    const account = await auth.setGitHubAuth({ accessToken: 'token-one', user: { id: 1, login: 'actor' } });
+    vi.stubGlobal('fetch', vi.fn(async () => jsonResponse(pullRequest())));
+    const { app, store } = makeApp();
+    const payload = { ...context(account.accountId), title: 'Title' };
+
+    const created = await request(app).post('/api/source-control/github/pr/create').send(payload).expect(200);
+    expect(created.body).toMatchObject({ target: { number: 7 }, result: {} });
+    expect(store.records.get('request-one')).toMatchObject({ state: 'succeeded', result: { number: 7 } });
+
+    const replay = await request(app).post('/api/source-control/github/pr/create').send(payload).expect(200);
+    expect(replay.body).toMatchObject({ replayed: true, target: { number: 7 }, result: {} });
   });
 
   it('keeps credential authority in replay input while deriving one provider actor for sibling credentials', async () => {
@@ -541,6 +555,7 @@ describe('canonical GitHub mutations', () => {
     const response = await request(app).post('/api/source-control/github/pr/create')
       .send({ ...context(account.accountId), title: 'Title' }).expect(status);
     expect(status === 200 ? response.body.status : response.body.code).toBe(expected);
+    if (status === 200) expect(response.body.target.number).toBe(7);
   });
 
   it('does not retry or invalidate after a definite provider rejection', async () => {

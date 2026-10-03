@@ -42,6 +42,7 @@ export const dict = {
   'sessions.aiRename.noSmallModel': 'Needs a Small Model. Sign in to a model provider or pick one in Settings → Sessions.',
   'commitComparison.mode': 'Commit',
   'pullRequestComparison.select': 'Select pull request',
+  'pullRequestComparison.partial': "Some pull requests couldn't be loaded",
   'commitComparison.select': 'Select commit',
   'commitComparison.search': 'Search commits...',
   'commitComparison.loadError': 'Failed to load commits',

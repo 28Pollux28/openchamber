@@ -51,6 +51,25 @@ describe('Git network operation storage', () => {
     ]);
   });
 
+  // Two servers can share one data directory; the second one starting up must
+  // not end the first one's push as if a restart had interrupted it.
+  it('recovers only operations whose owning process is gone', async () => {
+    const { filePath, store } = await setup();
+    for (const id of ['git_live', 'git_dead']) {
+      const planned = snapshot(id);
+      await store.claim(planned);
+      await store.update(id, { snapshot: { ...planned, state: 'running' } });
+    }
+    const stored = JSON.parse(await fs.readFile(filePath, 'utf8'));
+    stored.records.git_live.owner.pid = process.ppid;
+    stored.records.git_dead.owner.pid = 999999999;
+    await fs.writeFile(filePath, JSON.stringify(stored), { mode: 0o600 });
+
+    const recovered = await createGitNetworkOperationStore({ filePath }).recover();
+    expect(Object.fromEntries(recovered.map((value) => [value.operationId, value.state])))
+      .toEqual({ git_live: 'running', git_dead: 'outcome-unknown' });
+  });
+
   it('retains completed steps and publication uncertainty across restart', async () => {
     const { filePath, store } = await setup();
     const planned = snapshot('git_running');

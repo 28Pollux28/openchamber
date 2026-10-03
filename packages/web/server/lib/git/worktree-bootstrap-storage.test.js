@@ -40,6 +40,22 @@ describe('worktree bootstrap storage', () => {
     expect((await fs.stat(filePath)).mode & 0o777).toBe(0o600);
   });
 
+  it('makes room only by evicting ready records, never a failure that blocks a worktree', async () => {
+    const dataDirectory = await temporaryDirectory('worktree-bootstrap-capacity-');
+    const filePath = path.join(dataDirectory, 'bootstrap.json');
+    const store = createWorktreeBootstrapStore({ filePath, maxRecords: 2 });
+    const failed = { status: 'failed', phase: 'git-ready', error: 'x', errorCode: 'TRANSPORT_FAILED', updatedAt: 1 };
+    await store.write('/worktrees/broken', failed);
+    await store.write('/worktrees/ready', { status: 'ready', phase: 'setup-ready', error: null, updatedAt: 2 });
+
+    await store.write('/worktrees/new', { status: 'ready', phase: 'setup-ready', error: null, updatedAt: 3 });
+    await expect(store.read('/worktrees/broken')).resolves.toMatchObject({ status: 'failed' });
+    await expect(store.read('/worktrees/ready')).resolves.toBeNull();
+
+    await store.write('/worktrees/other-broken', failed).catch(() => {});
+    await expect(store.read('/worktrees/broken')).resolves.toMatchObject({ status: 'failed' });
+  });
+
   it('stores only bounded public bootstrap errors', async () => {
     const dataDirectory = await temporaryDirectory('worktree-bootstrap-errors-');
     const filePath = path.join(dataDirectory, 'bootstrap.json');

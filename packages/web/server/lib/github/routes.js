@@ -507,7 +507,15 @@ export function registerGitHubRoutes(app, options = {}) {
       .filter((pr) => sameProject(pullTargetProject(pr), expectedProject))
       .filter((pr) => pr.head.repo
         && sameProject({ owner: pr.head.repo.owner.login, name: pr.head.repo.name }, sourceProject));
-    return candidates.length === 1 ? { state: 'succeeded', result: {} } : { state: 'outcome-unknown' };
+    return candidates.length === 1 ? { state: 'succeeded', result: { number: candidates[0].number } } : { state: 'outcome-unknown' };
+  };
+  // A create's claim target has no number yet; the receipt names the created
+  // pull request from the recorded result so clients can link to it.
+  const changeRequestReceipt = (record, replayed, providerAccountId) => {
+    const receipt = mutationReceipt(record, replayed, providerAccountId);
+    if (record.kind !== 'change-request-create' || record.result?.number === undefined) return receipt;
+    const { number, ...result } = receipt.result;
+    return { ...receipt, target: { ...receipt.target, number }, result };
   };
   const reconcileExistingMutation = async (octokit, kind, target) => {
     const current = await octokit.rest.pulls.get({
@@ -710,7 +718,7 @@ export function registerGitHubRoutes(app, options = {}) {
           classifyError: classifyMutationError,
         });
         await invalidateCanonicalMutationCaches(context, accountContext, execution.record.target);
-        return res.json(mutationReceipt(execution.record, execution.replayed, accountContext.providerUserId));
+        return res.json(changeRequestReceipt(execution.record, execution.replayed, accountContext.providerUserId));
       }
 
       const resolveNetwork = options.resolveRepoNetwork
@@ -759,7 +767,8 @@ export function registerGitHubRoutes(app, options = {}) {
             || !sameProject(createdSource, sourceProject)) {
             throw invalidProviderPayload('GitHub returned a created pull request with an unexpected target');
           }
-          return {};
+          // Recorded durably so a replay or restart still names the new PR.
+          return { number: created.number };
         };
         reconcile = () => reconcileCreateMutation(octokit, expectedProject, sourceProject, head, base);
       } else {
@@ -841,7 +850,7 @@ export function registerGitHubRoutes(app, options = {}) {
         classifyError: classifyMutationError,
       });
       await invalidateCanonicalMutationCaches(context, accountContext, execution.record.target);
-      return res.json(mutationReceipt(execution.record, execution.replayed, accountContext.providerUserId));
+      return res.json(changeRequestReceipt(execution.record, execution.replayed, accountContext.providerUserId));
     } catch (error) {
       return sendCanonicalMutationError(res, error);
     }
@@ -913,16 +922,21 @@ export function registerGitHubRoutes(app, options = {}) {
       const usingOwnToken = Boolean(auth?.accessToken);
       const selectedPersisted = accounts.some((account) => account.current);
       let ghCliUser = null;
+      let ghCliRejected = false;
 
       if (ghToken !== null && !ghCliDisabled) {
         try {
           const { createOctokit } = await import('./octokit.js');
           ghCliUser = await getGitHubUserSummary(createOctokit(ghToken));
-        } catch {
+        } catch (error) {
           ghCliUser = null;
+          ghCliRejected = error?.status === 401;
         }
       }
-      if (ghCliActive && !ghCliUser) {
+      // The user's switch to the gh account is undone only when that account is
+      // really gone: gh logged out, disabled here, or its token rejected. A
+      // network blip leaves this read without a user but keeps the choice.
+      if (ghCliActive && (ghToken === null || ghCliDisabled || ghCliRejected)) {
         setGhCliActive(false);
       }
 
@@ -940,7 +954,9 @@ export function registerGitHubRoutes(app, options = {}) {
         ...(!ghCliDisabled && (activeUser || ghCliUser) ? { user: activeUser || ghCliUser } : {}),
       });
 
-      if (selectedPersisted && !usingOwnToken) {
+      // A current-but-invalid saved account means disconnected only while it,
+      // not the gh CLI login, is the selected source.
+      if (selectedPersisted && !usingOwnToken && !ghCliCurrent) {
         return res.json({ connected: false, accounts, ghCli: buildGhCli() });
       }
       const octokit = await getOctokitOrNull();

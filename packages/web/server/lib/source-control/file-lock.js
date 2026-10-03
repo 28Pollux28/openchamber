@@ -46,43 +46,130 @@ const isAbandoned = (content, mtimeMs, now = Date.now()) => {
 
 const releaseError = (lockPath, error) => lockError(lockPath, false, error);
 
+const sleepSync = (milliseconds) => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
+};
+
 // Like an index lock: only exclusive creation grants ownership. Age and PID
 // decide only when an existing file may be removed to try again.
 
 /**
- * Removes the abandoned lock that was inspected, and only that one.
+ * Removes an abandoned lock under a short guard, and only while it is still
+ * the abandoned one.
  *
- * Two waiters can judge the same dead owner's lock at once. Removing it by
- * path would let the slower one delete the lock the faster one has just
- * created, and both would enter. The rename is atomic, so only one waiter
- * takes a given file; the taker then checks it took the inspected file and,
- * when it took a newer lock instead, links it back under its name (`link`
- * refuses to replace anything) before letting go of its own copy.
+ * Without the guard two waiters can judge the same dead owner's lock: the
+ * faster one removes it and takes a fresh lock, then the slower one removes
+ * that fresh lock on the strength of what it read before, and both enter.
+ * Moving the file aside first does not help either, because the name is free
+ * while it is away and a third waiter can take it. So every removal of
+ * someone else's lock happens under `<lock>.guard`, and the lock is inspected
+ * again inside it, content and identity through one open handle. Inside the
+ * guard nobody else can remove the lock (a dead owner never releases), so the
+ * file that was judged is the file that is unlinked. Taking a free lock does
+ * not need the guard: exclusive creation cannot replace anything.
+ *
+ * Live holders keep the guard for a few file operations. A guard older than
+ * GUARD_STALE_MS was left by a waiter that died inside it and is removed.
  */
-const reclaimTarget = (lockPath) => `${lockPath}.reclaim-${randomUUID()}`;
+const GUARD_STALE_MS = 10_000;
+const guardPath = (lockPath) => `${lockPath}.guard`;
 const sameFile = (left, right) => left.dev === right.dev && left.ino === right.ino;
 
-async function reclaimAbandoned(fsImpl, lockPath, inspected) {
-  const target = reclaimTarget(lockPath);
-  try { await fsImpl.rename(lockPath, target); } catch { return; }
-  try {
-    if (!sameFile(await fsImpl.lstat(target, { bigint: true }), inspected)) {
-      try { await fsImpl.link(target, lockPath); } catch {}
+async function withReclaimGuard(fsImpl, lockPath, deadline, operation) {
+  const guard = guardPath(lockPath);
+  let handle;
+  while (!handle) {
+    try {
+      handle = await fsImpl.open(guard, 'wx', 0o600);
+    } catch (error) {
+      if (error?.code !== 'EEXIST') return false;
+      try {
+        const stats = await fsImpl.lstat(guard);
+        if (Date.now() - stats.mtimeMs > GUARD_STALE_MS) {
+          await fsImpl.unlink(guard).catch(() => {});
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (performance.now() >= deadline) return false;
+      await delay(2);
     }
+  }
+  try {
+    return await operation();
   } finally {
-    try { await fsImpl.unlink(target); } catch {}
+    await handle.close().catch(() => {});
+    await fsImpl.unlink(guard).catch(() => {});
   }
 }
 
-function reclaimAbandonedSync(fsImpl, lockPath, inspected) {
-  const target = reclaimTarget(lockPath);
-  try { fsImpl.renameSync(lockPath, target); } catch { return; }
-  try {
-    if (!sameFile(fsImpl.lstatSync(target, { bigint: true }), inspected)) {
-      try { fsImpl.linkSync(target, lockPath); } catch {}
+function withReclaimGuardSync(fsImpl, lockPath, deadline, operation) {
+  const guard = guardPath(lockPath);
+  let handle;
+  while (handle === undefined) {
+    try {
+      handle = fsImpl.openSync(guard, 'wx', 0o600);
+    } catch (error) {
+      if (error?.code !== 'EEXIST') return false;
+      try {
+        const stats = fsImpl.lstatSync(guard);
+        if (Date.now() - stats.mtimeMs > GUARD_STALE_MS) {
+          try { fsImpl.unlinkSync(guard); } catch {}
+          continue;
+        }
+      } catch {
+        continue;
+      }
+      if (performance.now() >= deadline) return false;
+      sleepSync(2);
     }
+  }
+  try {
+    return operation();
   } finally {
-    try { fsImpl.unlinkSync(target); } catch {}
+    try { fsImpl.closeSync(handle); } catch {}
+    try { fsImpl.unlinkSync(guard); } catch {}
+  }
+}
+
+async function reclaimAbandoned(fsImpl, lockPath) {
+  let handle;
+  try { handle = await fsImpl.open(lockPath, 'r'); } catch { return false; }
+  try {
+    const stats = await handle.stat({ bigint: true });
+    if (!stats.isFile()) return false;
+    const content = await handle.readFile('utf8');
+    if (!isAbandoned(content, Number(stats.mtimeMs))) return false;
+    const current = await fsImpl.lstat(lockPath, { bigint: true });
+    if (!sameFile(current, stats)) return false;
+    await fsImpl.unlink(lockPath);
+    return true;
+  } catch {
+    // Unreadable or already gone: leave it to the next attempt.
+    return false;
+  } finally {
+    await handle.close().catch(() => {});
+  }
+}
+
+function reclaimAbandonedSync(fsImpl, lockPath) {
+  let handle;
+  try { handle = fsImpl.openSync(lockPath, 'r'); } catch { return false; }
+  try {
+    const stats = fsImpl.fstatSync(handle, { bigint: true });
+    if (!stats.isFile()) return false;
+    const content = fsImpl.readFileSync(handle, 'utf8');
+    if (!isAbandoned(content, Number(stats.mtimeMs))) return false;
+    const current = fsImpl.lstatSync(lockPath, { bigint: true });
+    if (!sameFile(current, stats)) return false;
+    fsImpl.unlinkSync(lockPath);
+    return true;
+  } catch {
+    // Unreadable or already gone: leave it to the next attempt.
+    return false;
+  } finally {
+    try { fsImpl.closeSync(handle); } catch {}
   }
 }
 
@@ -99,16 +186,8 @@ export async function withSourceControlFileLock(lockPath, operation, { fsImpl = 
       } catch (error) {
         if (error?.code !== 'EEXIST') throw lockError(lockPath, false, error);
         if (!reclaimed) {
-          let inspected = null;
-          try {
-            const [content, stats] = await Promise.all([fsImpl.readFile(lockPath, 'utf8'), fsImpl.lstat(lockPath, { bigint: true })]);
-            if (stats.isFile() && isAbandoned(content, Number(stats.mtimeMs))) inspected = stats;
-          } catch { inspected = null; }
-          if (inspected) {
-            reclaimed = true;
-            await reclaimAbandoned(fsImpl, lockPath, inspected);
-            continue;
-          }
+          reclaimed = await withReclaimGuard(fsImpl, lockPath, deadline, () => reclaimAbandoned(fsImpl, lockPath));
+          if (reclaimed) continue;
         }
         const remaining = deadline - performance.now();
         if (remaining <= 0) throw lockError(lockPath, true, error);
@@ -143,9 +222,6 @@ export async function withSourceControlFileLock(lockPath, operation, { fsImpl = 
   }
 }
 
-const sleepSync = (milliseconds) => {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, milliseconds);
-};
 
 // Synchronous storage callers retain the same ownership contract.
 export function withSourceControlFileLockSync(lockPath, operation, { fsImpl = fsSync, waitMs = 2_000 } = {}) {
@@ -161,16 +237,8 @@ export function withSourceControlFileLockSync(lockPath, operation, { fsImpl = fs
       } catch (error) {
         if (error?.code !== 'EEXIST') throw lockError(lockPath, false, error);
         if (!reclaimed) {
-          let inspected = null;
-          try {
-            const stats = fsImpl.lstatSync(lockPath, { bigint: true });
-            if (stats.isFile() && isAbandoned(fsImpl.readFileSync(lockPath, 'utf8'), Number(stats.mtimeMs))) inspected = stats;
-          } catch { inspected = null; }
-          if (inspected) {
-            reclaimed = true;
-            reclaimAbandonedSync(fsImpl, lockPath, inspected);
-            continue;
-          }
+          reclaimed = withReclaimGuardSync(fsImpl, lockPath, deadline, () => reclaimAbandonedSync(fsImpl, lockPath));
+          if (reclaimed) continue;
         }
         const remaining = deadline - performance.now();
         if (remaining <= 0) throw lockError(lockPath, true, error);

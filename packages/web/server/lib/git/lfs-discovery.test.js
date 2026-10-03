@@ -211,6 +211,21 @@ describe('Git LFS discovery', () => {
     expect(result.needed).toBe(true);
   });
 
+  it('honours a local git config lfs.url over the committed .lfsconfig', () => {
+    const result = discoverLfs(input({
+      lfsConfigOutput: configOutput([['lfs.url', 'https://committed.example.net/repository']]),
+      effectiveConfigOutput: configOutput([['lfs.url', 'https://local.example.net/repository']]),
+    }));
+    expect(result.endpoint).toMatchObject({
+      status: 'resolved', source: 'git-config', candidate: { endpoint: 'https://local.example.net/repository' },
+    });
+    const withoutCommitted = discoverLfs(input({
+      effectiveConfigOutput: configOutput([['lfs.url', 'https://local.example.net/repository']]),
+      remoteLfsUrls: [{ remote: 'origin', url: 'https://remote.example.net/repository' }],
+    }));
+    expect(withoutCommitted.endpoint).toMatchObject({ candidate: { endpoint: 'https://local.example.net/repository' } });
+  });
+
   it('supports an HTTPS LFS endpoint with an SSH Git remote and exposes cross-host facts', () => {
     const result = discoverLfs(input({
       gitRemoteUrl: 'git@git.example.com:team/repository.git',

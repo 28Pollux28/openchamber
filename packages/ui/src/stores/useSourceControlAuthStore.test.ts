@@ -224,6 +224,35 @@ describe('source-control auth store', () => {
       .toBe(connectedStatus.accounts);
   });
 
+  test('a subscriber that refreshes on the loading notification joins the pending read', async () => {
+    const response = deferred<SourceControlAuthStatus>();
+    let calls = 0;
+    const api = { authStatus: () => { calls += 1; return response.promise; } };
+    const unsubscribe = useSourceControlAuthStore.subscribe(() => {
+      void useSourceControlAuthStore.getState().refreshStatus(api, identity);
+    });
+    const pending = useSourceControlAuthStore.getState().refreshStatus(api, identity);
+    unsubscribe();
+    expect(calls).toBe(1);
+    response.resolve(connectedStatus);
+    await pending;
+  });
+
+  test('a read started before an account mutation cannot overwrite the forced refresh after it', async () => {
+    const stale = deferred<SourceControlAuthStatus>();
+    const fresh = deferred<SourceControlAuthStatus>();
+    const store = useSourceControlAuthStore.getState();
+    const before = store.refreshStatus({ authStatus: () => stale.promise }, identity);
+    let freshCalls = 0;
+    const after = store.refreshStatus({ authStatus: () => { freshCalls += 1; return fresh.promise; } }, identity, { force: true });
+    expect(freshCalls).toBe(1);
+    fresh.resolve(connectedStatus);
+    await after;
+    stale.resolve({ ...identity, status: 'disconnected', connected: false, accounts: [] });
+    await before;
+    expect(useSourceControlAuthStore.getState().entries[getSourceControlAuthKey(identity)]?.status).toBe(connectedStatus);
+  });
+
   test('successful empty inventory replaces stale credentials', async () => {
     const store = useSourceControlAuthStore.getState();
     store.setStatus(identity, connectedStatus);

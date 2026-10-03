@@ -30,34 +30,63 @@ const queryOrigin = (query) => {
   return httpsOrigin(`https://${host}`);
 };
 
+/** A repository path without its slashes or `.git`, so `o/r` and `/o/r.git` compare equal. */
+const repositoryPath = (value) => value.replace(/^\/+|\/+$/g, '').replace(/\.git$/i, '');
+
 /**
- * The grant that answers for this origin, or null.
+ * Whether Git's query path names this remote URL's repository. git-lfs asks
+ * for the LFS endpoint under it (`o/r.git/info/lfs`), which is the same
+ * repository.
+ */
+const pathMatches = (queryPath, displayUrl) => {
+  const own = repositoryPath(new URL(displayUrl).pathname);
+  const asked = queryPath.replace(/^\/+|\/+$/g, '');
+  return repositoryPath(asked) === own || asked.startsWith(`${own}/`) || asked.startsWith(`${own}.git/`);
+};
+
+/**
+ * The grant that answers for this endpoint: `{ grant, endpointUrl }`, the
+ * string `'unavailable'`, or null when no grant names the endpoint.
+ *
+ * Git sends the repository path because the repository's `.git/config` turns
+ * on `credential.useHttpPath`, so an origin and a fork on the same host, bound
+ * to different accounts, each get their own. A repository configured before
+ * that sends no path; it is answered only when every grant on the host agrees.
  *
  * A grant only answers while the binding still matches the repository's own
- * remotes, which is the same readiness the Git panel shows. A repository the
- * binding no longer vouches for gets nothing rather than the last credential
- * it happened to hold.
+ * remotes and is ready, which is the same readiness the Git panel shows. A
+ * grant that names the endpoint but is not ready (its account was
+ * disconnected, or the remote changed) is unavailable rather than absent:
+ * handing it to the machine's own chain would push as another account while
+ * the panel says this one needs repair.
  */
-const grantForOrigin = (read, origin) => {
+const grantForEndpoint = (read, origin, queryPath) => {
   const current = new Map(read.repository.remotes.map((remote) => [remote.name, remote]));
+  const matches = [];
   for (const grant of read.binding?.remotes ?? []) {
+    const urls = [grant.fetch.displayUrl, grant.push.displayUrl]
+      .filter((url) => httpsOrigin(url) === origin && (!queryPath || pathMatches(queryPath, url)));
+    if (urls.length === 0) continue;
     const remote = current.get(grant.name);
-    if (!remote || grant.readiness !== 'ready') continue;
-    if (grant.fetch.fingerprint !== remote.fetch.fingerprint
-      || grant.push.fingerprint !== remote.push.fingerprint) continue;
-    const matched = [grant.fetch.displayUrl, grant.push.displayUrl].find((url) => httpsOrigin(url) === origin);
-    if (matched) return { grant, endpointUrl: matched };
+    const vouched = remote && grant.readiness === 'ready'
+      && grant.fetch.fingerprint === remote.fetch.fingerprint
+      && grant.push.fingerprint === remote.push.fingerprint;
+    // System needs no acknowledgement to be what it already is: the machine.
+    matches.push(vouched || grant.mode === 'system' ? { grant, endpointUrl: urls[0] } : 'unavailable');
   }
-  return null;
+  if (matches.length === 0) return null;
+  if (matches.includes('unavailable')) return 'unavailable';
+  const [first] = matches;
+  const sameAnswer = matches.every(({ grant }) => grant.mode === first.grant.mode && grant.credentialId === first.grant.credentialId);
+  return sameAnswer ? first : 'unavailable';
 };
 
 /**
  * The endpoint to resolve the credential against.
  *
- * Git asks without a path unless `credential.useHttpPath` is on, and turning
- * that on would change how the person's own helpers key their entries. The
- * repository's own remote URL carries the path already, and the grant is what
- * decides the account, so the endpoint comes from there.
+ * The repository's own remote URL is canonical: Git's query path may be an
+ * LFS sub-path or missing (a repository configured before path matching), and
+ * the grant is what decides the account, so the endpoint comes from there.
  */
 const credentialEndpoint = (endpointUrl) => {
   const url = new URL(endpointUrl);
@@ -109,15 +138,20 @@ export function createGitRepositoryCredentialRuntime({
     const rawQuery = isString(payload?.query) ? payload.query : '';
     if (!cwd || !rawQuery || rawQuery.length > MAX_QUERY_BYTES) return NONE;
     let origin;
-    try { origin = queryOrigin(parseGitCredentialQuery(rawQuery)); }
-    catch { return NONE; }
+    let queryPath;
+    try {
+      const query = parseGitCredentialQuery(rawQuery);
+      origin = queryOrigin(query);
+      queryPath = isString(query.path) ? query.path : '';
+    } catch { return NONE; }
     if (!origin) return NONE;
     let read;
     try { read = await readBinding(cwd); }
     catch { return NONE; }
     if (!read.binding) return SYSTEM;
-    const matched = grantForOrigin(read, origin);
+    const matched = grantForEndpoint(read, origin, queryPath);
     if (!matched) return SYSTEM;
+    if (matched === 'unavailable') return NONE;
     const { grant, endpointUrl } = matched;
     if (grant.mode === 'system') return SYSTEM;
     if (grant.mode !== 'managed' || !grant.credentialId) return NONE;

@@ -1641,6 +1641,8 @@ type GitHubReferenceCommon = {
   labels: GitHubIssueLabel[];
   commentCount: number;
   sourceRepo: GitHubRepoSelector & { source: string };
+  /** The provider's own project id (GitLab's is numeric); absent on GitHub, where `owner/repo` is the id. */
+  projectId?: string;
   /**
    * Set on items read from a GitLab project, which the picker shows the same
    * way; absent on GitHub's own answers.

@@ -50,6 +50,12 @@ describe('GitLab device flow', () => {
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
+  it.each([429, 503])('reports a %s version response as temporarily unavailable, not as a non-GitLab host', async (status) => {
+    const fetch = vi.fn(async () => json({ message: 'busy' }, status));
+    await expect(probeGitLabAuth({ origin: 'https://gitlab.example.com', clientId: 'client', fetch }))
+      .rejects.toMatchObject({ kind: 'temporarily-unavailable', status });
+  });
+
   it('does not trust an unmarked unauthorized response as GitLab', async () => {
     const fetch = vi.fn().mockResolvedValueOnce(json({ message: '401 Unauthorized' }, 401));
 

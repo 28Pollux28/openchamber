@@ -221,6 +221,52 @@ describe('Git network operation registry', () => {
     expect(registry.get('git_terminal').state).toBe('outcome-unknown');
   });
 
+  it('cancels a planned sync with skipped step results', () => {
+    const registry = createNetworkOperationRegistry();
+    registry.register({
+      internalPlan: { operationId: 'git_sync_plan', target: { operation: 'sync' } },
+      publicPlan: { operationId: 'git_sync_plan', target: { operation: 'sync' } },
+    });
+    expect(registry.cancel('git_sync_plan')).toMatchObject({
+      state: 'cancelled',
+      stepResults: [
+        { step: 'fetch', status: 'skipped' },
+        { step: 'pull', status: 'skipped' },
+        { step: 'push', status: 'skipped' },
+      ],
+    });
+  });
+
+  // With a store the durable record would otherwise stay `planned` and hold a
+  // capacity slot until the next restart.
+  it('cancels an expired plan durably instead of keeping it planned', async () => {
+    let timestamp = 0;
+    const updates = [];
+    const store = {
+      recover: vi.fn(async () => []),
+      read: vi.fn(async () => null),
+      claim: vi.fn(async (snapshot) => snapshot),
+      update: vi.fn(async (_id, input) => { updates.push(input.snapshot.state); return input.snapshot; }),
+    };
+    const registry = createNetworkOperationRegistry({ store, plannedRetentionMs: 10, now: () => timestamp });
+    await registry.register({
+      internalPlan: { operationId: 'git_stale', target: { operation: 'fetch' } },
+      publicPlan: {
+        operationId: 'git_stale',
+        runtimeIdentity: { id: 'server_one', platform: 'web' },
+        transport: { mode: 'anonymous', verification: { status: 'anonymous' } },
+        target: { operation: 'fetch' },
+      },
+    });
+    timestamp = 10;
+    await registry.get('git_stale');
+    await vi.waitFor(() => expect(updates).toEqual(['cancelled']));
+    await expect(registry.get('git_stale')).resolves.toMatchObject({
+      state: 'cancelled', error: { code: 'CANCELLED', message: expect.stringContaining('expired') },
+    });
+    await expect(registry.start('git_stale', async () => ({ state: 'succeeded' }))).rejects.toBeDefined();
+  });
+
   it('does not expose terminal success when durable completion fails', async () => {
     const store = {
       recover: vi.fn(async () => []),

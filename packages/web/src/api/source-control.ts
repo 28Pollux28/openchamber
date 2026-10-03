@@ -1270,18 +1270,37 @@ const requireConnected = (connected: boolean): void => {
   if (!connected) throw new Error('GitHub is not connected');
 };
 
+const mapGhCli = (
+  ghCli: AuthStatusDTO['ghCli'],
+  identity: SourceControlIdentity,
+): DisconnectedSourceControlAuthStatus['cli'] => {
+  if (!ghCli) return undefined;
+  const cli: NonNullable<DisconnectedSourceControlAuthStatus['cli']> = {
+    available: ghCli.available,
+    disabled: ghCli.disabled,
+    active: ghCli.active,
+  };
+  if (ghCli.user) cli.user = mapUser(ghCli.user, identity);
+  return cli;
+};
+
 const mapAuthStatus = (payload: AuthStatusDTO, identity: SourceControlIdentity): SourceControlAuthStatus => {
+  // The gh CLI entry is listed whether or not an account is connected: a
+  // disconnected user still needs its Enable / Switch to controls.
+  const cli = mapGhCli(payload.ghCli, identity);
   if (!payload.connected || !payload.user) {
     if (payload.status === 'unreachable' || payload.status === 'temporarily-unavailable' || payload.status === 'unavailable') {
       if (payload.message) return { ...identity, status: payload.status, connected: false, message: payload.message };
       return { ...identity, status: payload.status, connected: false };
     }
-    return {
+    const disconnected: DisconnectedSourceControlAuthStatus = {
       ...identity,
       status: 'disconnected',
       connected: false,
       accounts: parseGitHubAuthAccounts(payload.accounts, identity),
     };
+    if (cli) disconnected.cli = cli;
+    return disconnected;
   }
   const result: Extract<SourceControlAuthStatus, { status: 'connected' }> = {
     ...identity,
@@ -1291,14 +1310,7 @@ const mapAuthStatus = (payload: AuthStatusDTO, identity: SourceControlIdentity):
     accounts: parseGitHubAuthAccounts(payload.accounts, identity),
   };
   if (payload.scope) result.scope = payload.scope;
-  if (payload.ghCli) {
-    result.cli = {
-      available: payload.ghCli.available,
-      disabled: payload.ghCli.disabled,
-      active: payload.ghCli.active,
-    };
-    if (payload.ghCli.user) result.cli.user = mapUser(payload.ghCli.user, identity);
-  }
+  if (cli) result.cli = cli;
   return result;
 };
 

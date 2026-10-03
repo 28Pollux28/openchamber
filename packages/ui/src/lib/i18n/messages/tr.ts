@@ -42,6 +42,7 @@ export const dict = {
   'sessions.aiRename.noSmallModel': 'Small Model gerekir. Bir model sağlayıcısına giriş yapın veya Ayarlar → Oturumlar\'dan birini seçin.',
   'commitComparison.mode': 'Commit',
   'pullRequestComparison.select': 'Çekme isteği seçin',
+  'pullRequestComparison.partial': 'Bazı çekme istekleri yüklenemedi',
   'commitComparison.select': 'Commit seç',
   'commitComparison.search': 'Commit ara...',
   'commitComparison.loadError': 'Commitler yüklenemedi',

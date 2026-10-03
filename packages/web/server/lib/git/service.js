@@ -2540,11 +2540,15 @@ export async function hasLocalIdentity(directory) {
  * an identity writes are removed, and only in this repository.
  */
 export async function clearLocalIdentity(directory) {
-  const git = await createGit(directory);
+  const directoryPath = normalizeDirectoryPath(directory);
   // `git config --unset` exits 5 for a key that is not set, which is the
-  // ordinary case here rather than a failure.
+  // ordinary case here rather than a failure. Anything else (a locked
+  // `.git/config`, a repository that is not one) means the author stayed.
   for (const key of ['user.name', 'user.email', 'user.signingkey', 'commit.gpgsign', 'gpg.format']) {
-    await git.raw(['config', '--local', '--unset-all', key]).catch(() => null);
+    const removed = await runGitCommand(directoryPath, ['config', '--local', '--unset-all', key]);
+    if (!removed.success && removed.exitCode !== 5) {
+      throw new Error(removed.stderr.trim() || `Failed to clear ${key}`);
+    }
   }
   return true;
 }
@@ -2585,19 +2589,48 @@ export async function configureRepositoryTransport(directory, { credentialHelper
   const directoryPath = normalizeDirectoryPath(directory);
   if (typeof directoryPath !== 'string' || !directoryPath.trim()) throw new Error('Git directory is required');
   const config = (args) => runGitCommand(directoryPath, ['config', '--local', ...args]);
-  const managedHelper = (value) => value === '' || value.startsWith('!') && /git-credential-openchamber/.test(value);
+  const ourHelper = (value) => value.startsWith('!') && /git-credential-openchamber/.test(value);
   const helpers = await config(['--get-all', 'credential.helper']);
+  if (!helpers.success && helpers.exitCode !== 1) throw new Error(helpers.stderr || 'Failed to read the repository credential helper');
   const current = helpers.success ? helpers.stdout.replace(/\n$/, '').split('\n') : [];
-  const wanted = credentialHelper ? ['', credentialHelper] : [];
-  const ours = current.filter(managedHelper);
-  if (JSON.stringify(ours) !== JSON.stringify(wanted)) {
-    for (const value of new Set(ours)) {
-      const removed = await config(['--unset-all', '--fixed-value', 'credential.helper', value]);
-      if (!removed.success && removed.exitCode !== 5) throw new Error(removed.stderr || 'Failed to update the repository credential helper');
-    }
+  // OpenChamber's entries are its helper and the empty reset written right
+  // before it. Any other empty value is the person's own reset and stays.
+  const others = [];
+  for (const value of current) {
+    if (!ourHelper(value)) { others.push(value); continue; }
+    if (others.at(-1) === '') others.pop();
+  }
+  const wanted = credentialHelper ? [...others, '', credentialHelper] : others;
+  if (JSON.stringify(current) !== JSON.stringify(wanted)) {
+    // Identical values cannot be removed one by one, so the list is rewritten
+    // in order: the person's entries as they were, then OpenChamber's.
+    const removed = await config(['--unset-all', 'credential.helper']);
+    if (!removed.success && removed.exitCode !== 5) throw new Error(removed.stderr || 'Failed to update the repository credential helper');
     for (const value of wanted) {
       const added = await config(['--add', 'credential.helper', value]);
       if (!added.success) throw new Error(added.stderr || 'Failed to write the repository credential helper');
+    }
+  }
+  // The helper picks the grant by repository path, so an origin and a fork on
+  // one host can answer as different accounts; Git sends the path only with
+  // `credential.useHttpPath`. The person's own helpers never see it: inside
+  // this repository the reset hides them, and the helper asks them from
+  // outside it. A value the person set is theirs; the marker records ours.
+  const ownedPathKey = 'openchamber.credentialusehttppath';
+  const owned = (await config(['--get', ownedPathKey])).success;
+  if (credentialHelper && !owned) {
+    const existingPath = await config(['--get', 'credential.useHttpPath']);
+    if (!existingPath.success && existingPath.exitCode !== 1) throw new Error(existingPath.stderr || 'Failed to read the repository credential settings');
+    if (!existingPath.success) {
+      for (const args of [['credential.useHttpPath', 'true'], [ownedPathKey, 'true']]) {
+        const written = await config(args);
+        if (!written.success) throw new Error(written.stderr || 'Failed to write the repository credential settings');
+      }
+    }
+  } else if (!credentialHelper && owned) {
+    for (const key of ['credential.useHttpPath', ownedPathKey]) {
+      const removed = await config(['--unset-all', key]);
+      if (!removed.success && removed.exitCode !== 5) throw new Error(removed.stderr || 'Failed to remove the repository credential settings');
     }
   }
   const currentSsh = await config(['--get', 'core.sshCommand']);

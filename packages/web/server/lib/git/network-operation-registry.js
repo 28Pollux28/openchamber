@@ -208,11 +208,32 @@ export function createNetworkOperationRegistry({
     if (entry.completion) Object.assign(value, entry.completion);
     return cloneAndFreeze(value);
   };
+  // A sync completion always carries its three step results, a cancelled
+  // plan included: none of the steps ran.
+  const plannedCancellation = (entry, message) => ({
+    state: 'cancelled',
+    error: { code: 'CANCELLED', message },
+    ...(entry.publicPlan.target?.operation === 'sync'
+      ? { stepResults: ['fetch', 'pull', 'push'].map((step) => ({ step, status: 'skipped' })) }
+      : {}),
+  });
   const cleanupLocal = () => {
     const cutoff = now() - terminalRetentionMs;
     const plannedCutoff = now() - plannedRetentionMs;
     let removed = 0;
     for (const [operationId, entry] of entries) {
+      // With a store, an unstarted plan cannot simply vanish from memory: its
+      // durable record would stay `planned` and hold a capacity slot forever.
+      // It is cancelled instead, durably, and then ages out as terminal.
+      if (store && entry.state === 'planned' && !entry.recovered && !entry.cancellationRequested
+        && entry.createdAt <= plannedCutoff) {
+        entry.cancellationRequested = true;
+        try {
+          Promise.resolve(finish(operationId, plannedCancellation(entry, 'Git network operation plan expired before it started')))
+            .catch(() => {});
+        } catch {}
+        continue;
+      }
       if ((TERMINAL_STATES.has(entry.state) && entry.state !== 'outcome-unknown' && entry.finishedAt <= cutoff)
         || (!store && entry.state === 'planned' && entry.createdAt <= plannedCutoff)) {
         entries.delete(operationId);
@@ -419,10 +440,7 @@ export function createNetworkOperationRegistry({
     if (entry.child) {
       try { cancelChild(entry.child); } catch {}
     }
-    if (entry.state === 'planned') return finish(operationId, {
-      state: 'cancelled',
-      error: { code: 'CANCELLED', message: 'Git network operation was cancelled' },
-    });
+    if (entry.state === 'planned') return finish(operationId, plannedCancellation(entry, 'Git network operation was cancelled'));
     return snapshot(entry);
   };
   const updateTransportMetadata = (operationId, metadata, role) => {
@@ -506,7 +524,7 @@ export function createNetworkOperationRegistry({
   const runStart = async (operationId, execute) => {
     if (store) await ensureRecovered();
     const entry = getEntry(operationId);
-    if (entry.state !== 'planned' || entry.recovered || !(execute instanceof Function)) {
+    if (entry.state !== 'planned' || entry.recovered || entry.cancellationRequested || !(execute instanceof Function)) {
       throw registryError('GIT_NETWORK_OPERATION_NOT_STARTABLE', 'Git network operation cannot start');
     }
     if (store) {

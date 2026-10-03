@@ -41,10 +41,14 @@ export function ManagedSshCredentials({ selection, disabled = false }: {
       setState(initialState());
       setHostSetup(false);
       setConfirmedCandidateId('');
-      onSelectionChange?.('');
     };
+    // Mounting keeps the identity's saved key; only a runtime switch makes it
+    // name a key on another machine, so only that clears it.
     reset();
-    const unsubscribe = subscribeRuntimeEndpointWillChange(reset);
+    const unsubscribe = subscribeRuntimeEndpointWillChange(() => {
+      reset();
+      onSelectionChange?.('');
+    });
     return () => { generation.current += 1; unsubscribe(); };
   }, [git, onSelectionChange]);
 

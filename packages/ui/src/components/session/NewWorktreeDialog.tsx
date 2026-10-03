@@ -562,7 +562,7 @@ export function NewWorktreeDialog({
       headSha: reference.headSha,
       headProject: reference.headRepo ? { owner: reference.headRepo.owner } : null,
       project: {
-        id: `${reference.sourceRepo.owner}/${reference.sourceRepo.repo}`,
+        id: reference.projectId ?? `${reference.sourceRepo.owner}/${reference.sourceRepo.repo}`,
         owner: reference.sourceRepo.owner,
         name: reference.sourceRepo.repo,
       },

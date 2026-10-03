@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'bun:test';
 import type { ChangeRequest, ChangeRequestContext, Issue, SourceControlReadContext } from '@/lib/api/types';
 import { fetchGitLabReferenceDetail, fetchGitLabReferencePage } from './gitlabReferences';
-import { referenceNumberLabel } from './referencePickerItems';
+import { referenceNumberLabel, referencePickerItemKey } from './referencePickerItems';
 
 const identity = { provider: 'gitlab' as const, instance: 'https://gitlab.com' };
 const context: SourceControlReadContext = {
@@ -43,6 +43,16 @@ describe('GitLab references', () => {
     expect(page.hasMore).toBe(false);
     expect(page.cursor).toBeNull();
     expect(referenceNumberLabel(page.items[0]!)).toBe('!7');
+  });
+
+  test('issue #N and merge request !N select as different items', async () => {
+    const issues = await fetchGitLabReferencePage(reads({ issuesList: async () => ({ items: [{ ...issue, number: 7 }], page: 1, hasMore: false }) }), context, 'issue', '', null);
+    const pulls = await fetchGitLabReferencePage(reads(), context, 'pull', '', null);
+    if (issues.kind !== 'page' || pulls.kind !== 'page') throw new Error('expected pages');
+    const issueKey = referencePickerItemKey({ source: 'github', reference: issues.items[0]! });
+    const pullKey = referencePickerItemKey({ source: 'github', reference: pulls.items[0]! });
+    expect(issueKey).toBe('gitlab:group/sub/app#7');
+    expect(pullKey).toBe('gitlab:group/sub/app!7');
   });
 
   test('the preview reads a merge request through its context', async () => {
