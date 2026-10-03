@@ -26,10 +26,9 @@ Use this doc when you ask an agent to change tool/header/description behavior.
   - If you want to change expandable tool layout, edit here.
 
 - `taskToolModel.ts`
-  - Owns subagent metadata parsing and child-session summary projection.
-  - `part.state.metadata.sessionID` is the only live identity contract between a `subagent` call and its child session.
-  - A running subagent may briefly have no session id; render it as waiting until the authoritative part update arrives. Never match parallel children by order, title, timestamp, or status.
-  - Part-level metadata and output parsing exist only for older persisted records and never override state metadata.
+  - Owns subagent metadata parsing and child-session summary projection. `ToolPart.tsx` resolves the call's child identity.
+  - A subagent's `state.metadata.sessionID` is the preferred child identity from progress/result updates. Legacy part metadata and output IDs remain readable, then a non-empty `state.input.sessionID` identifies a resumed child when those IDs are absent.
+  - If none of those sources names a child, a running call may infer one from child sessions created at or after the call start. Candidates must belong to the parent, match the requested agent when the session has one, and remain unclaimed by sibling calls. A unique candidate is accepted; when several remain, the call description must uniquely match the child title. Ambiguous calls stay unlinked. Inference never pairs children by sibling order or status.
 
 - `toolPresentation.tsx`
   - Shared icon mapping for tool names (`getToolIcon`).
@@ -67,6 +66,9 @@ Use this doc when you ask an agent to change tool/header/description behavior.
 
 - `JustificationBlock.tsx`
   - Justification block wrapper over `ReasoningTimelineBlock`.
+
+- `BlockLine.tsx`
+  - The vertical connector line left of a collapsible block's body. It is also a click target: clicking it folds/expands the block via its header toggle handler (`onToggle`), or toggles the nearest native `<details>` when no handler is passed (JSON summary sections). Geometry is inline-styled (12px hit strip centered on the 1px line) so it does not depend on compiled Tailwind classes.
 
 ## Current important behavior
 
@@ -114,14 +116,25 @@ pre-collapse height on the DOM indefinitely. Failed animations also settle;
 callbacks from cancelled, superseded animations never settle a newer target.
 
 The virtualizer also adds temporary end padding while compensating prepended
-history. The Bun patch for `@legendapp/list@3.3.10` stores that padding's CSSOM
-read-back value: Chromium rounds fractional pixel strings, so comparing the
-original input with `style.paddingBottom` can skip cleanup permanently. This
-leaves a phantom tail even when every Activity region is already zero-height.
-The patch covers both web entry points in ESM and CJS; its installed-controller
-regression tests live in `scripts/legend-list-padding.test.mjs`. Retain this
-fix when updating the dependency unless upstream has equivalent ownership and
-cleanup behavior. Chat padding and scroll policies do not compensate for it.
+history. `@legendapp/list` stores that padding's CSSOM read-back value (built
+in since 3.3.11; it was a Bun patch before): Chromium rounds fractional pixel
+strings, so comparing the original input with `style.paddingBottom` could skip
+cleanup permanently and leave a phantom tail even when every Activity region is
+already zero-height. `scripts/legend-list-padding.test.mjs` checks the
+installed version for it. Chat padding and scroll policies do not compensate
+for it.
+
+The Bun patch for `@legendapp/list@3.6.0` floors `roundSize` to the device
+pixel grid instead of eighth pixels, mirroring upstream LegendApp/legend-list#536.
+Rows the list has not measured yet are placed at the average measured height;
+with eighth-pixel precision their positions are fractional, the browser rounds
+each `scrollTop` correction, and the remainder is lost on every compensation
+pass. A history prepend then leaves the reader's row one to two pixels off
+(3.3.10 drifted too; the browser harness passed only because its row heights
+happened to average to a whole pixel). The patch covers both web entry points
+in ESM and CJS. Drop it once upstream ships #536 or an equivalent, and verify
+with `bun packages/ui/tests/chat-history-scroll.browser.mjs`, which runs the
+prepend scenarios over several row-height profiles for this reason.
 
 The header retains its report when expanded and has no hover background. Its
 left inset matches sorted Activity. Diff deletions use the ASCII hyphen.
@@ -216,6 +229,7 @@ finished with `stop`, so no tool patch is parsed while the turn streams.
 - A `subagent` call that went to the background (`background: true`, or moved there with `session.background`) settles at once with `metadata.status: "running"` and the child in `metadata.sessionID`. `ToolPart` renders it through `BackgroundSubagentToolPartContent` (`backgroundSubagentPart.ts`): running while the child session is active in `global-session-status`, then finished, failed or stopped from the report OpenCode appends (`findSubagentRun`), with the `in background` / `stopped` header label. `ChatContainer` drops that report from the timeline (`keepCommandSubagentReports`), so the subagent stays where it was started instead of reappearing as a new turn at the end. Only reports of `subagent: true` commands, which have no call row, still render as their own `TimelineNotice` turn, and only when the child started inside the loaded history; any other report (a call not loaded yet, an unknown child) stays out of the chat and is reachable from the session's subagent list, so loading older history never makes the chat shift.
 - Thinking/Justification duration is hidden in `sorted` mode (handled in `ReasoningPart.tsx` + `JustificationBlock.tsx`).
 - Reasoning streaming presentation derives from the live stream phase (`streaming`/`cooldown`), never from missing persisted timing: a cached part without `time.end` is not live, and a part whose `time.end` is set never streams (issue #2020).
+- Assistant text parts carry the same part-finalization gate (`assistantTextVisibility.ts`): live mode's block-commit reveal holds a still-growing part's trailing line, while a part sealed with `time.end` renders in full immediately — including while the turn stays blocked on a pending question or permission ask (#3277).
 
 ## "I want to change description for Perplexity" (example recipe)
 

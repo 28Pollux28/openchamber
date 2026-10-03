@@ -13,6 +13,7 @@ import type { IconName } from "@/components/icon/icons";
 import { BranchSelector } from './BranchSelector';
 import { WorktreeBranchDisplay } from './WorktreeBranchDisplay';
 import { SyncActions } from './SyncActions';
+import { hasUncommittedTrackedChanges } from './changeStatus';
 import { NestedRepoPicker } from './NestedRepoPicker';
 import type {
   GitStatus,
@@ -28,7 +29,7 @@ import { cn } from '@/lib/utils';
 import { describeIdentityApplicability, type IdentityApplicability } from '@/lib/source-control/applyIdentity';
 import { useDeviceInfo } from '@/lib/device';
 
-type SyncAction = 'fetch' | 'sync' | 'publish' | null;
+type SyncAction = 'fetch' | 'pull' | 'sync' | 'publish' | null;
 
 interface GitHeaderProps {
   directory: string;
@@ -40,6 +41,7 @@ interface GitHeaderProps {
   operationBlocked?: boolean;
   remotes: GitRemote[];
   onFetch: (remote: GitRemote) => void;
+  onPull: (remote: GitRemote) => void;
   onSync: (remote: GitRemote) => void;
   onPublish: () => void;
   onChooseSyncTargets: () => void;
@@ -312,6 +314,7 @@ export const GitHeader: React.FC<GitHeaderProps> = ({
   operationBlocked = false,
   remotes,
   onFetch,
+  onPull,
   onSync,
   onPublish,
   onChooseSyncTargets,
@@ -463,6 +466,7 @@ export const GitHeader: React.FC<GitHeaderProps> = ({
       syncAction={syncAction}
       remotes={remotes}
       onFetch={onFetch}
+      onPull={onPull}
       onSync={onSync}
       onPublish={onPublish}
       onChooseSyncTargets={onChooseSyncTargets}
@@ -476,7 +480,8 @@ export const GitHeader: React.FC<GitHeaderProps> = ({
       aheadCount={status.ahead}
       behindCount={status.behind}
       trackingRemoteName={status.tracking?.split('/')[0]}
-      hasUncommittedChanges={(status.files?.length ?? 0) > 0}
+      trackingBranch={status.tracking}
+      hasUncommittedChanges={hasUncommittedTrackedChanges(status.files)}
     />
   );
 

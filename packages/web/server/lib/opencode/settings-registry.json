@@ -532,6 +532,14 @@
         "mobile"
       ]
     },
+    "sessionGoalMaxAutoTurns": {
+      "scope": "profile",
+      "surfaces": [
+        "web",
+        "desktop",
+        "mobile"
+      ]
+    },
     "sessionGoalDefaultBudgetEnabled": {
       "scope": "profile"
     },

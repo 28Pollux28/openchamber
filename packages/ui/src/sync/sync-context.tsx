@@ -24,6 +24,7 @@ import {
   ChildStoreManager,
   markDirectorySessionPartChanged,
   subscribeDirectoryPermission,
+  subscribeDirectoryPermissions,
   subscribeDirectoryForms,
   subscribeDirectorySessionMessages,
   type DirectoryBootstrapContext,
@@ -1479,9 +1480,8 @@ async function resyncDirectoryAfterReconnect(
 /**
  * OpenCode reports a catalog change (`config.updated`, `agent.updated`, ...)
  * without saying what changed, so the affected slice is re-read rather than
- * patched. Agents, commands, config and providers resolve per directory, so
- * each directory the change was announced for refreshes its own copy;
- * projects are global.
+ * patched. Config resolves per directory, so each directory the change was
+ * announced for refreshes its own copy; projects are global.
  *
  * Only those directories: a directory-scoped read makes OpenCode start that
  * location, MCP servers included, so re-reading every directory with a store
@@ -1508,34 +1508,18 @@ async function reloadCatalog(
     if (projects) useGlobalSyncStore.getState().actions.set({ projects })
     return
   }
-  // No sync-store slice of their own: their consumers read them on demand.
-  if (kind === "skill" || kind === "plugin" || kind === "websearch") return
+  // Config is the only catalog the directory stores hold. Agents, commands,
+  // providers and the rest live in the stores their consumers read, which
+  // `refreshStoresForCatalogKind` re-reads for the same kind.
+  if (kind !== "config") return
 
   await Promise.all([...directories].map(async (directory) => {
     const store = childStores.getChild(directory)
     if (!store) return
     try {
-      if (kind === "agent") {
-        store.setState({ agent: await opencodeClient.listAgents(directory) })
-      } else if (kind !== "command") {
-        // Commands have no sync-store slice: `refreshStoresForCatalogKind`
-        // re-reads `useCommandsStore`, the only consumer, on demand.
-        if (kind === "config") {
-          const config = await opencodeClient.getConfig(directory)
-          store.setState({ config })
-          emitSyncConfigChanged(directory, config)
-        }
-        // The provider slice follows everything that can change it:
-        // `provider.updated` / `model.updated` (2.0.8's own announcements), a
-        // credential change, and the config (which can declare providers).
-        // Fresh: a read already in flight may predate the change.
-        const provider = await opencodeClient.getProvidersForConfig(directory, { fresh: true })
-        // Same catalog, same object: a re-read that changes nothing must not
-        // re-render every provider consumer.
-        if (JSON.stringify(store.getState().provider) !== JSON.stringify(provider)) {
-          store.setState({ provider })
-        }
-      }
+      const config = await opencodeClient.getConfig(directory)
+      store.setState({ config })
+      emitSyncConfigChanged(directory, config)
     } catch {
       // Best-effort: the next catalog event or bootstrap re-reads it.
     }
@@ -1638,10 +1622,14 @@ const permissionsAwaitingAutoAnswer = new Map<string, () => void>()
 // Reports that arrived before their request: the request is shown at once.
 const leftForUserBeforeAsked = new Set<string>()
 
-/** Whether `permission.asked` is held back until the server rules on it. */
+/** Whether a fresh `permission.asked` will be held back until the server rules on it. */
+const isHeldUntilAutoAnswered = (permission: PermissionRequest): boolean =>
+  !leftForUserBeforeAsked.has(permission.id) && !isVSCodeRuntime() && isAnsweredWithoutUser(permission.sessionID)
+
+/** Hold `permission.asked` back until the server rules on it, when it may answer it. */
 const holdBackUntilAutoAnswered = (permission: PermissionRequest, replayAsAsk: () => void): boolean => {
   if (leftForUserBeforeAsked.delete(permission.id)) return false
-  if (isVSCodeRuntime() || !isAnsweredWithoutUser(permission.sessionID)) return false
+  if (!isHeldUntilAutoAnswered(permission)) return false
   permissionsAwaitingAutoAnswer.set(permission.id, replayAsAsk)
   return true
 }
@@ -1671,7 +1659,9 @@ const permissionReplayAsAsk = (
   streamingDirectory: string | undefined,
 ) => () => {
   if (expectedRuntimeKey !== getRuntimeKey()) return
-  handleEvent(rawDirectory, payload, childStores, routingIndex, expectedRuntimeKey, true, streamingDirectory, undefined, true)
+  // The first pass kept the held request out of the cross-directory index too,
+  // so the replay applies global effects and the sidebar badge appears now.
+  handleEvent(rawDirectory, payload, childStores, routingIndex, expectedRuntimeKey, true, streamingDirectory, undefined, false)
 }
 
 const forgetAutoAnswerWait = (permissionID: string): void => {
@@ -1823,18 +1813,27 @@ export function handleEvent(
   }
 
   if (!globalEffectsAlreadyApplied) {
+    // A request the server may answer on its own stays out of the
+    // cross-directory index as well, or collapsed rows, the tray and run
+    // overviews would flash a shield for a request that is then auto-approved.
+    // It enters the index when it is replayed for the user.
+    const heldForAutoAnswer = payload.type === "permission.asked"
+      && !autoAnswerDeclined
+      && isHeldUntilAutoAnswered(payload.properties)
     if (batch) {
       batch.globalSessionEvents.push(payload)
-      const statusEvents = batch.globalStatusEventsByDirectory.get(directory)
-      if (statusEvents) statusEvents.push(payload)
-      else batch.globalStatusEventsByDirectory.set(directory, [payload])
+      if (!heldForAutoAnswer) {
+        const statusEvents = batch.globalStatusEventsByDirectory.get(directory)
+        if (statusEvents) statusEvents.push(payload)
+        else batch.globalStatusEventsByDirectory.set(directory, [payload])
+      }
     } else {
       applySessionEventToGlobalSessions(payload)
       // Child stores remain the primary source for synced directories; these
       // indexes cover unopened directories and list/status races.
       applyBackgroundShellEvents(directory, [payload])
       applyGlobalSessionStatusEvent(directory, payload)
-      applyGlobalBlockingRequestEvents(directory, [payload])
+      if (!heldForAutoAnswer) applyGlobalBlockingRequestEvents(directory, [payload])
     }
   }
 
@@ -3221,19 +3220,27 @@ export function useSessionForms(sessionID: string, directory?: string) {
   )
 }
 
+type SessionBlockingRequestCounts = {
+  permissionCount: number
+  formCount: number
+}
+
+const EMPTY_SESSION_BLOCKING_REQUEST_COUNTS: SessionBlockingRequestCounts = {
+  permissionCount: 0,
+  formCount: 0,
+}
+
 /**
- * Total number of pending forms across the given session scopes. Each
- * scope names a directory store plus the session IDs to count inside it, so
- * collapsed subtree rows can roll up pending forms of hidden descendants
- * from their owning directory stores without bootstrapping them.
- *
- * Subscribes through the per-session form sidecar channel, so unrelated
- * streaming or session activity does not re-render rows.
+ * Count pending permissions and forms across exact session buckets grouped
+ * by owning directory. This lets collapsed rows cover hidden descendants
+ * without bootstrapping their stores or subscribing to unrelated updates.
  */
-export function useSessionFormCount(scopes: readonly { directory: string; sessionIDs: readonly string[] }[]) {
+export function useSessionBlockingRequestCounts(
+  scopes: readonly { directory: string; sessionIDs: readonly string[] }[],
+): SessionBlockingRequestCounts {
   // Runtime only: the current directory is not an input here, and reading the
   // directory-bearing context would re-render every sidebar row that counts
-  // forms whenever the user switches projects.
+  // blocking requests whenever the user switches projects.
   const { childStores } = useSyncRuntime()
   const scopedStores = React.useMemo(() => scopes.map((scope) => ({
     sessionIDs: scope.sessionIDs,
@@ -3245,18 +3252,30 @@ export function useSessionFormCount(scopes: readonly { directory: string; sessio
       for (const scope of scopes) childStores.unpin(scope.directory)
     }
   }, [childStores, scopes])
+  const snapshotRef = useRef(EMPTY_SESSION_BLOCKING_REQUEST_COUNTS)
   const getSnapshot = React.useCallback(() => {
-    let count = 0
+    let permissionCount = 0
+    let formCount = 0
     for (const { sessionIDs, store } of scopedStores) {
-      const forms = store.getState().form
-      for (const sessionID of sessionIDs) count += forms[sessionID]?.length ?? 0
+      const { permission: permissions, form: forms } = store.getState()
+      for (const sessionID of sessionIDs) {
+        permissionCount += permissions[sessionID]?.length ?? 0
+        formCount += forms[sessionID]?.length ?? 0
+      }
     }
-    return count
+    const previous = snapshotRef.current
+    if (previous.permissionCount === permissionCount && previous.formCount === formCount) {
+      return previous
+    }
+    const next = { permissionCount, formCount }
+    snapshotRef.current = next
+    return next
   }, [scopedStores])
   const subscribe = React.useCallback((notify: () => void) => {
-    const unsubscribers = scopedStores.map(({ sessionIDs, store }) => (
-      subscribeDirectoryForms(store, sessionIDs, notify)
-    ))
+    const unsubscribers = scopedStores.flatMap(({ sessionIDs, store }) => [
+      subscribeDirectoryPermissions(store, sessionIDs, notify),
+      subscribeDirectoryForms(store, sessionIDs, notify),
+    ])
     return () => {
       for (const unsubscribe of unsubscribers) unsubscribe()
     }

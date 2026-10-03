@@ -4,6 +4,7 @@ import { useMobileAppActions } from '@/apps/mobileAppContext';
 import { RuntimeAPIContext } from '@/contexts/runtimeAPIContext';
 import { cn } from '@/lib/utils';
 import { SimpleMarkdownRenderer } from '../../MarkdownRenderer';
+import { BlockLine } from './BlockLine';
 import { FormMarkdown } from '../../FormMarkdown';
 import { MessageFilesDisplay } from '../../FileAttachment';
 import { getToolMetadata } from '@/lib/toolHelpers';
@@ -1928,8 +1929,9 @@ const ToolPartContent: React.FC<ToolPartProps & { background?: BackgroundShellHe
             return undefined;
         }
 
-        // Current OpenCode publishes this authoritative join while the Task is
-        // running. The remaining sources only support older persisted parts.
+        // Progress/result metadata is the canonical join. Older parts keep
+        // their metadata/output IDs, and a resumed call can name its child in
+        // input.sessionID before the discovery fallback runs.
         const metadataSessionId = readTaskSessionIdFromRecord(metadata);
         if (metadataSessionId) {
             return metadataSessionId;
@@ -1943,8 +1945,13 @@ const ToolPartContent: React.FC<ToolPartProps & { background?: BackgroundShellHe
         if (parsedTaskMetadata.sessionId) {
             return parsedTaskMetadata.sessionId;
         }
-        return readTaskSessionIdFromOutput(taskOutputString);
-    }, [isTaskTool, metadata, parsedTaskMetadata.sessionId, partMetadata, taskOutputString]);
+        const outputSessionId = readTaskSessionIdFromOutput(taskOutputString);
+        if (outputSessionId) {
+            return outputSessionId;
+        }
+
+        return readTaskSessionIdFromRecord({ sessionID: input?.sessionID });
+    }, [input, isTaskTool, metadata, parsedTaskMetadata.sessionId, partMetadata, taskOutputString]);
 
     // A parent message loaded over REST mid-run lacks the progress-only join
     // (see resolveRunningTaskChildSessionId); recover it from the child
@@ -2395,11 +2402,7 @@ const ToolPartContent: React.FC<ToolPartProps & { background?: BackgroundShellHe
                         <div
                             className="relative ml-2 pl-3"
                         >
-                            <span
-                                aria-hidden="true"
-                                className="pointer-events-none absolute left-0 top-px bottom-0 w-px"
-                                style={{ backgroundColor: 'var(--tools-border)' }}
-                            />
+                            <BlockLine onToggle={() => onToggle(part.id)} topOffset={1} />
                             <ToolExpandedContent
                                 part={part}
                                 state={state}

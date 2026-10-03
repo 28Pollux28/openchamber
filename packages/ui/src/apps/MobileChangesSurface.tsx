@@ -14,6 +14,7 @@ import { CommitComparisonSelector } from '@/components/views/git/CommitCompariso
 import { branchRefLabel } from '@/components/views/git/baseBranch';
 import { isBranchScopeAvailable, isBranchScopeDefinitelyUnavailable, useRangeKeyedCache } from '@/components/views/branchDiffScope';
 import { CommitSection } from '@/components/views/git/CommitSection';
+import { ConflictDialog } from '@/components/views/git/ConflictDialog';
 import { DirtyBranchSwitchDialog } from '@/components/views/git/DirtyBranchSwitchDialog';
 import { SyncActions } from '@/components/views/git/SyncActions';
 import { ContributorDestinationDialog } from '@/components/views/git/ContributorDestinationDialog';
@@ -30,6 +31,8 @@ import { remoteTraits,
 } from '@/lib/source-control/identity';
 import { useConnectedAccountIds, useSourceControlAuthStore } from '@/stores/useSourceControlAuthStore';
 import type { GitIdentityProfile } from '@/lib/api/types';
+import { InProgressOperationBanner } from '@/components/views/git/InProgressOperationBanner';
+import { hasUncommittedTrackedChanges, isConflictedStatusFile } from '@/components/views/git/changeStatus';
 import { PierreDiffViewer } from '@/components/views/PierreDiffViewer';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import { useRepositoryBinding } from '@/lib/source-control/repository-binding';
@@ -69,8 +72,9 @@ import { PendingGitOperationError } from '@/lib/source-control/git-operation-rec
 import { useGitPublishChooser } from '@/components/views/git/useGitPublishChooser';
 import { PublishDialog } from '@/components/views/git/PublishDialog';
 import { settleGitFileReverts } from './mobileChangesOperations';
+import { normalizePath } from '@/lib/pathNormalization';
 
-type SyncAction = 'fetch' | 'sync' | 'publish' | null;
+type SyncAction = 'fetch' | 'pull' | 'sync' | 'publish' | null;
 type CommitAction = 'commit' | 'commitAndPush' | null;
 
 type ChangesMode = 'working' | 'branch' | 'commit' | 'pr';
@@ -97,8 +101,6 @@ type ComparisonDiff =
 const LOADING_COMPARISON_DIFF: ComparisonDiff = { status: 'loading' };
 const LIST_ROUTE: ChangesRoute = { type: 'list' };
 
-const normalizePath = (value?: string | null): string => (value || '').replace(/\\/g, '/').replace(/\/+$/g, '');
-
 const isStagedStatusFile = (file: GitStatus['files'][number]): boolean => {
   const indexStatus = file.index?.trim();
   return Boolean(indexStatus && indexStatus !== '?');
@@ -122,10 +124,12 @@ type MobileChangesSurfaceProps = {
   initialDiff?: { path: string; staged: boolean } | null;
   /** The workspace drawer keeps visited panes mounted while hidden. */
   visible?: boolean;
+  /** The drawer closes here so a conflict handed to chat lands on the chat. */
+  onNavigatedToChat?: () => void;
 };
 
 export const MobileChangesSurface: React.FC<MobileChangesSurfaceProps> = (props) => {
-  const rootDirectory = normalizePath(useEffectiveDirectory() ?? null);
+  const rootDirectory = normalizePath(useEffectiveDirectory() ?? null) ?? '';
   const repository = useNestedGitDirectory(rootDirectory || null, { enabled: props.visible ?? true });
   return <MobileChangesPane {...props} rootDirectory={rootDirectory} repository={repository} />;
 };
@@ -136,7 +140,7 @@ interface MobileChangesPaneProps extends MobileChangesSurfaceProps {
 }
 
 /** Repository-scoped navigation and actions, separate from session directory resolution. */
-export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirectory, repository, onClose, initialDiff, visible = true }) => {
+export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirectory, repository, onClose, initialDiff, visible = true, onNavigatedToChat }) => {
   const { t } = useI18n();
   const { git, sourceControl } = useRuntimeAPIs();
   // When the root is not itself a repository, changes come from the resolved
@@ -250,6 +254,15 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
   const publishChooser = useGitPublishChooser({ directory: currentDirectory, branch: status?.current, chooseContributor: contributorDestination.choose });
   const operationRecovery = useGitOperationRecovery(currentDirectory, git, sourceControl);
   const [pendingDirtySwitchBranch, setPendingDirtySwitchBranch] = React.useState<string | null>(null);
+  const [conflictDialogOpen, setConflictDialogOpen] = React.useState(false);
+  const [conflictFiles, setConflictFiles] = React.useState<string[]>([]);
+  const [conflictOperation, setConflictOperation] = React.useState<'merge' | 'rebase'>('rebase');
+
+  const openConflictDialog = React.useCallback((files: string[], operation: 'merge' | 'rebase') => {
+    setConflictFiles(files);
+    setConflictOperation(operation);
+    setConflictDialogOpen(true);
+  }, []);
 
   const currentBranch = status?.current ?? null;
   const trackingRemote = status?.tracking?.trim().split('/')[0];
@@ -503,7 +516,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     const recovery = operationRecovery.start();
     if (!recovery) return;
     setSyncAction(action);
-    const actionLabel = t(action === 'fetch' ? 'gitView.sync.fetch' : action === 'publish' ? 'gitView.publish.title' : 'gitView.sync.syncChanges');
+    const actionLabel = t(action === 'fetch' ? 'gitView.sync.fetch' : action === 'pull' ? 'gitView.sync.pull' : action === 'publish' ? 'gitView.publish.title' : 'gitView.sync.syncChanges');
     try {
       if (action === 'sync' || action === 'publish') {
         const execute = await publishChooser.prepare(action === 'publish' ? 'push' : 'sync', { forceChoose, onOperation: recovery.onOperation });
@@ -519,6 +532,8 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
       if (!recovery.isCurrent()) return;
       if (action === 'fetch' && remote) {
         toast.success(t('gitView.toast.fetchedFromRemote', { name: remote.name }));
+      } else if (action === 'pull' && remote) {
+        toast.success(t('gitView.toast.pulledFromRemote', { name: remote.name }));
       } else if (action === 'sync') {
         toast.success(t('gitView.toast.syncedChanges'));
       } else if (action === 'publish') {
@@ -529,6 +544,13 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
     } catch (error) {
       if (error instanceof GitOperationResultError || error instanceof PendingGitOperationError) {
         if (recovery.isCurrent()) await Promise.allSettled([refreshStatusAndBranches(false), refreshRemotes()]);
+        if (recovery.isCurrent() && error instanceof GitOperationResultError && error.read.availability === 'available'
+          && error.read.operation.state === 'conflicted' && error.read.operation.error.code === 'CONFLICT') {
+          // A pull merges the fetched commits, so its conflicts leave a merge in progress.
+          const afterConflict = await git.getGitStatus(currentDirectory).catch(() => null);
+          const files = (afterConflict?.files ?? []).filter(isConflictedStatusFile).map((file) => file.path);
+          if (files.length > 0) openConflictDialog(files, 'merge');
+        }
         return;
       }
       if (error instanceof BoundGitNetworkOperationError && error.code === 'stale-runtime') return;
@@ -724,6 +746,59 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
       if (options.pushAfter) setSyncAction(null);
     }
   };
+
+  const conflictCount = React.useMemo(
+    () => (status?.files ?? []).filter(isConflictedStatusFile).length,
+    [status?.files],
+  );
+  const mergeInProgress = Boolean(status?.mergeInProgress?.head);
+
+  const handleContinueOperation = React.useCallback(async () => {
+    if (!currentDirectory) return;
+    try {
+      if (mergeInProgress) {
+        const result = await git.continueMerge(currentDirectory);
+        if (result.conflict) {
+          openConflictDialog(result.conflictFiles ?? [], 'merge');
+          toast.error(t('gitView.toast.mergeConflictsDetected'));
+        } else {
+          toast.success(t('gitView.toast.mergeCompleted'));
+        }
+      } else {
+        const result = await git.continueRebase(currentDirectory);
+        if (result.conflict) {
+          openConflictDialog(result.conflictFiles ?? [], 'rebase');
+          toast.error(t('gitView.toast.rebaseConflictsDetected'));
+        } else {
+          toast.success(t('gitView.toast.rebaseStepCompleted'));
+        }
+      }
+      await refreshStatusAndBranches(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('gitView.toast.continueOperationFailed'));
+    }
+  }, [currentDirectory, git, mergeInProgress, openConflictDialog, refreshStatusAndBranches, t]);
+
+  const abortOperation = React.useCallback(async (operation: 'merge' | 'rebase') => {
+    if (!currentDirectory) return;
+    try {
+      if (operation === 'merge') {
+        await git.abortMerge(currentDirectory);
+        toast.success(t('gitView.toast.mergeAborted'));
+      } else {
+        await git.abortRebase(currentDirectory);
+        toast.success(t('gitView.toast.rebaseAborted'));
+      }
+      await refreshStatusAndBranches(false);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : t('gitView.toast.abortOperationFailed'));
+    }
+  }, [currentDirectory, git, refreshStatusAndBranches, t]);
+
+  const handleResolveWithAIFromBanner = React.useCallback(() => {
+    const filesWithConflicts = (status?.files ?? []).filter(isConflictedStatusFile).map((file) => file.path);
+    openConflictDialog(filesWithConflicts, mergeInProgress ? 'merge' : 'rebase');
+  }, [mergeInProgress, openConflictDialog, status?.files]);
 
   const changeGroups = React.useMemo<ChangesGroupConfig[]>(() => {
     const groups: ChangesGroupConfig[] = [];
@@ -996,6 +1071,7 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
             syncAction={operationRecovery.entry?.executing ? syncAction : null}
             remotes={effectiveRemotes}
             onFetch={(remote) => void handleSyncAction('fetch', remote)}
+            onPull={(remote) => void handleSyncAction('pull', remote)}
             onSync={(remote) => void handleSyncAction('sync', remote)}
             onPublish={() => void handleSyncAction('publish')}
             onChooseSyncTargets={() => void handleSyncAction('sync', undefined, true)}
@@ -1005,7 +1081,8 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
             aheadCount={status?.ahead ?? 0}
             behindCount={status?.behind ?? 0}
             trackingRemoteName={status?.tracking?.split('/')[0]}
-            hasUncommittedChanges={changeEntries.length > 0}
+            trackingBranch={status?.tracking}
+            hasUncommittedChanges={hasUncommittedTrackedChanges(changeEntries)}
           />
         </div>
       )}
@@ -1015,6 +1092,17 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
         directory={currentDirectory}
       />
       <GitOperationStatus className="mx-3 mt-3" entry={operationRecovery.entry} onRefresh={() => void operationRecovery.refresh()} onCancel={() => void operationRecovery.cancel()} />
+      {mode === 'working' && (
+        <InProgressOperationBanner
+          mergeInProgress={status?.mergeInProgress}
+          rebaseInProgress={status?.rebaseInProgress}
+          onContinue={handleContinueOperation}
+          onAbort={() => abortOperation(mergeInProgress ? 'merge' : 'rebase')}
+          onResolveWithAI={handleResolveWithAIFromBanner}
+          conflictCount={conflictCount}
+          isLoading={syncAction !== null || commitAction !== null}
+        />
+      )}
       {mode !== 'working' ? (
         <div className="min-h-0 flex-1">{renderComparison()}</div>
       ) : changeEntries.length > 0 ? (
@@ -1053,6 +1141,17 @@ export const MobileChangesPane: React.FC<MobileChangesPaneProps> = ({ rootDirect
         <div className="min-h-0 flex-1">
           <MobileChangesState icon message={t('gitView.empty.cleanTitle')} description={t('mobile.changes.cleanDescription')} />
         </div>
+      )}
+      {currentDirectory && (
+        <ConflictDialog
+          open={conflictDialogOpen}
+          onOpenChange={setConflictDialogOpen}
+          conflictFiles={conflictFiles}
+          directory={currentDirectory}
+          operation={conflictOperation}
+          onAbort={() => void abortOperation(conflictOperation)}
+          onNavigatedToChat={onNavigatedToChat}
+        />
       )}
       <DirtyBranchSwitchDialog
         open={pendingDirtySwitchBranch !== null}

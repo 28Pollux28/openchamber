@@ -17,11 +17,17 @@ export type QuotaProviderId =
   | 'ollama-cloud'
   | 'wafer'
   | 'opencode-go'
+  | 'deepinfra'
   | 'deepseek'
   | 'exe-dev'
   | 'hyper'
   | 'neuralwatt'
   | 'xai';
+
+export interface UsageWindowGiftReset {
+  recordId: number;
+  expireAt: number;
+}
 
 export interface UsageWindow {
   usedPercent: number | null;
@@ -32,6 +38,8 @@ export interface UsageWindow {
   resetAtFormatted: string | null;
   resetAfterFormatted: string | null;
   valueLabel?: string | null;
+  /** Claimable gift (bonus) limit reset, when the provider exposes an available one. */
+  giftReset?: UsageWindowGiftReset | null;
 }
 
 export interface UsageWindows {

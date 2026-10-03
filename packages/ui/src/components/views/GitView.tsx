@@ -11,6 +11,7 @@ import { useEffectiveDirectory } from '@/hooks/useEffectiveDirectory';
 import { useGitmojiList } from '@/hooks/useGitmojiList';
 import { copyTextToClipboard } from '@/lib/clipboard';
 import { getRuntimeKey } from '@/lib/runtime-switch';
+import { normalizePath } from '@/lib/pathNormalization';
 import {
   useGitStore,
   useGitStatus,
@@ -71,6 +72,7 @@ import {
   type BranchIntegrationTarget,
 } from './git/branchIntegration';
 import { deriveBaseBranch } from './git/baseBranch';
+import { isConflictedStatusFile } from './git/changeStatus';
 import { getFreshestSourceControlStatusForBranch, useGitHubPrStatusStore } from '@/stores/useGitHubPrStatusStore';
 import { getSourceControlAuthKey, getSourceControlReadContextAuthState, useSourceControlAuthStore, useConnectedAccountIds } from '@/stores/useSourceControlAuthStore';
 import { useRepositoryBinding } from '@/lib/source-control/repository-binding';
@@ -98,7 +100,7 @@ import { remoteTraits,
   activeIdentityFor,
 } from '@/lib/source-control/identity';
 
-type SyncAction = 'fetch' | 'sync' | 'publish' | null;
+type SyncAction = 'fetch' | 'pull' | 'sync' | 'publish' | null;
 type CommitAction = 'commit' | 'commitAndPush' | null;
 type BranchOperation = 'merge' | 'rebase' | null;
 type GitLogDialogMode = 'history' | 'graph';
@@ -207,9 +209,6 @@ const rememberSnapshot = (key: string, snapshot: GitViewSnapshot) => {
     }
   }
 };
-
-const normalizePath = (value?: string | null): string =>
-  (value || '').replace(/\\/g, '/').replace(/\/+$/, '');
 
 const isStagedStatusFile = (file: GitStatus['files'][number]): boolean => {
   const indexStatus = file.index?.trim();
@@ -816,6 +815,15 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
     window.localStorage.removeItem(conflictStorageKey);
   }, [conflictStorageKey]);
 
+  const openConflictDialog = React.useCallback((files: string[], operation: 'merge' | 'rebase') => {
+    setConflictFiles(files);
+    setConflictOperation(operation);
+    setConflictDialogOpen(true);
+    if (gitDirectory) {
+      persistConflictState(gitDirectory, files, operation);
+    }
+  }, [gitDirectory, persistConflictState]);
+
   // Restore conflict state from localStorage on mount
   React.useEffect(() => {
     if (!conflictStorageKey || typeof window === 'undefined' || !gitDirectory) return;
@@ -1157,7 +1165,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
     const recovery = operationRecovery.start();
     if (!recovery) return;
     setSyncAction(action);
-    const actionLabel = t(action === 'fetch' ? 'gitView.sync.fetch' : action === 'publish' ? 'gitView.publish.title' : 'gitView.sync.syncChanges');
+    const actionLabel = t(action === 'fetch' ? 'gitView.sync.fetch' : action === 'pull' ? 'gitView.sync.pull' : action === 'publish' ? 'gitView.publish.title' : 'gitView.sync.syncChanges');
 
     try {
       if (action === 'sync' || action === 'publish') {
@@ -1174,6 +1182,8 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
       if (!recovery.isCurrent()) return;
       if (action === 'fetch' && remote) {
         toast.success(t('gitView.toast.fetchedFromRemote', { name: remote.name }));
+      } else if (action === 'pull' && remote) {
+        toast.success(t('gitView.toast.pulledFromRemote', { name: remote.name }));
       } else if (action === 'sync') {
         toast.success(t('gitView.toast.syncedChanges'));
       } else if (action === 'publish') {
@@ -1191,6 +1201,13 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
           toast.error(t('gitView.toast.syncActionFailed', { action: actionLabel }), { description: err.message || undefined });
         }
         if (recovery.isCurrent()) await Promise.allSettled([refreshStatusAndBranches(false), refreshLog()]);
+        if (recovery.isCurrent() && err instanceof GitOperationResultError && err.read.availability === 'available'
+          && err.read.operation.state === 'conflicted' && err.read.operation.error.code === 'CONFLICT') {
+          // A pull merges the fetched commits, so its conflicts leave a merge in progress.
+          const afterConflict = await git.getGitStatus(gitDirectory).catch(() => null);
+          const files = (afterConflict?.files ?? []).filter(isConflictedStatusFile).map((file) => file.path);
+          if (files.length > 0) openConflictDialog(files, 'merge');
+        }
         return;
       }
       if (err instanceof BoundGitNetworkOperationError && err.code === 'stale-runtime') return;
@@ -2015,10 +2032,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
 
           if (result.conflict) {
             updateLastLog('error', 'Merge conflicts detected');
-            setConflictFiles(result.conflictFiles ?? []);
-            setConflictOperation('merge');
-            setConflictDialogOpen(true);
-            persistConflictState(gitDirectory, result.conflictFiles ?? [], 'merge');
+            openConflictDialog(result.conflictFiles ?? [], 'merge');
           } else {
             updateLastLog('done', `Merged ${target.label} into ${currentBranch}`);
             clearConflictState();
@@ -2033,10 +2047,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
 
           if (result.conflict) {
             updateLastLog('error', 'Rebase conflicts detected');
-            setConflictFiles(result.conflictFiles ?? []);
-            setConflictOperation('rebase');
-            setConflictDialogOpen(true);
-            persistConflictState(gitDirectory, result.conflictFiles ?? [], 'rebase');
+            openConflictDialog(result.conflictFiles ?? [], 'rebase');
           } else {
             updateLastLog('done', `Rebased ${currentBranch} onto ${target.label}`);
             clearConflictState();
@@ -2067,7 +2078,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
         recovery?.finish();
       }
     },
-    [gitDirectory, git, sourceControl, status, operationRecovery, refreshStatusAndBranches, refreshLog, isUncommittedChangesError, persistConflictState, clearConflictState, addOperationLog, updateLastLog, resetOperationLogs, t]
+    [gitDirectory, git, sourceControl, status, operationRecovery, refreshStatusAndBranches, refreshLog, isUncommittedChangesError, openConflictDialog, clearConflictState, addOperationLog, updateLastLog, resetOperationLogs, t]
   );
 
   const handleMerge = React.useCallback(
@@ -2104,15 +2115,10 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
     }
   }, [gitDirectory, git, conflictOperation, refreshStatusAndBranches, refreshLog, clearConflictState, t]);
 
-  // Count unresolved conflicts (files with 'U' status)
-  const conflictCount = React.useMemo(() => {
-    if (!status?.files) return 0;
-    return status.files.filter((f) =>
-      (f.index === 'U' || f.working_dir === 'U') ||
-      (f.index === 'A' && f.working_dir === 'A') ||
-      (f.index === 'D' && f.working_dir === 'D')
-    ).length;
-  }, [status?.files]);
+  const conflictCount = React.useMemo(
+    () => (status?.files ?? []).filter(isConflictedStatusFile).length,
+    [status?.files]
+  );
 
   const handleContinueOperation = React.useCallback(async () => {
     if (!gitDirectory) return;
@@ -2124,10 +2130,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
       if (isMerge) {
         const result = await git.continueMerge(gitDirectory);
         if (result.conflict) {
-          setConflictFiles(result.conflictFiles ?? []);
-          setConflictOperation('merge');
-          setConflictDialogOpen(true);
-          persistConflictState(gitDirectory, result.conflictFiles ?? [], 'merge');
+          openConflictDialog(result.conflictFiles ?? [], 'merge');
           toast.error(t('gitView.toast.mergeConflictsDetected'));
         } else {
           clearConflictState();
@@ -2138,10 +2141,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
       } else if (isRebase) {
         const result = await git.continueRebase(gitDirectory);
         if (result.conflict) {
-          setConflictFiles(result.conflictFiles ?? []);
-          setConflictOperation('rebase');
-          setConflictDialogOpen(true);
-          persistConflictState(gitDirectory, result.conflictFiles ?? [], 'rebase');
+          openConflictDialog(result.conflictFiles ?? [], 'rebase');
           toast.error(t('gitView.toast.rebaseConflictsDetected'));
         } else {
           clearConflictState();
@@ -2154,7 +2154,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
       const message = err instanceof Error ? err.message : t('gitView.toast.continueOperationFailed');
       toast.error(message);
     }
-  }, [gitDirectory, git, status, refreshStatusAndBranches, refreshLog, persistConflictState, clearConflictState, t]);
+  }, [gitDirectory, git, status, refreshStatusAndBranches, refreshLog, openConflictDialog, clearConflictState, t]);
 
   const handleAbortOperation = React.useCallback(async () => {
     if (!gitDirectory) return;
@@ -2184,10 +2184,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
     const isMerge = !!status?.mergeInProgress?.head;
     const operation = isMerge ? 'merge' : 'rebase';
 
-    // Get conflict files from status (files with 'U' status indicate unmerged/conflicted)
-    const filesWithConflicts = status?.files
-      ?.filter((f) => f.index === 'U' || f.working_dir === 'U')
-      .map((f) => f.path) ?? [];
+    const filesWithConflicts = (status?.files ?? []).filter(isConflictedStatusFile).map((f) => f.path);
 
     // Update conflict state and open dialog
     if (filesWithConflicts.length > 0) {
@@ -2330,13 +2327,8 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
       return;
     }
 
-    setConflictFiles(result.conflictFiles ?? []);
-    setConflictOperation(result.operation);
-    setConflictDialogOpen(true);
-    if (gitDirectory) {
-      persistConflictState(gitDirectory, result.conflictFiles ?? [], result.operation);
-    }
-  }, [t, setConflictFiles, setConflictOperation, setConflictDialogOpen, persistConflictState, gitDirectory, fetchStatus, fetchBranches, fetchLog, logMaxCountLocal, git]);
+    openConflictDialog(result.conflictFiles ?? [], result.operation);
+  }, [t, openConflictDialog, gitDirectory, fetchStatus, fetchBranches, fetchLog, logMaxCountLocal, git]);
 
   if (!currentDirectory) {
     return (
@@ -2431,6 +2423,7 @@ export const GitView: React.FC<GitViewProps> = ({ isActive }) => {
         operationBlocked={operationRecovery.blocked}
         remotes={remotes}
         onFetch={(remote) => handleSyncAction('fetch', remote)}
+        onPull={(remote) => handleSyncAction('pull', remote)}
         onSync={(remote) => handleSyncAction('sync', remote)}
         onPublish={() => void handleSyncAction('publish')}
         onChooseSyncTargets={() => void handleSyncAction('sync', undefined, true)}

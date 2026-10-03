@@ -13,7 +13,7 @@ import {
   resolveSessionPrLookup,
   resolveTooltipBranchLabel,
   selectFolderRootNodes,
-  selectFormBadgeSessionScopes,
+  selectBlockingBadgeSessionScopes,
   selectRowBadgeVisibilityClass,
 } from './sessionNodeItemUtils';
 import type { SessionNode } from '../types';
@@ -45,7 +45,7 @@ describe('computeNodeStructureKey', () => {
   });
 });
 
-describe('selectFormBadgeSessionScopes', () => {
+describe('selectBlockingBadgeSessionScopes', () => {
   const withDirectory = (node: SessionNode, directory: string | null): SessionNode => ({
     ...node,
     session: { ...node.session, directory } as Session,
@@ -56,7 +56,7 @@ describe('selectFormBadgeSessionScopes', () => {
     const child = withDirectory({ session: session('child', 'Child'), children: [grandchild], worktree: null }, '/worktrees/feature');
     const root = withDirectory({ session: session('root', 'Root'), children: [child], worktree: null }, '/repo');
 
-    expect(selectFormBadgeSessionScopes(root, false, '/repo')).toEqual([
+    expect(selectBlockingBadgeSessionScopes(root, false, '/repo')).toEqual([
       { directory: '/repo', sessionIDs: ['root'] },
       { directory: '/worktrees/feature', sessionIDs: ['child', 'grandchild'] },
     ]);
@@ -66,7 +66,7 @@ describe('selectFormBadgeSessionScopes', () => {
     const child = withDirectory({ session: session('child', 'Child'), children: [], worktree: null }, '/worktrees/feature');
     const root = withDirectory({ session: session('root', 'Root'), children: [child], worktree: null }, '/repo');
 
-    expect(selectFormBadgeSessionScopes(root, true, '/repo')).toEqual([
+    expect(selectBlockingBadgeSessionScopes(root, true, '/repo')).toEqual([
       { directory: '/repo', sessionIDs: ['root'] },
     ]);
   });
@@ -74,7 +74,7 @@ describe('selectFormBadgeSessionScopes', () => {
   test('falls back to the group directory when the session has none', () => {
     const root: SessionNode = { session: session('root', 'Root'), children: [], worktree: null };
 
-    expect(selectFormBadgeSessionScopes(root, false, '/fallback')).toEqual([
+    expect(selectBlockingBadgeSessionScopes(root, false, '/fallback')).toEqual([
       { directory: '/fallback', sessionIDs: ['root'] },
     ]);
   });
