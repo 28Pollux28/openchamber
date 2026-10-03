@@ -1,7 +1,6 @@
 import simpleGit from 'simple-git';
 import { createSerialRefresh } from './serial-refresh.js';
 import { stripAppImageLauncherEnv } from '../inherited-env.js';
-import { unsafeSwitchesForEnv } from './simple-git-env.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -397,21 +396,32 @@ const buildGitEnv = async () => {
   return env;
 };
 
+// simple-git refuses every command whose env holds a variable that runs a
+// program (EDITOR, PAGER, GIT_SSH_COMMAND, GIT_ASKPASS, ...) unless its unsafe
+// category is enabled, and the same categories also guard -c and other
+// arguments, so enabling them would weaken argument protection. A variable the
+// server's own environment passes through unchanged is what git would inherit
+// without an env anyway, so it goes on the prototype: simple-git's check copies
+// only own keys, while child_process.spawn passes inherited keys to the child.
+// Whatever OpenChamber sets or changes stays an own key and is still checked.
+const toSimpleGitEnv = (env) => {
+  const passedThrough = {};
+  const changed = {};
+  for (const [key, value] of Object.entries(env)) {
+    if (process.env[key] === value) {
+      passedThrough[key] = value;
+    } else {
+      changed[key] = value;
+    }
+  }
+  return Object.assign(Object.create(passedThrough), changed);
+};
+
 // Transport configuration is owned by repository bindings and the credential
 // broker, so no caller needs simple-git's unsafe SSH-command or
 // credential-helper escapes any more.
 const createGit = async (directory, { stallTimeoutMs = 0 } = {}) => {
   const env = await buildGitEnv();
-  // simple-git scans explicit env values, including inherited ones. Remove its
-  // blocked overrides from this copy so ordinary shell settings cannot reject
-  // every command; keep argument checks and the parent environment intact.
-  for (const key of Object.keys(env)) {
-    const name = key.trim().toUpperCase();
-    if (/^(EDITOR|PAGER|PREFIX|SSH_ASKPASS|GIT_(ASKPASS|EDITOR|EXEC_PATH|EXTERNAL_DIFF|PAGER|PROXY_COMMAND|SEQUENCE_EDITOR|SSH|SSH_COMMAND|TEMPLATE_DIR))$/.test(name)
-      || name === 'GIT_CONFIG' || name.startsWith('GIT_CONFIG_')) {
-      delete env[key];
-    }
-  }
   const spawnOptions = { windowsHide: true };
   // simple-git's block timeout kills the process once it has produced no
   // output for this long. Opt-in per caller: a background read must never hold
@@ -429,17 +439,14 @@ const createGit = async (directory, { stallTimeoutMs = 0 } = {}) => {
   if (typeof baseDir !== 'string' || !baseDir.trim()) {
     throw new Error('Git directory is required');
   }
-  // simple-git takes the environment only through `.env()`; an `env` option
-  // is ignored and Git would inherit the raw process environment (no prompt
-  // guard, AppImage launcher paths in hooks). The switches accept exactly the
-  // variables Git inherited before.
+  // simple-git ignores an `env` constructor option; only .env() reaches git.
   return createSimpleGit({
     baseDir,
     spawnOptions,
     binary,
-    unsafe: { ...unsafeSwitchesForEnv(env), ...unsafe },
+    unsafe,
     ...(timeout ? { timeout } : {}),
-  }).env(env);
+  }).env(toSimpleGitEnv(env));
 };
 
 // Global config reads do not need a repository; use the home directory as a

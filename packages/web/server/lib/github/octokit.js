@@ -96,8 +96,11 @@ export function getOctokitCacheIdentity(octokit) {
 
 export async function getOctokitOrNull() {
   const auth = await getGitHubAuth();
-  const ghToken = !isGhCliDisabled() ? getGhCliToken() : null;
-  const token = isGhCliActive() ? ghToken || auth?.accessToken : auth?.accessToken || ghToken;
+  // The gh CLI login is used only after the user switched to it in Settings:
+  // its token carries every scope ever granted to gh, so it is never picked
+  // up silently when OpenChamber has no account of its own.
+  const ghToken = isGhCliActive() && !isGhCliDisabled() ? getGhCliToken() : null;
+  const token = ghToken || auth?.accessToken;
   if (!token) {
     return null;
   }
