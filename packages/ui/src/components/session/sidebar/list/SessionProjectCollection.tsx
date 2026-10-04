@@ -22,7 +22,8 @@ import type { GitHubPullRequestRef, SourceControlReadContext } from '@/lib/api/t
 import { limitSourceControlDiscoveryCandidates } from '../sourceControlDiscovery';
 import { useOpenPrSummarySync } from '@/hooks/useOpenPrSummarySync';
 import { useLinearIssueStateSync } from '@/hooks/useLinearIssueStateSync';
-import { getLinkedGitHubPullRequests, getLinkedSidebarIssues } from '@/lib/linkedIssues';
+import { getLinkedGitHubPullRequests, getLinkedGitLabThreads, getLinkedSidebarIssues, type GitLabThreadRef } from '@/lib/linkedIssues';
+import { useGitLabLinkedStateSync } from '@/hooks/useGitLabLinkedStateSync';
 import { useRuntimeAPIs } from '@/hooks/useRuntimeAPIs';
 import type { SessionTreeItemProps } from '../sessions/SessionTreeItem';
 import { useArchivedAutoFolders } from '../folders/useArchivedAutoFolders';
@@ -490,6 +491,9 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
     // branch.
     const linkedRefs = new Map<string, GitHubPullRequestRef>();
     const linkedIssueRefs = new Map<string, GitHubPullRequestRef>();
+    // GitLab merge requests and issues linked to the sessions on screen; their
+    // state comes from their instance, on its own cadence below.
+    const gitlabRefs = new Map<string, GitLabThreadRef>();
     // Linear issues linked to the sessions on screen; their state comes from
     // Linear, on its own cadence below.
     const linearIdentifiers = new Set<string>();
@@ -511,13 +515,14 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
             linearIdentifiers.add(issue.identifier.toUpperCase());
           }
         }
+        for (const ref of getLinkedGitLabThreads(node.session)) gitlabRefs.set(ref.key, ref);
       }
       node.children.forEach(addNode);
     };
     workItems.forEach((item) => addNode(item.node));
     if (timelineMode) {
       timelineItems.forEach((item) => addNode(item.node));
-      return { targets, linkedRefs: [...linkedRefs.values()], linkedIssueRefs: [...linkedIssueRefs.values()], linearIdentifiers: [...linearIdentifiers] };
+      return { targets, linkedRefs: [...linkedRefs.values()], linkedIssueRefs: [...linkedIssueRefs.values()], linearIdentifiers: [...linearIdentifiers], gitlabRefs: [...gitlabRefs.values()] };
     }
     recentActivitySections.forEach((section) => section.items.forEach((item) => addNode(item.node)));
     projectSections.forEach((section) => {
@@ -532,7 +537,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
         addTarget(directory, group.branch?.trim() || topology.gitBranches.get(directory || ''));
       });
     });
-    return { targets, linkedRefs: [...linkedRefs.values()], linkedIssueRefs: [...linkedIssueRefs.values()], linearIdentifiers: [...linearIdentifiers] };
+    return { targets, linkedRefs: [...linkedRefs.values()], linkedIssueRefs: [...linkedIssueRefs.values()], linearIdentifiers: [...linearIdentifiers], gitlabRefs: [...gitlabRefs.values()] };
   }, [projectSections, projectView.collapsedProjects, recentActivitySections, timelineItems, timelineMode, topology.gitBranches, topology.isVSCode, workItems]);
   const shownPrTargets = shownPrs.targets;
   // The discovery effect below subscribes to bindings and reads them; keep its
@@ -702,6 +707,7 @@ const VisibleSessionProjects: React.FC<SessionProjectCollectionProps> = ({ topol
   );
   useOpenPrSummarySync(shownPrKeys, shownPrs.linkedRefs, shownPrs.linkedIssueRefs, sourceControl, githubConnected);
   useLinearIssueStateSync(shownPrs.linearIdentifiers, linear);
+  useGitLabLinkedStateSync(shownPrs.gitlabRefs, sourceControl);
 
   const { groupStatusByKey, bootstrapSnapshot } = useSidebarGroupStatus({
     childStores,
