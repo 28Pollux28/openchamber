@@ -5,7 +5,7 @@ import { constants as fsConstants } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import os from 'node:os';
-import { createGitCredentialBroker } from './credential-broker.js';
+import { createGitCredentialBroker, GIT_CREDENTIAL_NONCE_ENV } from './credential-broker.js';
 import { helperShellCommand } from './helper-launch.js';
 import { gitLfsCredentialEndpointAliases, normalizeGitRemoteEndpoint, parseGitCredentialReference } from './credential-resolver.js';
 import { createNetworkOperationPlanner } from './network-operation-plan.js';
@@ -1402,7 +1402,9 @@ export function createNetworkOperations({
       }
       context = await transport(auxiliaryPlan, { ...controls, updateTransportMetadata: () => {} }, deadline);
       if (context.env.OPENCHAMBER_GIT_SSH_KEY) throw operationError('AUTHENTICATION_REQUIRED', 'The LFS upload grant requires an HTTPS credential', 409);
-      context.env = env;
+      // The upload runs in the publication environment, but the broker lease
+      // travels in the transport's: carry the lease nonce across.
+      context.env = { ...env, [GIT_CREDENTIAL_NONCE_ENV]: context.env[GIT_CREDENTIAL_NONCE_ENV] };
       const currentConfig = await localGit(plan.directory, effectiveConfigArgs,
         controls, deadline, { allowedCodes: [0, 1], maxOutputBytes: LFS_DISCOVERY_LIMITS.maxConfigBytes });
       if (currentConfig !== effectiveConfigOutput) throw operationError('STALE_CONFIG', 'LFS publication configuration changed', 409);
