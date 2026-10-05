@@ -1078,4 +1078,35 @@ describe('connectHost resolve and badge', () => {
     expect(seen).toEqual([messageItem]);
     host.dispose();
   });
+
+  test('shells subscriptions, output reads, and stops use the wire contract', async () => {
+    const guest = createFrame();
+    const host = connectHost({ target: guest, acceptSource: () => true });
+    const seen: string[] = [];
+    const subscription = host.onRunningShells('ses_1', (snapshot) => seen.push(snapshot.sessionId));
+    const call = guest.posted.at(-1);
+    if (call?.type !== 'shells-subscribe') throw new Error('Expected subscription');
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells', payload: { subscriptionId: call.payload.subscriptionId, snapshot: { kind: 'shells', sessionId: 'ses_1', shells: [] } } } }));
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'result', id: call.id, ok: true } }));
+    const stop = await subscription;
+    expect(seen).toEqual(['ses_1']);
+    stop();
+    expect(guest.posted.at(-1)?.type).toBe('shells-unsubscribe');
+
+    const outputPromise = host.readShellOutput('sh_1', { cursor: 10, tailBytes: 1024 });
+    const outputCall = guest.posted.at(-1);
+    if (outputCall?.type !== 'shell-output') throw new Error('Expected output call');
+    expect(outputCall.payload).toEqual({ shellId: 'sh_1', cursor: 10, tailBytes: 1024 });
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'result', id: outputCall.id, ok: true, payload: { output: 'tick', cursor: 14, skipped: false } } }));
+    await expect(outputPromise).resolves.toEqual({ output: 'tick', cursor: 14, skipped: false });
+
+    const stopPromise = host.stopShell('sh_1');
+    const stopCall = guest.posted.at(-1);
+    if (stopCall?.type !== 'shell-stop') throw new Error('Expected stop call');
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'result', id: stopCall.id, ok: true, payload: { stopped: true } } }));
+    await expect(stopPromise).resolves.toEqual({ stopped: true });
+
+    await expect(host.readShellOutput('')).rejects.toMatchObject({ code: 'HOST_REJECTED' });
+    host.dispose();
+  });
 });
