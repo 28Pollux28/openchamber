@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, test } from 'bun:test';
+import { GUEST_SHELLS_MAX } from '@openchamber/sdk';
 import type { Session } from '@/lib/opencode/model';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { useBackgroundShellsStore, type TrackedShell } from '@/sync/background-shells';
@@ -33,6 +34,16 @@ describe('extension shells projection', () => {
     expect(snapshot.kind).toBe('shells');
     expect(snapshot.shells.map((entry) => entry.id)).toEqual(['sh_2', 'sh_1', 'sh_4']);
     expect(snapshot.shells.find((entry) => entry.id === 'sh_4')?.background).toBe(false);
+  });
+
+  test('caps the projection at the documented shell bound', () => {
+    const byId = new Map<string, TrackedShell>();
+    for (let index = 0; index < GUEST_SHELLS_MAX + 50; index += 1) {
+      byId.set(`sh_${index}`, shell(`sh_${index}`, 'root', index, true));
+    }
+    useBackgroundShellsStore.setState({ byId, sessionIds: new Set(['root']) });
+    const snapshot = readGuestShells('root');
+    expect(snapshot.shells).toHaveLength(GUEST_SHELLS_MAX);
   });
 
   test('observers replay the current snapshot and publish changes', async () => {

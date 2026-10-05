@@ -75,7 +75,7 @@ import {
   isPromptResult,
   isStartSessionResult,
 } from './contract.ts';
-import { GUEST_SHELL_ID_MAX, type GuestRunningShellsSnapshot, type GuestShellOutputResult, type GuestShellStopResult } from './shells.ts';
+import { GUEST_SHELL_ID_MAX, GUEST_SHELL_OUTPUT_TAIL_MAX, type GuestRunningShellsSnapshot, type GuestShellOutputResult, type GuestShellStopResult } from './shells.ts';
 
 export type HostFrame = {
   addEventListener: Window['addEventListener'];
@@ -347,7 +347,7 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
 
     if (message.type === 'shells') {
       const listener = shellsListeners.get(message.payload.subscriptionId);
-      if (listener) listener(message.payload.snapshot);
+      if (listener) emit([listener], message.payload.snapshot);
       return;
     }
 
@@ -710,7 +710,15 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
     onRunningShells: (sessionId, listener) => subscribeShells(sessionId, listener),
     readShellOutput: async (shellId, options) => {
       requireIdentity(shellId, GUEST_SHELL_ID_MAX);
-      const result = await send({ ...envelope, type: 'shell-output', id: nextId(ids), payload: { shellId, cursor: options?.cursor, tailBytes: options?.tailBytes } });
+      const cursor = options?.cursor;
+      if (cursor !== undefined && (!Number.isInteger(cursor) || cursor < 0)) {
+        throw new HostRequestError('HOST_REJECTED', 'Shell output cursor must be a non-negative integer.');
+      }
+      const tailBytes = options?.tailBytes;
+      if (tailBytes !== undefined && (!Number.isInteger(tailBytes) || tailBytes < 1 || tailBytes > GUEST_SHELL_OUTPUT_TAIL_MAX)) {
+        throw new HostRequestError('HOST_REJECTED', `Shell output tailBytes must be an integer between 1 and ${GUEST_SHELL_OUTPUT_TAIL_MAX}.`);
+      }
+      const result = await send({ ...envelope, type: 'shell-output', id: nextId(ids), payload: { shellId, cursor, tailBytes } });
       const output = result as GuestShellOutputResult | undefined;
       if (!output || typeof output.output !== 'string' || !Number.isFinite(output.cursor)) {
         throw new HostRequestError('HOST_REJECTED', 'Host did not return shell output.');

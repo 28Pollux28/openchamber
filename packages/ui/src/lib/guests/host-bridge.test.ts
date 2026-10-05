@@ -578,6 +578,10 @@ describe('answerGuestMessage', () => {
     const outputMessage: GuestMessage = { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shell-output', id: 'oc-12', payload: { shellId: 'sh_1', cursor: 4 } };
     const output = await answerGuestMessage(outputMessage, effects({ shellOutput: async ({ shellId, cursor }) => ({ output: `${shellId}:${cursor}`, cursor: 6, skipped: false }) }));
     expect(output).toMatchObject({ ok: true, payload: { output: 'sh_1:4', cursor: 6 } });
+    const missingOutput = await answerGuestMessage(outputMessage, effects({ shellOutput: async () => { throw new HostRequestError('NOT_FOUND', 'That shell is not running.'); } }));
+    expect(missingOutput).toMatchObject({ ok: false, code: 'NOT_FOUND' });
+    const missingStop = await answerGuestMessage(stopMessage, effects({ shellStop: async () => { throw new HostRequestError('NOT_FOUND', 'That shell is not running.'); } }));
+    expect(missingStop).toMatchObject({ ok: false, code: 'NOT_FOUND' });
   });
 });
 

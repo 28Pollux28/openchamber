@@ -166,7 +166,7 @@ Snapshots have `state: "loading" | "ready" | "error"`. Loading/error may retain 
 
 Session `activity` is `unknown`, `idle`, `running`, `retrying`, `waiting-permission`, or `waiting-question`. `outcome` is an observed `completed`/`failed` turn or `null`. It is not reconstructed from history and is retained in memory for at most 2,000 observed sessions. Idle after an error keeps the failed outcome until another run starts. Neither idle nor completed marks your task Done. Use `host.openSession(sessionId)` for an explicit transition from a card to its chat.
 
-### Background shells
+## Background shells
 
 With the `shells` capability, watch the shell commands a session and its subagents run in the background. OpenChamber answers from its local store; no network read happens.
 

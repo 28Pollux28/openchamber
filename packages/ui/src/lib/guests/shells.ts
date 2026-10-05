@@ -1,4 +1,5 @@
 import type { GuestRunningShell, GuestRunningShellsSnapshot } from '@openchamber/sdk';
+import { GUEST_SHELLS_MAX } from '@openchamber/sdk';
 import { sessionsInTree, useBackgroundShellsStore } from '@/sync/background-shells';
 import { useGlobalSessionsStore } from '@/stores/useGlobalSessionsStore';
 import { getRuntimeKey, subscribeRuntimeEndpointChanged } from '@/lib/runtime-switch';
@@ -16,7 +17,7 @@ export const readGuestShells = (sessionId: string): GuestRunningShellsSnapshot =
     shells.push({ id: shell.id, sessionID: shell.sessionID, command: shell.command, startedAt: shell.startedAt, background: shell.background });
   }
   shells.sort((left, right) => left.startedAt - right.startedAt || left.id.localeCompare(right.id));
-  return { kind: 'shells', sessionId, shells };
+  return { kind: 'shells', sessionId, shells: shells.slice(0, GUEST_SHELLS_MAX) };
 };
 
 type Observer = { listeners: Set<(snapshot: GuestRunningShellsSnapshot) => void>; snapshot: GuestRunningShellsSnapshot; dispose: () => void };

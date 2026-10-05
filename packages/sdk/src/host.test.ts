@@ -14,6 +14,7 @@ import {
   type GuestMessage,
   type HostMessage,
 } from './contract.ts';
+import { GUEST_SHELL_OUTPUT_TAIL_MAX } from './shells.ts';
 
 type Listener = (event: Event) => void;
 
@@ -1092,6 +1093,8 @@ describe('connectHost resolve and badge', () => {
     expect(seen).toEqual(['ses_1']);
     stop();
     expect(guest.posted.at(-1)?.type).toBe('shells-unsubscribe');
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells', payload: { subscriptionId: call.payload.subscriptionId, snapshot: { kind: 'shells', sessionId: 'ses_1', shells: [] } } } }));
+    expect(seen).toEqual(['ses_1']);
 
     const outputPromise = host.readShellOutput('sh_1', { cursor: 10, tailBytes: 1024 });
     const outputCall = guest.posted.at(-1);
@@ -1107,6 +1110,17 @@ describe('connectHost resolve and badge', () => {
     await expect(stopPromise).resolves.toEqual({ stopped: true });
 
     await expect(host.readShellOutput('')).rejects.toMatchObject({ code: 'HOST_REJECTED' });
+    host.dispose();
+  });
+
+  test('readShellOutput refuses out-of-range options before posting', async () => {
+    const guest = createFrame();
+    const host = connectHost({ target: guest, acceptSource: () => true });
+    await expect(host.readShellOutput('sh_1', { cursor: -1 })).rejects.toMatchObject({ code: 'HOST_REJECTED' });
+    await expect(host.readShellOutput('sh_1', { cursor: 1.5 })).rejects.toMatchObject({ code: 'HOST_REJECTED' });
+    await expect(host.readShellOutput('sh_1', { tailBytes: 0 })).rejects.toMatchObject({ code: 'HOST_REJECTED' });
+    await expect(host.readShellOutput('sh_1', { tailBytes: GUEST_SHELL_OUTPUT_TAIL_MAX + 1 })).rejects.toMatchObject({ code: 'HOST_REJECTED' });
+    expect(guest.posted).toHaveLength(1);
     host.dispose();
   });
 });

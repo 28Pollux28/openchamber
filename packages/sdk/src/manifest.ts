@@ -358,8 +358,8 @@ export const serviceProvides = (
 /**
  * What a guest may do beyond drawing its own panel. The user approves the
  * full list once, when the package is installed; a later package that asks
- * for more is re-approved. `prompt`, `sessions`, `files`, and `model` are
- * declared under `contributes.capabilities`; `service`, `network`,
+ * for more is re-approved. `prompt`, `sessions`, `files`, `model`, and
+ * `shells` are declared under `contributes.capabilities`; `service`, `network`,
  * `filesystem` and `origins` follow from `contributes.service`,
  * `contributes.integration`, `contributes.filesystem` and `contributes.origins`. `model` is one-off text generation with the
  * user's Small Model (`host.generate`), outside any session.

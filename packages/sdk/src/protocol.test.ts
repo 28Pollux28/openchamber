@@ -930,4 +930,3 @@ describe('actions, commands, and badge wire shapes', () => {
       .toMatchObject({ type: 'result', ok: true, payload: { stopped: true } });
   });
 });
-
