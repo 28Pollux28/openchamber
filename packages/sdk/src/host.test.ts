@@ -1084,17 +1084,18 @@ describe('connectHost resolve and badge', () => {
     const guest = createFrame();
     const host = connectHost({ target: guest, acceptSource: () => true });
     const seen: string[] = [];
-    const subscription = host.onRunningShells('ses_1', (snapshot) => seen.push(snapshot.sessionId));
+    const subscription = host.onRunningShells({ kind: 'session', sessionId: 'ses_1' }, (snapshot) => seen.push(snapshot.scope.kind));
     const call = guest.posted.at(-1);
     if (call?.type !== 'shells-subscribe') throw new Error('Expected subscription');
-    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells', payload: { subscriptionId: call.payload.subscriptionId, snapshot: { kind: 'shells', sessionId: 'ses_1', shells: [] } } } }));
+    expect(call.payload.scope).toEqual({ kind: 'session', sessionId: 'ses_1' });
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells', payload: { subscriptionId: call.payload.subscriptionId, snapshot: { kind: 'shells', scope: { kind: 'session', sessionId: 'ses_1' }, shells: [] } } } }));
     guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'result', id: call.id, ok: true } }));
     const stop = await subscription;
-    expect(seen).toEqual(['ses_1']);
+    expect(seen).toEqual(['session']);
     stop();
     expect(guest.posted.at(-1)?.type).toBe('shells-unsubscribe');
-    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells', payload: { subscriptionId: call.payload.subscriptionId, snapshot: { kind: 'shells', sessionId: 'ses_1', shells: [] } } } }));
-    expect(seen).toEqual(['ses_1']);
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells', payload: { subscriptionId: call.payload.subscriptionId, snapshot: { kind: 'shells', scope: { kind: 'session', sessionId: 'ses_1' }, shells: [] } } } }));
+    expect(seen).toEqual(['session']);
 
     const outputPromise = host.readShellOutput('sh_1', { cursor: 10, tailBytes: 1024 });
     const outputCall = guest.posted.at(-1);
@@ -1110,6 +1111,26 @@ describe('connectHost resolve and badge', () => {
     await expect(stopPromise).resolves.toEqual({ stopped: true });
 
     await expect(host.readShellOutput('')).rejects.toMatchObject({ code: 'HOST_REJECTED' });
+    host.dispose();
+  });
+
+  test('project and global shell scopes post their scope and reject empty identities', async () => {
+    const guest = createFrame();
+    const host = connectHost({ target: guest, acceptSource: () => true });
+    const globalSubscription = host.onRunningShells({ kind: 'global' }, () => {});
+    const globalCall = guest.posted.at(-1);
+    if (globalCall?.type !== 'shells-subscribe') throw new Error('Expected subscription');
+    expect(globalCall.payload.scope).toEqual({ kind: 'global' });
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'result', id: globalCall.id, ok: true } }));
+    await globalSubscription;
+    const projectSubscription = host.onRunningShells({ kind: 'project', projectId: 'p1' }, () => {});
+    const projectCall = guest.posted.at(-1);
+    if (projectCall?.type !== 'shells-subscribe') throw new Error('Expected subscription');
+    expect(projectCall.payload.scope).toEqual({ kind: 'project', projectId: 'p1' });
+    guest.dispatch(new MessageEvent('message', { data: { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'result', id: projectCall.id, ok: true } }));
+    await projectSubscription;
+    await expect(host.onRunningShells({ kind: 'project', projectId: '' }, () => {})).rejects.toMatchObject({ code: 'HOST_REJECTED' });
+    await expect(host.onRunningShells({ kind: 'session', sessionId: ' ' }, () => {})).rejects.toMatchObject({ code: 'HOST_REJECTED' });
     host.dispose();
   });
 

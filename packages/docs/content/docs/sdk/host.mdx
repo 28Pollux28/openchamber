@@ -168,15 +168,15 @@ Session `activity` is `unknown`, `idle`, `running`, `retrying`, `waiting-permiss
 
 ## Background shells
 
-With the `shells` capability, watch the shell commands a session and its subagents run in the background. OpenChamber answers from its local store; no network read happens.
+With the `shells` capability, watch the shell commands running in the background, scoped to a session and its subagents, a registered project, or every session. OpenChamber answers from its local store; no network read happens.
 
 | Call | What it does |
 | --- | --- |
-| `onRunningShells(sessionId, listener)` | subscribe to the running shell commands of a session and its subagents, oldest first, with each command's `background` flag. Returns an unsubscribe function. |
+| `onRunningShells(scope, listener)` | subscribe to the running shell commands in scope: `{ kind: 'session', sessionId }` covers the session and its subagents, `{ kind: 'project', projectId }` covers a registered project, and `{ kind: 'global' }` covers every session. Oldest first, with each command's `background` flag. Returns an unsubscribe function. |
 | `readShellOutput(shellId, { cursor?, tailBytes? })` | one page of a command's output. Without `cursor` it starts `tailBytes` (up to 65536) before the end. Returns `{ output, cursor, skipped }`. |
 | `stopShell(shellId)` | send the agent the stop note first, then remove the command. |
 
-The snapshot is `{ kind: "shells", sessionId, shells }`; each shell is `{ id, sessionID, command, startedAt, background }`, at most 200, oldest first. `background` is `true` for a job the turn does not wait for. A shell that is not running is `NOT_FOUND`; an unapproved `shells` capability is `NOT_GRANTED`.
+The snapshot is `{ kind: "shells", scope, shells }`, with `scope` echoing the subscription's scope; each shell is `{ id, sessionID, command, startedAt, background }`, at most 200, oldest first. `background` is `true` for a job the turn does not wait for. A shell that is not running is `NOT_FOUND`; an unapproved `shells` capability is `NOT_GRANTED`.
 
 ## Persistent extension data
 

@@ -587,12 +587,12 @@ export const PluginPane: React.FC<PluginPaneProps> = ({
           }));
         },
         workspaceUnsubscribe: (id) => { subscriptions.get(id)?.(); subscriptions.delete(id); },
-        shellsSubscribe: ({ subscriptionId, sessionId }) => {
+        shellsSubscribe: ({ subscriptionId, scope }) => {
           requireShells();
           subscriptions.get(subscriptionId)?.();
           subscriptions.delete(subscriptionId);
           if (subscriptions.size >= 32) throw new HostRequestError('HOST_REJECTED', 'At most 32 subscriptions per frame.');
-          subscriptions.set(subscriptionId, observeGuestShells(sessionId, (snapshot) => {
+          subscriptions.set(subscriptionId, observeGuestShells(scope, (snapshot) => {
             if (ownsFrame() && guestMay(guestRef.current, 'shells')) postToGuest({ channel: OPENCHAMBER_SDK_CHANNEL, v: OPENCHAMBER_SDK_API_VERSION,
               type: 'shells', payload: { subscriptionId, snapshot } });
           }));

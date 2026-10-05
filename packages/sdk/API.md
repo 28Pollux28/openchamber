@@ -220,15 +220,15 @@ Projects contain `id`, `name`, `directory`. Worktrees contain `directory`, `name
 
 ### Running shells
 
-These methods need the `shells` capability. They expose the shell commands a session and its subagents are running, and let the extension read their output and stop them. OpenChamber answers from its local store; no network read happens per request.
+These methods need the `shells` capability. They expose the running shell commands in a scope — one session and its subagents, a registered project, or every session — and let the extension read their output and stop them. OpenChamber answers from its local store; no network read happens per request.
 
 | Method | Result |
 | --- | --- |
-| `onRunningShells(sessionId, listener)` | subscription: the running shell commands of a session and its subagents, oldest first, with each command's `background` flag |
+| `onRunningShells(scope, listener)` | subscription: the running shell commands in scope — one session and its subagents (`{ kind: 'session', sessionId }`), a registered project (`{ kind: 'project', projectId }`), or every session (`{ kind: 'global' }`) — oldest first, with each command's `background` flag |
 | `readShellOutput(shellId, { cursor?, tailBytes? })` | one page of a command's output; `tailBytes` is capped at 65536 |
 | `stopShell(shellId)` | sends the agent the stop note first, then removes the command |
 
-Await subscription registration to handle refusal, then retain its returned unsubscribe function. Each subscription sends an initial snapshot, then changes, and counts against the same 32-subscription limit as the workspace subscriptions. The snapshot is `{ kind: 'shells', sessionId, shells }`; each shell is `{ id, sessionID, command, startedAt, background }`, at most 200, oldest first, and the list includes the session's subagents. `background` is `true` for a job the turn does not wait for, and `false` while the turn that ran it is blocked on it. `readShellOutput` returns `{ output, cursor, skipped }`; omit `cursor` to start `tailBytes` before the end, and `skipped` says earlier output was dropped. A shell that is not running is `NOT_FOUND`. An unapproved `shells` capability is `NOT_GRANTED`.
+Await subscription registration to handle refusal, then retain its returned unsubscribe function. Each subscription sends an initial snapshot, then changes, and counts against the same 32-subscription limit as the workspace subscriptions. The snapshot is `{ kind: 'shells', scope, shells }`, where `scope` echoes the subscription's scope; each shell is `{ id, sessionID, command, startedAt, background }`, at most 200, oldest first. `background` is `true` for a job the turn does not wait for, and `false` while the turn that ran it is blocked on it. `readShellOutput` returns `{ output, cursor, skipped }`; omit `cursor` to start `tailBytes` before the end, and `skipped` says earlier output was dropped. A shell that is not running is `NOT_FOUND`. An unapproved `shells` capability is `NOT_GRANTED`.
 
 ### Extension storage
 

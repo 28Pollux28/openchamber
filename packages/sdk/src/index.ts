@@ -6,6 +6,7 @@ export { GUEST_STORAGE_KEY_MAX, GUEST_STORAGE_KEYS_MAX, GUEST_STORAGE_VALUE_BYTE
 export type {
   GuestRunningShell,
   GuestRunningShellsSnapshot,
+  GuestShellsScope,
   GuestShellsSubscription,
   GuestShellOutputRequest,
   GuestShellOutputResult,

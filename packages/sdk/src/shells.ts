@@ -12,14 +12,23 @@ export type GuestRunningShell = {
   background: boolean;
 };
 
+/**
+ * Which running shells a subscription covers: one session and its subagents,
+ * every session of a registered project, or every session the app sees.
+ */
+export type GuestShellsScope =
+  | { kind: 'session'; sessionId: string }
+  | { kind: 'project'; projectId: string }
+  | { kind: 'global' };
+
 export type GuestRunningShellsSnapshot = {
   kind: 'shells';
-  /** The session the subscription was opened for; the shells include its subagents. */
-  sessionId: string;
+  /** Echo of the scope the subscription asked for. */
+  scope: GuestShellsScope;
   shells: GuestRunningShell[];
 };
 
-export type GuestShellsSubscription = { subscriptionId: string; sessionId: string };
+export type GuestShellsSubscription = { subscriptionId: string; scope: GuestShellsScope };
 export type GuestShellOutputRequest = { shellId: string; cursor?: number; tailBytes?: number };
 export type GuestShellOutputResult = { output: string; cursor: number; skipped: boolean };
 export type GuestShellStopResult = { stopped: true };

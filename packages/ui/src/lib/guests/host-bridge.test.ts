@@ -567,10 +567,15 @@ describe('answerGuestMessage', () => {
     expect(allowed).toMatchObject({ ok: true, payload: { stopped: true } });
     expect(calls).toEqual(['sh_1']);
 
-    const subscribeMessage: GuestMessage = { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells-subscribe', id: 'oc-10', payload: { subscriptionId: 's1', sessionId: 'ses_1' } };
+    const subscribeMessage: GuestMessage = { channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells-subscribe', id: 'oc-10', payload: { subscriptionId: 's1', scope: { kind: 'session', sessionId: 'ses_1' } } };
     let subscribed = '';
     await answerGuestMessage(subscribeMessage, effects({ shellsSubscribe: ({ subscriptionId }) => { subscribed = subscriptionId; } }));
     expect(subscribed).toBe('s1');
+    let routedScope = '';
+    await answerGuestMessage({ channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells-subscribe', id: 'oc-10b', payload: { subscriptionId: 's2', scope: { kind: 'project', projectId: 'path_/repo' } } }, effects({ shellsSubscribe: (subscription) => { routedScope = subscription.scope.kind; } }));
+    expect(routedScope).toBe('project');
+    const refusedSubscribe = await answerGuestMessage(subscribeMessage, effects({ shellsSubscribe: () => { throw new HostRequestError('NOT_FOUND', 'Project is not registered.'); } }));
+    expect(refusedSubscribe).toMatchObject({ ok: false, code: 'NOT_FOUND' });
     let unsubscribed = '';
     await answerGuestMessage({ channel: OPENCHAMBER_SDK_CHANNEL, v: 1, type: 'shells-unsubscribe', id: 'oc-11', payload: { subscriptionId: 's1' } }, effects({ shellsUnsubscribe: (id) => { unsubscribed = id; } }));
     expect(unsubscribed).toBe('s1');

@@ -75,7 +75,7 @@ import {
   isPromptResult,
   isStartSessionResult,
 } from './contract.ts';
-import { GUEST_SHELL_ID_MAX, GUEST_SHELL_OUTPUT_TAIL_MAX, type GuestRunningShellsSnapshot, type GuestShellOutputResult, type GuestShellStopResult } from './shells.ts';
+import { GUEST_SHELL_ID_MAX, GUEST_SHELL_OUTPUT_TAIL_MAX, type GuestRunningShellsSnapshot, type GuestShellOutputResult, type GuestShellStopResult, type GuestShellsScope } from './shells.ts';
 
 export type HostFrame = {
   addEventListener: Window['addEventListener'];
@@ -101,7 +101,7 @@ export type HostClient = {
   onProjects: (listener: (snapshot: GuestProjectsSnapshot) => void) => Promise<() => void>;
   onWorktrees: (projectId: string, listener: (snapshot: GuestWorktreesSnapshot) => void) => Promise<() => void>;
   onSessions: (projectId: string, listener: (snapshot: GuestSessionsSnapshot) => void) => Promise<() => void>;
-  onRunningShells: (sessionId: string, listener: (snapshot: GuestRunningShellsSnapshot) => void) => Promise<() => void>;
+  onRunningShells: (scope: GuestShellsScope, listener: (snapshot: GuestRunningShellsSnapshot) => void) => Promise<() => void>;
   readShellOutput: (shellId: string, options?: { cursor?: number; tailBytes?: number }) => Promise<GuestShellOutputResult>;
   stopShell: (shellId: string) => Promise<GuestShellStopResult>;
   openSession: (sessionId: string) => Promise<void>;
@@ -634,12 +634,13 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
       post({ ...envelope, type: 'workspace-unsubscribe', id: nextId(ids), payload: { subscriptionId } });
     };
   };
-  const subscribeShells = async (sessionId: string, listener: (snapshot: GuestRunningShellsSnapshot) => void): Promise<() => void> => {
-    requireIdentity(sessionId);
+  const subscribeShells = async (scope: GuestShellsScope, listener: (snapshot: GuestRunningShellsSnapshot) => void): Promise<() => void> => {
+    if (scope.kind === 'session') requireIdentity(scope.sessionId);
+    if (scope.kind === 'project') requireIdentity(scope.projectId);
     const subscriptionId = nextId(ids);
     shellsListeners.set(subscriptionId, listener);
     try {
-      await request({ ...envelope, type: 'shells-subscribe', id: nextId(ids), payload: { subscriptionId, sessionId } });
+      await request({ ...envelope, type: 'shells-subscribe', id: nextId(ids), payload: { subscriptionId, scope } });
     } catch (error) {
       shellsListeners.delete(subscriptionId);
       if (!disposed) post({ ...envelope, type: 'shells-unsubscribe', id: nextId(ids), payload: { subscriptionId } });
@@ -707,7 +708,7 @@ export const connectHost = (options: HostClientOptions = {}): HostClient => {
     onProjects: (listener) => subscribeWorkspace({ kind: 'projects' }, (snapshot) => { if (snapshot.kind === 'projects') listener(snapshot); }),
     onWorktrees: (projectId, listener) => subscribeWorkspace({ kind: 'worktrees', projectId }, (snapshot) => { if (snapshot.kind === 'worktrees') listener(snapshot); }),
     onSessions: (projectId, listener) => subscribeWorkspace({ kind: 'sessions', projectId }, (snapshot) => { if (snapshot.kind === 'sessions') listener(snapshot); }),
-    onRunningShells: (sessionId, listener) => subscribeShells(sessionId, listener),
+    onRunningShells: (scope, listener) => subscribeShells(scope, listener),
     readShellOutput: async (shellId, options) => {
       requireIdentity(shellId, GUEST_SHELL_ID_MAX);
       const cursor = options?.cursor;
