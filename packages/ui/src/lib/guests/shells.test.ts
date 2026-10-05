@@ -11,7 +11,7 @@ const session = (id: string, parentID?: string): Session => ({
   ...(parentID ? { parentID } : {}),
 });
 const shell = (id: string, sessionID: string, startedAt: number, background: boolean): TrackedShell => ({
-  id, sessionID, command: `run ${id}`, startedAt, directory: '/repo', background,
+  id, sessionID, command: `run ${id}`, startedAt, directory: '/repo', background, file: 'shell.log',
 });
 
 beforeEach(() => {
