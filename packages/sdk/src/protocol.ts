@@ -162,9 +162,21 @@ const generateResultPayloadSchema = z.object({
   text: z.string().max(GUEST_GENERATE_TEXT_MAX),
 });
 
+const shellOutputResultPayloadSchema = z.object({
+  output: z.string(),
+  cursor: z.number(),
+  skipped: z.boolean(),
+});
+
+const shellStopResultPayloadSchema = z.object({
+  stopped: z.literal(true),
+});
+
 const hostResultPayloadSchema = z.union([
   guestStorageResultSchema,
   guestWorkspaceSnapshotSchema,
+  shellOutputResultPayloadSchema,
+  shellStopResultPayloadSchema,
   startSessionResultPayloadSchema,
   requestResultPayloadSchema,
   promptResultPayloadSchema,

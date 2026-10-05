@@ -922,5 +922,12 @@ describe('actions, commands, and badge wire shapes', () => {
     expect(parseHostMessage({ ...envelope, type: 'shells', payload: { subscriptionId: 's1', snapshot: { kind: 'shells', sessionId: 'ses_1', shells: [{ id: 'sh_1', sessionID: 'ses_1', command: 'sleep 1', startedAt: 1, background: true }] } } })?.type).toBe('shells');
     expect(parseHostMessage({ ...envelope, type: 'shells', payload: { subscriptionId: 's1', snapshot: { kind: 'shells', sessionId: 'ses_1', shells: [] } } })?.type).toBe('shells');
   });
+
+  test('accepts shell output and shell stop result payloads', () => {
+    expect(parseHostMessage({ ...envelope, type: 'result', id: 'c1', ok: true, payload: { output: 'tick', cursor: 14, skipped: false } }))
+      .toMatchObject({ type: 'result', ok: true, payload: { output: 'tick', cursor: 14, skipped: false } });
+    expect(parseHostMessage({ ...envelope, type: 'result', id: 'c2', ok: true, payload: { stopped: true } }))
+      .toMatchObject({ type: 'result', ok: true, payload: { stopped: true } });
+  });
 });
 
