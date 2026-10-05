@@ -364,11 +364,11 @@ export const serviceProvides = (
  * `contributes.integration`, `contributes.filesystem` and `contributes.origins`. `model` is one-off text generation with the
  * user's Small Model (`host.generate`), outside any session.
  */
-export const GUEST_CAPABILITIES = ['prompt', 'sessions', 'files', 'model', 'conversation', 'service', 'network', 'filesystem', 'origins'] as const;
+export const GUEST_CAPABILITIES = ['prompt', 'sessions', 'files', 'model', 'shells', 'conversation', 'service', 'network', 'filesystem', 'origins'] as const;
 
 export type GuestCapability = (typeof GUEST_CAPABILITIES)[number];
 
-export const DECLARED_GUEST_CAPABILITIES = ['prompt', 'sessions', 'files', 'model'] as const;
+export const DECLARED_GUEST_CAPABILITIES = ['prompt', 'sessions', 'files', 'model', 'shells'] as const;
 
 /** The capabilities a manifest may ask for directly. */
 export type DeclaredGuestCapability = (typeof DECLARED_GUEST_CAPABILITIES)[number];

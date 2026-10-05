@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { guestSessionWorktreeSchema, guestStorageRequestSchema, guestStorageResultSchema, guestWorkspaceQuerySchema, guestWorkspaceSnapshotSchema } from './workspace-schemas.ts';
 import { guestStatusControlEventSchema, guestStatusControlsSchema } from './status-control-schemas.ts';
 import { guestPopoverClosedEventSchema, guestPopoverDataSchema, guestPopoverRequestSchema } from './popover-schemas.ts';
+import { GUEST_SHELL_ID_MAX, GUEST_SHELLS_MAX, GUEST_SHELL_OUTPUT_TAIL_MAX } from './shells.ts';
 
 import { OPENCHAMBER_SDK_API_VERSION, OPENCHAMBER_SDK_CHANNEL } from './api-version.ts';
 import {
@@ -285,8 +286,26 @@ const hostResultSchema = z.object({
   };
 });
 
+export const guestRunningShellSchema = z.object({
+  id: z.string().min(1).max(GUEST_SHELL_ID_MAX),
+  sessionID: z.string().min(1).max(1024),
+  command: z.string(),
+  startedAt: z.number().nonnegative(),
+  background: z.boolean(),
+}).strict();
+export const guestRunningShellsSnapshotSchema = z.object({
+  kind: z.literal('shells'),
+  sessionId: z.string().min(1).max(1024),
+  shells: z.array(guestRunningShellSchema).max(GUEST_SHELLS_MAX),
+}).strict();
+
 export const hostMessageSchema = z.union([
   z.object({ ...envelope, type: z.literal('workspace'), payload: z.object({ subscriptionId: z.string().min(1).max(128), snapshot: guestWorkspaceSnapshotSchema }) }),
+  z.object({
+    ...envelope,
+    type: z.literal('shells'),
+    payload: z.object({ subscriptionId: z.string().min(1).max(128), snapshot: guestRunningShellsSnapshotSchema }),
+  }),
   z.object({
     ...envelope,
     type: z.literal('ready'),
@@ -405,6 +424,10 @@ export const guestMessageSchema = z.discriminatedUnion('type', [
   z.object({ ...envelope, type: z.literal('workspace-read'), id: z.string().min(1), payload: guestWorkspaceQuerySchema }),
   z.object({ ...envelope, type: z.literal('workspace-subscribe'), id: z.string().min(1), payload: z.object({ subscriptionId: z.string().min(1).max(128), query: guestWorkspaceQuerySchema }) }),
   z.object({ ...envelope, type: z.literal('workspace-unsubscribe'), id: z.string().min(1), payload: z.object({ subscriptionId: z.string().min(1).max(128) }) }),
+  z.object({ ...envelope, type: z.literal('shells-subscribe'), id: z.string().min(1), payload: z.object({ subscriptionId: z.string().min(1).max(128), sessionId: z.string().min(1).max(1024) }).strict() }),
+  z.object({ ...envelope, type: z.literal('shells-unsubscribe'), id: z.string().min(1), payload: z.object({ subscriptionId: z.string().min(1).max(128) }).strict() }),
+  z.object({ ...envelope, type: z.literal('shell-output'), id: z.string().min(1), payload: z.object({ shellId: z.string().min(1).max(GUEST_SHELL_ID_MAX), cursor: z.number().int().nonnegative().optional(), tailBytes: z.number().int().positive().max(GUEST_SHELL_OUTPUT_TAIL_MAX).optional() }).strict() }),
+  z.object({ ...envelope, type: z.literal('shell-stop'), id: z.string().min(1), payload: z.object({ shellId: z.string().min(1).max(GUEST_SHELL_ID_MAX) }).strict() }),
   z.object({ ...envelope, type: z.literal('storage'), id: z.string().min(1), payload: guestStorageRequestSchema }),
   z.object({
     ...envelope,
